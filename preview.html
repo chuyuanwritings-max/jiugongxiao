@@ -1246,7 +1246,10 @@ function drawFx() {
     const life = t.big ? 1.1 : 0.8;
     const pop = t.big ? (age < 0.12 ? 0.6 + age * 5 : 1.2 - Math.min(0.2, (age - 0.12))) : 1;
     ctx.globalAlpha = Math.max(0, 1 - Math.max(0, age - life * 0.6) / (life * 0.4));
-    text(t.s, t.x, t.y - age * (t.big ? 20 : 50), Math.round(t.size * pop), t.col);
+    const sz = Math.round(t.size * pop);
+    ctx.font = 'bold ' + sz + 'px sans-serif';
+    const half = ctx.measureText(t.s).width / 2 + 6;
+    text(t.s, Math.max(half, Math.min(W - half, t.x)), t.y - age * (t.big ? 20 : 50), sz, t.col);
     ctx.globalAlpha = 1;
   });
 }

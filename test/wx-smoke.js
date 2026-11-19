@@ -6,6 +6,7 @@ const ctx = new Proxy({}, {
   get(t, k) {
     if (k in t) return t[k];
     if (k === 'createLinearGradient' || k === 'createRadialGradient') return () => ({ addColorStop() {} });
+    if (k === 'measureText') return (s) => ({ width: String(s).length * 10 });
     return (...a) => { calls.add(k); };
   },
   set(t, k, v) { t[k] = v; return true; },

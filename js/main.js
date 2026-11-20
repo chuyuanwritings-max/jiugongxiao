@@ -197,30 +197,50 @@ function gearIcon(x, y, r, a, col) {
 }
 // 机关块：宝石色铜块。ci = 颜色序号；lit = 要被消掉时发亮
 function block(x, y, s, alpha, ci, lit) {
+  // 祝有好收获的黄铜画法：细深褐线 + 平涂 + 一块硬边阴影 + 一道白黄硬高光 + 两颗细线铆钉
   const k = ci < 0 ? C.prefillColor : C.blockColors[ci || 0];
   ctx.globalAlpha = alpha === undefined ? 1 : alpha;
-  const e = Math.max(2, Math.round(s * 0.15));
+  const rad = Math.max(2, s * 0.12);
   ctx.fillStyle = COL.ink;
-  rr(x, y, s, s, Math.max(2, s * 0.14));
+  rr(x + 0.5, y + 0.5, s - 1, s - 1, rad);
   ctx.fill();
+  const m = Math.max(1.5, s * 0.06); // 线宽
   ctx.fillStyle = lit ? k[1] : k[0];
-  rr(x + 1.5, y + 1.5, s - 3, s - 3, Math.max(2, s * 0.12));
+  rr(x + m, y + m, s - m * 2, s - m * 2, rad * 0.8);
   ctx.fill();
-  // 上、左亮边，下、右暗边（赛璐璐硬阴影）
-  ctx.fillStyle = k[1];
-  ctx.fillRect(x + 3, y + 3, s - 6, e);
-  ctx.fillRect(x + 3, y + 3, e * 0.8, s - 6);
-  ctx.fillStyle = k[2];
-  ctx.fillRect(x + 3, y + s - 3 - e, s - 6, e);
-  ctx.fillRect(x + s - 3 - e * 0.8, y + 3, e * 0.8, s - 6);
-  // 中间一颗黄铜铆钉 + 高光
-  if (s > 14) {
-    ctx.fillStyle = '#f3d27a';
-    ctx.beginPath(); ctx.arc(x + s / 2, y + s / 2, s * 0.13, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = COL.ink;
-    ctx.beginPath(); ctx.arc(x + s / 2, y + s / 2, s * 0.05, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fillRect(x + s * 0.22, y + s * 0.2, s * 0.16, s * 0.08);
+  // 硬阴影：右下一块 L 形
+  const e = s * 0.2;
+  ctx.fillStyle = lit ? k[0] : k[2];
+  ctx.beginPath();
+  ctx.moveTo(x + s - m, y + m + rad * 0.6);
+  ctx.lineTo(x + s - m, y + s - m - rad * 0.6);
+  ctx.quadraticCurveTo(x + s - m, y + s - m, x + s - m - rad * 0.6, y + s - m);
+  ctx.lineTo(x + m + rad * 0.6, y + s - m);
+  ctx.lineTo(x + m + e * 0.6, y + s - m - e * 0.8);
+  ctx.lineTo(x + s - m - e * 0.8, y + s - m - e * 0.8);
+  ctx.lineTo(x + s - m - e * 0.8, y + m + e * 0.6);
+  ctx.closePath();
+  ctx.fill();
+  // 一道白黄硬高光（左上斜一条）
+  if (s > 12) {
+    ctx.fillStyle = lit ? '#fffbe8' : 'rgba(255,246,214,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(x + s * 0.2, y + s * 0.18);
+    ctx.lineTo(x + s * 0.62, y + s * 0.18);
+    ctx.lineTo(x + s * 0.56, y + s * 0.27);
+    ctx.lineTo(x + s * 0.2, y + s * 0.27);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // 细线铆钉：右上、左下各一颗
+  if (s > 18) {
+    const rv = Math.max(1.2, s * 0.055);
+    for (const [px, py] of [[0.76, 0.24], [0.24, 0.72]]) {
+      ctx.fillStyle = k[2];
+      ctx.beginPath(); ctx.arc(x + s * px, y + s * py, rv + 0.8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = k[1];
+      ctx.beginPath(); ctx.arc(x + s * px - rv * 0.3, y + s * py - rv * 0.3, rv * 0.55, 0, Math.PI * 2); ctx.fill();
+    }
   }
   ctx.globalAlpha = 1;
 }
@@ -511,7 +531,10 @@ function update(dt) {
 
 // ---------- 画 ----------
 function drawBg() {
-  ctx.fillStyle = COL.bg;
+  // 靛蓝夜：上亮下暗
+  const bgG = ctx.createLinearGradient(0, 0, 0, H);
+  bgG.addColorStop(0, COL.bg); bgG.addColorStop(1, COL.bgLow);
+  ctx.fillStyle = bgG;
   ctx.fillRect(0, 0, W, H);
   // 淡淡的齿轮背景
   ctx.globalAlpha = 0.05;
@@ -593,7 +616,11 @@ function drawBoard(showGhost) {
   // 木框
   ctx.fillStyle = COL.ink; rr(bx - 9, by - 9 + 4, B + 18, B + 18, 10); ctx.fill();
   ctx.fillStyle = COL.copper; rr(bx - 9, by - 9, B + 18, B + 18, 10); ctx.fill();
-  ctx.fillStyle = COL.brassDark; ctx.fillRect(bx - 3, by - 3, B + 6, B + 6);
+  // 黄铜框：一道硬高光 + 四角铆钉
+  ctx.fillStyle = COL.brassLight; ctx.fillRect(bx - 2, by - 7, B + 4, 2);
+  ctx.fillStyle = COL.brassDark;
+  for (const [cx, cy] of [[bx - 5, by - 5], [bx + B + 5, by - 5], [bx - 5, by + B + 5], [bx + B + 5, by + B + 5]]) { ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = COL.ink; ctx.fillRect(bx - 2, by - 2, B + 4, B + 4);
   // 连消中：棋盘边框烧起来，连得越久越亮、越跳
   if (g.streak >= 2) {
     const heat = Math.min(1, (g.streak - 1) / 5);
@@ -617,14 +644,18 @@ function drawBoard(showGhost) {
     const box = core.boxOf(r, c);
     if (g.revealed[k]) {
       ctx.drawImage(pc, c * PX, r * PX, PX, PX, x, y, cell, cell);
-      if (!g.lit[box]) { ctx.fillStyle = 'rgba(10,6,4,0.45)'; ctx.fillRect(x, y, cell, cell); }
+      if (!g.lit[box]) { ctx.fillStyle = COL.shade + '0.45)'; ctx.fillRect(x, y, cell, cell); }
     } else if (g.stage) {
       // 旅程：照 Woodoku，九宫一深一浅隔开，一眼看出宫
-      ctx.fillStyle = box % 2 ? (r + c) % 2 ? '#3f2a1b' : '#46301f' : (r + c) % 2 ? '#2a1a10' : '#301e13';
+      ctx.fillStyle = box % 2 ? (r + c) % 2 ? COL.cellC : COL.cellD : (r + c) % 2 ? COL.cellA : COL.cellB;
       ctx.fillRect(x, y, cell, cell);
     } else {
-      ctx.fillStyle = (r + c) % 2 ? COL.wood : '#3f2a1b';
+      ctx.fillStyle = (r + c) % 2 ? COL.cellB : COL.cellC;
       ctx.fillRect(x, y, cell, cell);
+      // 底下的画隐约透出来一点（消掉才真亮）
+      ctx.globalAlpha = 0.13;
+      ctx.drawImage(pc, c * PX, r * PX, PX, PX, x, y, cell, cell);
+      ctx.globalAlpha = 1;
       if (box === 4) drawLuoshu(r - 3, c - 3, x, y, cell);
     }
   }
@@ -637,8 +668,8 @@ function drawBoard(showGhost) {
     ctx.moveTo(bx, by + i * cell + 0.5); ctx.lineTo(bx + B, by + i * cell + 0.5);
   }
   ctx.stroke();
-  // 宫线（铜）
-  ctx.strokeStyle = COL.brass; ctx.lineWidth = 3;
+  // 宫线（黄铜细线）
+  ctx.strokeStyle = COL.copper; ctx.lineWidth = 2;
   ctx.beginPath();
   for (let i = 1; i < 3; i++) {
     ctx.moveTo(bx + i * 3 * cell, by); ctx.lineTo(bx + i * 3 * cell, by + B);
@@ -739,7 +770,8 @@ function drawBoard(showGhost) {
 const LUOSHU = [4, 9, 2, 3, 5, 7, 8, 1, 6];
 function drawLuoshu(r, c, x, y, s) {
   const n = LUOSHU[r * 3 + c];
-  ctx.fillStyle = n % 2 ? 'rgba(239,230,214,0.28)' : 'rgba(10,6,4,0.45)';
+  // 洛书点：奇数白点淡淡发光、偶数深点
+  ctx.fillStyle = n % 2 ? 'rgba(235,229,212,0.4)' : COL.shade + '0.6)';
   const cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols);
   const d = s / (Math.max(cols, rows) + 1.2);
   for (let i = 0; i < n; i++) {
@@ -863,7 +895,7 @@ function drawPainting(idx, x, y, s, litArr, blink) {
   for (let b = 0; b < 9; b++) {
     if (litArr[b]) continue;
     const bx = x + (b % 3) * q, by = y + Math.floor(b / 3) * q;
-    ctx.fillStyle = 'rgba(20,12,8,0.86)'; ctx.fillRect(bx, by, q, q);
+    ctx.fillStyle = COL.shade + '0.86)'; ctx.fillRect(bx, by, q, q);
     if (blink) {
       ctx.strokeStyle = 'rgba(226,85,59,' + (0.5 + Math.sin(clock * 8) * 0.4) + ')';
       ctx.lineWidth = 3; ctx.strokeRect(bx + 3, by + 3, q - 6, q - 6);
@@ -881,7 +913,7 @@ function drawStageOver() {
   const r = result;
   // 过关：先让「过关！」和飞的宝石放完，再出卡（照 Woodoku：变暗 → WELL DONE → 第 N 关完成）
   const wait = r.won ? 1.1 : 0.35;
-  ctx.fillStyle = 'rgba(8,5,3,' + Math.min(r.won ? 0.55 : 0.85, age * 2) + ')';
+  ctx.fillStyle = COL.shade + Math.min(r.won ? 0.55 : 0.85, age * 2) + ')';
   ctx.fillRect(0, 0, W, H);
   if (r.won && age < wait) {
     // 「过关！」压在暗层上面，弹一下
@@ -945,7 +977,7 @@ function drawStageOver() {
 function drawOver() {
   if (g.stage) return drawStageOver();
   const age = clock - overAt;
-  ctx.fillStyle = 'rgba(8,5,3,' + Math.min(0.92, age * 3) + ')';
+  ctx.fillStyle = COL.shade + Math.min(0.92, age * 3) + ')';
   ctx.fillRect(0, 0, W, H);
   if (age < 0.25) return; // 让碎块飞一下再出结算
   const r = result;
@@ -1008,7 +1040,7 @@ function mapPicture(i, x, y, s) {
   ctx.imageSmoothingEnabled = paintSmooth[ch];
   ctx.drawImage(paintCanvas[ch], (b % 3) * q, Math.floor(b / 3) * q, q, q, x - s / 2, y - s / 2, s, s);
   if (!open) {
-    ctx.fillStyle = 'rgba(20,12,8,0.82)'; ctx.fillRect(x - s / 2, y - s / 2, s, s);
+    ctx.fillStyle = COL.shade + '0.82)'; ctx.fillRect(x - s / 2, y - s / 2, s, s);
     text('?', x, y, s * 0.4, COL.dim);
   }
 }
@@ -1044,25 +1076,25 @@ function drawMap() {
       ctx.beginPath(); ctx.arc(x, y, rad + 8, 0, Math.PI * 2); ctx.stroke();
     }
     ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x, y + 3, rad + 3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = passed ? COL.brass : isCur ? COL.copper : COL.woodDark;
+    ctx.fillStyle = passed ? COL.brass : isCur ? COL.red : COL.woodDark; // 当前关用朱砂：全屏唯一一点高饱和
     ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
     text(String(i + 1), x, y + 1, isCur ? 26 : 22, passed ? COL.ink : isCur ? COL.text : COL.dim);
     if (passed) text('✓', x + 20, y - 20, 16, COL.jade);
     // 每 5 关一个齿轮奖章（拼成一张画）
-    if (i % 5 === 4) gearIcon(x, y - rad - 16, 11, passed ? clock : 0, passed ? COL.brassLight : '#3a2a20');
+    if (i % 5 === 4) gearIcon(x, y - rad - 16, 11, passed ? clock : 0, passed ? COL.brassLight : COL.woodLine);
     // 过了的关和当前关能点
     if (i <= cur) buttons.push({ id: 'node' + i, x: x - rad, y: y - rad, w: rad * 2, h: rad * 2, fn: () => newStage(i) });
   }
   // 顶栏压在路上面：标题、进度、金币
   const hg = ctx.createLinearGradient(0, 0, 0, L.top + 70);
-  hg.addColorStop(0, COL.bg); hg.addColorStop(0.75, COL.bg); hg.addColorStop(1, 'rgba(18,12,10,0)');
+  hg.addColorStop(0, COL.bg); hg.addColorStop(0.75, COL.bg); hg.addColorStop(1, 'rgba(14,19,48,0)');
   ctx.fillStyle = hg; ctx.fillRect(0, 0, W, L.top + 70);
   text('旅程', W / 2, L.top + 24, 28, COL.brassLight);
   text(save.coins + ' 金', W - 20, L.top + 24, 17, COL.brassLight, 'right');
   text(Math.min(save.stage, LV.length) + ' / ' + LV.length, 20, L.top + 24, 17, COL.dim, 'left');
   // 底栏同样压住路
   const fg = ctx.createLinearGradient(0, H - 215, 0, H);
-  fg.addColorStop(0, 'rgba(18,12,10,0)'); fg.addColorStop(0.2, COL.bg); fg.addColorStop(1, COL.bg);
+  fg.addColorStop(0, 'rgba(9,12,32,0)'); fg.addColorStop(0.2, COL.bgLow); fg.addColorStop(1, COL.bgLow);
   ctx.fillStyle = fg; ctx.fillRect(0, H - 215, W, 215);
   // 下一关要干什么：目标图标
   const st = LV[cur];
@@ -1088,7 +1120,7 @@ const INTRO = {
 };
 function drawIntro() {
   const it = INTRO[introKind];
-  ctx.fillStyle = 'rgba(8,5,3,0.8)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = COL.shade + '0.8)'; ctx.fillRect(0, 0, W, H);
   const pw = Math.min(W - 40, 340), ph = 330, px = (W - pw) / 2, py = (H - ph) / 2 - 30;
   ctx.fillStyle = COL.ink; rr(px, py + 6, pw, ph, 18); ctx.fill();
   ctx.fillStyle = COL.wood; rr(px, py, pw, ph, 18); ctx.fill();
@@ -1102,7 +1134,7 @@ function drawIntro() {
   const gemCell = it.row.indexOf('g');
   for (let n = 0; n < 5; n++) {
     const x = x0 + n * cs;
-    ctx.fillStyle = n % 2 ? '#3f2a1b' : '#46301f'; ctx.fillRect(x, y0, cs, cs);
+    ctx.fillStyle = n % 2 ? COL.cellC : COL.cellD; ctx.fillRect(x, y0, cs, cs);
     const ch = it.row[n];
     if (ch === 'M') { chest(x, y0, cs); continue; }
     if (cleared) continue;
@@ -1139,8 +1171,7 @@ function openAlbum() {
   mode = 'album';
 }
 function drawAlbum() {
-  ctx.fillStyle = COL.bg;
-  ctx.fillRect(0, 0, W, H);
+  drawBg();
   text('画册', W / 2, L.top + 22, 28, COL.brassLight);
   text(save.coins + ' 金', W - 20, L.top + 22, 18, COL.brassLight, 'right');
   const s = Math.min((W - 60) / 3, 120);
@@ -1159,7 +1190,7 @@ function drawAlbum() {
   ITEMS.forEach((it, i) => {
     const have = !!save.items[it.id];
     const yy = y + i * 44;
-    gearIcon(44, yy, 12, have ? clock : 0, have ? COL.brass : '#3a2a20');
+    gearIcon(44, yy, 12, have ? clock : 0, have ? COL.brass : COL.woodLine);
     text(have ? it.name : '？？？', 68, yy, 17, have ? COL.text : COL.dim, 'left');
     text(have ? it.tip : '拼成第 ' + (i + 1) + ' 张画', W - 24, yy, 14, have ? COL.jade : COL.dim, 'right', 'normal');
   });
@@ -1173,7 +1204,7 @@ function drawAlbum() {
   y += 60;
   const endlessOpen = save.wins >= 2;
   button('endless', 24, y, W - 48, 46, endlessOpen ? '无尽模式 · 最高 ' + save.bestEndless : '无尽模式（拼成 2 张画开放）', {
-    size: 16, bg: endlessOpen ? COL.copper : '#2a1d15', fg: endlessOpen ? COL.text : COL.dim,
+    size: 16, bg: endlessOpen ? COL.copper : COL.woodDark, fg: endlessOpen ? COL.text : COL.dim,
     fn: () => endlessOpen && newGame(true),
   });
   const bw = Math.min(W - 60, 300);

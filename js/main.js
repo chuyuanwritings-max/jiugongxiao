@@ -1,8 +1,9 @@
-// 洛书九宫 原型 0.1：画面、拖块、特效、结算、画册。规则全在 core.js。
+// 洛书九宫 原型 0.3：旅程地图 + 15 关（照 Woodoku 旅程）、经典 3 分钟拼画、拖块、特效、结算、画册。规则全在 core.js，关卡在 levels.js。
 const P = require('./platform.js');
 const C = require('./config.js');
 const core = require('./core.js');
 const art = require('./art.js');
+const LV = require('./levels.js');
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -16,9 +17,11 @@ function freshSave() {
   return {
     wins: 0, won: [false, false, false], litEver: [0, 1, 2].map(() => new Array(9).fill(false)),
     coins: 0, best: 0, bestEndless: 0, items: {}, tutorialDone: false, buySingle: false, plays: 0,
+    stage: 0, introSeen: {}, // 旅程：已经过了几关、哪些说明卡看过
   };
 }
 let save = Object.assign(freshSave(), P.load(KEY) || {});
+if (!save.introSeen) save.introSeen = {};
 const persist = () => P.save(KEY, save);
 
 // ---------- 画布和布局 ----------
@@ -89,6 +92,11 @@ let ad = null; // { until, done }
 let tutorialT = 0;
 let mofei = { jump: 0, say: '', sayT: 0 };
 let coinsGot = 0;
+let stageIdx = -1; // 旅程第几关（0 起）；-1 = 经典拼画
+let flyers = []; // 收走的宝石 / 匣 / 泡泡飞向顶上的计数 { what, x, y, t }
+let chipPos = {}; // 顶上每个计数的位置（每帧画的时候记下）
+let chipPop = {}; // 计数收到东西时弹一下
+let introKind = null; // 正在看的说明卡
 
 function newGame(endless) {
   const single = !endless && save.buySingle && save.coins >= C.singleCost;
@@ -98,11 +106,29 @@ function newGame(endless) {
     level: endless ? 2 : Math.min(save.wins, 4), endless, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0,
     items: save.items, single, tutorial: !save.tutorialDone,
   });
+  stageIdx = -1;
+  startCommon();
+}
+// 旅程第 i 关
+function newStage(i) {
+  stageIdx = Math.max(0, Math.min(LV.length - 1, i));
+  const st = LV[stageIdx];
+  g = core.createGame({
+    stage: st, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0,
+    tutorial: stageIdx === 0 && !save.tutorialDone,
+  });
+  startCommon();
+  // 预放的块是旧木色
+  for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = -1;
+  if (st.intro && !save.introSeen[st.intro]) { introKind = st.intro; mode = 'intro'; }
+}
+function startCommon() {
   g.seedColor = save.plays % 7;
   colorAt.fill(0);
   save.plays++;
   persist();
   mode = 'play';
+  introKind = null; flyers = []; chipPop = {};
   result = null; drag = null; fx = []; texts = []; clearing = []; popping = []; litAnim = []; bolts = []; rings = [];
   displayScore = 0; flash = 0; lastTick = -1; tutorialT = 0; coinsGot = 0;
   mofei = { jump: 0, say: '', sayT: 0 };
@@ -171,7 +197,7 @@ function gearIcon(x, y, r, a, col) {
 }
 // 机关块：宝石色铜块。ci = 颜色序号；lit = 要被消掉时发亮
 function block(x, y, s, alpha, ci, lit) {
-  const k = C.blockColors[ci || 0];
+  const k = ci < 0 ? C.prefillColor : C.blockColors[ci || 0];
   ctx.globalAlpha = alpha === undefined ? 1 : alpha;
   const e = Math.max(2, Math.round(s * 0.15));
   ctx.fillStyle = COL.ink;
@@ -197,6 +223,57 @@ function block(x, y, s, alpha, ci, lit) {
     ctx.fillRect(x + s * 0.22, y + s * 0.2, s * 0.16, s * 0.08);
   }
   ctx.globalAlpha = 1;
+}
+// 宝石：八角形切面，主色 + 亮面 + 一点白光
+function gem(x, y, s, kind, alpha) {
+  const col = C.gemColors[kind];
+  if (!col) return;
+  const cx = x + s / 2, cy = y + s / 2, r = s * 0.36;
+  ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+  ctx.fillStyle = COL.ink;
+  ctx.beginPath();
+  for (let n = 0; n < 8; n++) { const a = Math.PI / 8 + (n * Math.PI) / 4; ctx.lineTo(cx + Math.cos(a) * (r + 1.5), cy + Math.sin(a) * (r + 1.5)); }
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = col[0];
+  ctx.beginPath();
+  for (let n = 0; n < 8; n++) { const a = Math.PI / 8 + (n * Math.PI) / 4; ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = col[1];
+  ctx.beginPath(); ctx.moveTo(cx - r * 0.55, cy - r * 0.15); ctx.lineTo(cx, cy - r * 0.7); ctx.lineTo(cx + r * 0.55, cy - r * 0.15); ctx.lineTo(cx, cy + r * 0.1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillRect(cx - r * 0.42, cy - r * 0.42, Math.max(2, r * 0.22), Math.max(2, r * 0.22));
+  ctx.globalAlpha = 1;
+}
+// 机关匣：朱红铜箱，两道黄铜箍，中间锁眼（照 Woodoku 的信箱，换成我们的机关城）
+function chest(x, y, s) {
+  const m = s * 0.08;
+  ctx.fillStyle = COL.ink; rr(x + m, y + m, s - m * 2, s - m * 2, s * 0.12); ctx.fill();
+  ctx.fillStyle = '#b8322a'; rr(x + m + 1.5, y + m + 1.5, s - m * 2 - 3, s - m * 2 - 3, s * 0.1); ctx.fill();
+  ctx.fillStyle = '#e2553b'; ctx.fillRect(x + m + 3, y + m + 3, s - m * 2 - 6, s * 0.18);
+  ctx.fillStyle = COL.brass;
+  ctx.fillRect(x + s * 0.28, y + m + 1.5, s * 0.1, s - m * 2 - 3);
+  ctx.fillRect(x + s * 0.62, y + m + 1.5, s * 0.1, s - m * 2 - 3);
+  ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(x + s / 2, y + s * 0.52, s * 0.12, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = COL.ink; ctx.fillRect(x + s / 2 - 1, y + s * 0.5, 2, s * 0.12);
+}
+// 泡泡：半透明的圆，压在格子上面
+function bubbleAt(x, y, s, alpha) {
+  const cx = x + s / 2, cy = y + s / 2, r = s * 0.4;
+  ctx.globalAlpha = alpha === undefined ? 1 : alpha;
+  ctx.fillStyle = 'rgba(120,200,255,0.3)';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(220,245,255,0.85)'; ctx.lineWidth = Math.max(1.5, s * 0.06);
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.beginPath(); ctx.arc(cx - r * 0.38, cy - r * 0.38, r * 0.18, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+// 目标图标：宝石 / 匣 / 泡泡
+function goalIcon(key, cx, cy, s) {
+  const x = cx - s / 2, y = cy - s / 2;
+  if (core.GEM_OF[key]) gem(x - s * 0.15, y - s * 0.15, s * 1.3, core.GEM_OF[key]);
+  else if (key === 'box') chest(x, y, s);
+  else if (key === 'bubble') bubbleAt(x - s * 0.1, y - s * 0.1, s * 1.2);
 }
 const cellX = (c) => L.bx + c * L.cell;
 const cellY = (r) => L.by + r * L.cell;
@@ -332,6 +409,11 @@ function juice(ev) {
   }
   if (ev.crossbow) bolts.push({ row: ev.crossbow.row + 0.5, t: clock, dir: 1 });
   ev.newlyLit.forEach((b) => litAnim.push({ b, t: clock }));
+  // 旅程：收走的东西飞向顶上的计数
+  (ev.collected || []).forEach((c, n) => {
+    flyers.push({ what: c.what, x: cellX(c.k % 9) + L.cell / 2, y: cellY(Math.floor(c.k / 9)) + L.cell / 2, t: clock + n * 0.05 });
+  });
+  if (ev.collected && ev.collected.length) setTimeout(() => P.sound('coin', 0.5), 380);
   // 声音
   if (ev.beat === 2) P.sound('line', 0.7);
   if (ev.beat === 3) P.sound('box', 0.8);
@@ -348,7 +430,8 @@ function juice(ev) {
   else if (ev.streak >= 3) texts.push({ s: '连消 ' + ev.streak, x: W / 2, y: L.by + L.board * 0.32, t: clock, size: 30, col: COL.jade, big: true });
   if (ev.sparrow) texts.push({ s: '+5 秒', x: W / 2, y: L.top + 50, t: clock, size: 22, col: COL.jade });
   if (ev.turtle) texts.push({ s: '蒸汽龟！', x: W / 2, y: L.trayY - 8, t: clock, size: 22, col: COL.jade });
-  if (ev.win) { P.sound('win', 0.8); say('成了！'); flash = 0.6; }
+  if (ev.win && g.stage) { P.sound('win', 0.8); say('过关！'); flash = 0.4; }
+  else if (ev.win) { P.sound('win', 0.8); say('成了！'); flash = 0.6; }
   else if (ev.center) say('城心！');
   else if (ev.beat >= 4) say(ev.combo >= 2 ? '好！' : '连上了');
   else if (ev.newlyLit.length) say('亮了');
@@ -359,6 +442,17 @@ function endGame() {
   overAt = clock;
   stats.overs.push(P.now());
   drag = null;
+  if (g.stage) {
+    // 旅程：过关 → 记进度、给金币；输 → 差一点就写还差几个
+    if (g.won) save.stage = Math.max(save.stage, stageIdx + 1);
+    coinsGot = Math.floor(g.score * C.coinPerScore) + (g.won ? C.coinStageWin : 0);
+    save.coins += coinsGot;
+    persist();
+    result = { won: g.won, reason: g.reason, near: g.nearMiss(), left: g.goalLeft(), doubled: false };
+    mode = 'over';
+    if (!g.won) { P.sound('lose', 0.6); say('堵住了'); }
+    return;
+  }
   const lit = g.litCount();
   if (!g.endless) g.lit.forEach((v, b) => v && (save.litEver[paintIdx][b] = true));
   let unlocked = null;
@@ -404,6 +498,11 @@ function update(dt) {
   litAnim = litAnim.filter((c) => clock - c.t < 1.2);
   bolts = bolts.filter((b) => clock - b.t < 0.5);
   rings = rings.filter((r) => clock - r.t < 0.9);
+  flyers = flyers.filter((f) => {
+    if (clock - f.t < 0.55) return true;
+    chipPop[f.what] = clock;
+    return false;
+  });
   shake *= Math.pow(0.002, dt);
   if (shake < 0.3) shake = 0;
   flash = Math.max(0, flash - dt * 1.6);
@@ -420,11 +519,44 @@ function drawBg() {
   gearIcon(W * 0.95, H * 0.12, 46, -clock * 0.13, COL.brass);
   ctx.globalAlpha = 1;
 }
-function drawHud() {
+// 旅程的顶栏：返回、第几关、目标计数（还差几个；够了打勾）
+function drawStageHud() {
   const y = L.top;
+  button('map', 12, y + 4, 44, 38, '‹', { size: 28, bg: COL.wood, fn: () => { mode = 'map'; } });
+  text('第 ' + (stageIdx + 1) + ' 关', W / 2, y + 10, 15, COL.dim, 'center', 'normal');
+  const left = g.goalLeft();
+  const keys = Object.keys(g.stage.goal);
+  chipPos = {};
+  if (keys.length === 1 && keys[0] === 'score') {
+    // 冲分：进度条 + 现在 / 目标
+    const goal = g.stage.goal.score, bw = Math.min(220, W - 150), bx = (W - bw) / 2, by = y + 30;
+    const frac = Math.min(1, displayScore / goal);
+    ctx.fillStyle = COL.ink; rr(bx - 2, by - 2, bw + 4, 22, 11); ctx.fill();
+    ctx.fillStyle = COL.woodDark; rr(bx, by, bw, 18, 9); ctx.fill();
+    ctx.fillStyle = COL.jade; rr(bx, by, Math.max(18, bw * frac), 18, 9); ctx.fill();
+    text(Math.min(goal, Math.round(displayScore)) + ' / ' + goal, W / 2, by + 9, 15, COL.text);
+    return;
+  }
+  const cw = 70, x0 = W / 2 - (cw * keys.length) / 2;
+  keys.forEach((key, n) => {
+    const cx = x0 + cw * n + cw / 2, cy = y + 40;
+    const pop = chipPop[key] ? Math.max(0, 0.25 - (clock - chipPop[key])) * 2 : 0;
+    ctx.fillStyle = COL.ink; rr(cx - 32, cy - 19, 64, 38, 10); ctx.fill();
+    ctx.fillStyle = COL.woodDark; rr(cx - 30, cy - 17, 60, 34, 9); ctx.fill();
+    const sz = 22 * (1 + pop);
+    goalIcon(key, cx - 13, cy, sz);
+    chipPos[key] = { x: cx - 13, y: cy };
+    if (left[key] === 0) text('✓', cx + 15, cy + 1, 22, COL.jade);
+    else text(String(left[key]), cx + 15, cy + 1, 20, COL.text);
+  });
+}
+function drawHud() {
+  if (g.stage) return drawStageHud();
+  const y = L.top;
+  button('map', 12, y + 4, 44, 38, '‹', { size: 28, bg: COL.wood, fn: () => { mode = 'map'; } });
   // 分数
-  text(String(Math.round(displayScore)), 18, y + 18, 30, COL.text, 'left');
-  text('最高 ' + (g.endless ? save.bestEndless : save.best), 18, y + 46, 13, COL.dim, 'left', 'normal');
+  text(String(Math.round(displayScore)), 66, y + 18, 30, COL.text, 'left');
+  text('最高 ' + (g.endless ? save.bestEndless : save.best), 66, y + 46, 13, COL.dim, 'left', 'normal');
   // 九宫小图：哪几宫亮了
   if (!g.endless) {
     const s = 12, mx = W / 2 - s * 1.5 - 2, my = y + 4;
@@ -486,6 +618,10 @@ function drawBoard(showGhost) {
     if (g.revealed[k]) {
       ctx.drawImage(pc, c * PX, r * PX, PX, PX, x, y, cell, cell);
       if (!g.lit[box]) { ctx.fillStyle = 'rgba(10,6,4,0.45)'; ctx.fillRect(x, y, cell, cell); }
+    } else if (g.stage) {
+      // 旅程：照 Woodoku，九宫一深一浅隔开，一眼看出宫
+      ctx.fillStyle = box % 2 ? (r + c) % 2 ? '#3f2a1b' : '#46301f' : (r + c) % 2 ? '#2a1a10' : '#301e13';
+      ctx.fillRect(x, y, cell, cell);
     } else {
       ctx.fillStyle = (r + c) % 2 ? COL.wood : '#3f2a1b';
       ctx.fillRect(x, y, cell, cell);
@@ -509,9 +645,11 @@ function drawBoard(showGhost) {
     ctx.moveTo(bx, by + i * 3 * cell); ctx.lineTo(bx + B, by + i * 3 * cell);
   }
   ctx.stroke();
-  // 中宫的红框（城心）
-  ctx.strokeStyle = 'rgba(226,85,59,0.55)'; ctx.lineWidth = 2;
-  ctx.strokeRect(cellX(3) + 2, cellY(3) + 2, cell * 3 - 4, cell * 3 - 4);
+  // 中宫的红框（城心）；旅程里没有
+  if (!g.stage) {
+    ctx.strokeStyle = 'rgba(226,85,59,0.55)'; ctx.lineWidth = 2;
+    ctx.strokeRect(cellX(3) + 2, cellY(3) + 2, cell * 3 - 4, cell * 3 - 4);
+  }
 
   // 拖的时候：落点和会消掉的格子
   let ghost = null, willClear = null;
@@ -519,7 +657,7 @@ function drawBoard(showGhost) {
     const p = g.hand[drag.slot];
     const s = snap(p, drag.x, drag.y);
     if (core.canPlace(g.board, p, s.r, s.c)) {
-      ghost = { p, s, ci: handColor(drag.slot) };
+      ghost = { p, s, ci: handColor(drag.slot), hg: g.handGem[drag.slot] };
       willClear = previewClear(p, s.r, s.c);
     }
   }
@@ -533,11 +671,23 @@ function drawBoard(showGhost) {
     const pop = popping.find((p) => p.k === k);
     const sc = pop ? 1 + 0.18 * (1 - (clock - pop.t) / 0.15) : 1;
     const s = cell * sc, x = cellX(k % 9) + (cell - s) / 2, y = cellY(Math.floor(k / 9)) + (cell - s) / 2;
+    if (g.board[k] === 2) {
+      // 机关匣：要被消的那一下亮一圈
+      chest(x, y, s);
+      if (willClear && willClear.has(k)) { ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.strokeRect(x + 2, y + 2, s - 4, s - 4); }
+      continue;
+    }
     block(x, y, s, 1, colorAt[k], willClear && willClear.has(k));
+    if (g.gem[k]) gem(x, y, s, g.gem[k]);
   }
   if (ghost) {
-    ghost.p.cells.forEach(([dr, dc]) => block(cellX(ghost.s.c + dc), cellY(ghost.s.r + dr), cell, 0.4, ghost.ci));
+    ghost.p.cells.forEach(([dr, dc], n) => {
+      block(cellX(ghost.s.c + dc), cellY(ghost.s.r + dr), cell, 0.4, ghost.ci);
+      if (ghost.hg && ghost.hg.cell === n) gem(cellX(ghost.s.c + dc), cellY(ghost.s.r + dr), cell, ghost.hg.kind, 0.6);
+    });
   }
+  // 泡泡压在最上面（下面有块时也看得见）
+  for (let k = 0; k < 81; k++) if (g.bubble[k]) bubbleAt(cellX(k % 9), cellY(Math.floor(k / 9)), cell, willClear && willClear.has(k) ? 0.5 + Math.sin(clock * 12) * 0.3 : 1);
   // 正在碎掉的块：变白、缩小
   clearing.forEach((cl) => {
     const a = (clock - cl.t) / 0.3;
@@ -598,9 +748,12 @@ function drawLuoshu(r, c, x, y, s) {
     ctx.beginPath(); ctx.arc(cx, cy, Math.max(1.5, d * 0.28), 0, Math.PI * 2); ctx.fill();
   }
 }
-function drawPiece(p, cx, cy, s, alpha, ci) {
+function drawPiece(p, cx, cy, s, alpha, ci, hg) {
   const x0 = cx - (p.w * s) / 2, y0 = cy - (p.h * s) / 2;
-  p.cells.forEach(([r, c]) => block(x0 + c * s, y0 + r * s, s, alpha, ci));
+  p.cells.forEach(([r, c], n) => {
+    block(x0 + c * s, y0 + r * s, s, alpha, ci);
+    if (hg && hg.cell === n) gem(x0 + c * s, y0 + r * s, s, hg.kind, alpha);
+  });
 }
 function drawTray() {
   // 托盘
@@ -611,11 +764,11 @@ function drawTray() {
     const c = slotCenter(i);
     const fits = core.anyPlacement(g.board, p);
     const s = Math.min(L.mini, ((W / 3) - 20) / p.w, (L.trayH - 16) / p.h);
-    drawPiece(p, c.x, c.y + Math.sin(clock * 3 + i) * 1.5, s, fits ? 1 : 0.28, handColor(i));
+    drawPiece(p, c.x, c.y + Math.sin(clock * 3 + i) * 1.5, s, fits ? 1 : 0.28, handColor(i), g.handGem[i]);
   }
   if (drag && g.hand[drag.slot]) {
     const p = g.hand[drag.slot];
-    drawPiece(p, drag.x, drag.y - L.lift, L.cell, 0.95, handColor(drag.slot));
+    drawPiece(p, drag.x, drag.y - L.lift, L.cell, 0.95, handColor(drag.slot), g.handGem[drag.slot]);
   }
 }
 function drawMofei() {
@@ -651,6 +804,14 @@ function drawFoot() {
   }
 }
 function drawFx() {
+  flyers.forEach((f) => {
+    const a = (clock - f.t) / 0.55;
+    if (a < 0) { goalIcon(f.what, f.x, f.y, L.cell * 0.8); return; }
+    const to = chipPos[f.what] || { x: W / 2, y: L.top + 40 };
+    const e = 1 - (1 - a) * (1 - a);
+    const x = f.x + (to.x - f.x) * e, y = f.y + (to.y - f.y) * e - Math.sin(a * Math.PI) * 60;
+    goalIcon(f.what, x, y, L.cell * (0.8 + Math.sin(a * Math.PI) * 0.4));
+  });
   fx.forEach((f) => {
     const a = 1 - (clock - f.t) / f.life;
     ctx.globalAlpha = Math.max(0, a);
@@ -714,7 +875,75 @@ function drawPainting(idx, x, y, s, litArr, blink) {
     ctx.beginPath(); ctx.moveTo(x, y + i * q); ctx.lineTo(x + s, y + i * q); ctx.stroke();
   }
 }
+// 旅程的结算：过关卡 / 差一点卡
+function drawStageOver() {
+  const age = clock - overAt;
+  const r = result;
+  // 过关：先让「过关！」和飞的宝石放完，再出卡（照 Woodoku：变暗 → WELL DONE → 第 N 关完成）
+  const wait = r.won ? 1.1 : 0.35;
+  ctx.fillStyle = 'rgba(8,5,3,' + Math.min(r.won ? 0.55 : 0.85, age * 2) + ')';
+  ctx.fillRect(0, 0, W, H);
+  if (r.won && age < wait) {
+    // 「过关！」压在暗层上面，弹一下
+    const k = Math.min(1, age / 0.15);
+    const sz = Math.round(64 * (0.6 + k * 0.5 - Math.max(0, age - 0.15) * 0.1));
+    ctx.globalAlpha = age > wait - 0.15 ? Math.max(0, (wait - age) / 0.15) : 1;
+    text('过关！', W / 2, L.by + L.board * 0.45, sz, COL.brassLight);
+    ctx.globalAlpha = 1;
+  }
+  if (age < wait) return;
+  const pw = Math.min(W - 40, 340), ph = 330, px = (W - pw) / 2, py = Math.max(L.top + 40, (H - ph) / 2 - 40);
+  const k = Math.min(1, (age - wait) / 0.18);
+  ctx.save();
+  ctx.translate(W / 2, py + ph / 2); ctx.scale(0.85 + k * 0.15, 0.85 + k * 0.15); ctx.translate(-W / 2, -(py + ph / 2));
+  ctx.globalAlpha = k;
+  ctx.fillStyle = COL.ink; rr(px, py + 6, pw, ph, 18); ctx.fill();
+  ctx.fillStyle = COL.wood; rr(px, py, pw, ph, 18); ctx.fill();
+  ctx.strokeStyle = COL.brass; ctx.lineWidth = 3; rr(px + 6, py + 6, pw - 12, ph - 12, 14); ctx.stroke();
+  const keys = Object.keys(g.stage.goal);
+  if (r.won) {
+    text('第 ' + (stageIdx + 1) + ' 关完成！', W / 2, py + 44, 28, COL.brassLight);
+    // 目标图标排一排，都打勾
+    const cw = 64, x0 = W / 2 - (cw * keys.length) / 2;
+    keys.forEach((key, n) => {
+      const cx = x0 + cw * n + cw / 2, cy = py + 112;
+      if (key === 'score') text(String(g.score), cx, cy, 34, COL.text);
+      else { goalIcon(key, cx, cy - 4, 38 + Math.sin(clock * 4 + n) * 2); text('✓', cx + 20, cy + 18, 20, COL.jade); }
+    });
+  } else {
+    text(r.near ? '差一点！' : '堵住了', W / 2, py + 44, 30, r.near ? COL.red : COL.text);
+    // 还差几个
+    const cw = 70, x0 = W / 2 - (cw * keys.length) / 2;
+    text('还差', W / 2, py + 82, 15, COL.dim, 'center', 'normal');
+    keys.forEach((key, n) => {
+      const cx = x0 + cw * n + cw / 2, cy = py + 118;
+      if (key === 'score') text(r.left.score + ' 分', cx, cy, 26, COL.red);
+      else if (r.left[key] === 0) { goalIcon(key, cx - 12, cy, 26); text('✓', cx + 16, cy, 20, COL.jade); }
+      else { goalIcon(key, cx - 12, cy, 26); text(String(r.left[key]), cx + 16, cy, 22, COL.red); }
+    });
+  }
+  const cy = py + 168;
+  if (coinsGot > 0) text('+' + coinsGot * (r.doubled ? 2 : 1) + ' 金', W / 2 - 40, cy, 20, COL.brassLight);
+  if (coinsGot > 0 && !r.doubled && g.adsUsed < C.adMax) {
+    button('double', W / 2 + 18, cy - 17, 88, 34, '翻倍', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { save.coins += coinsGot; persist(); r.doubled = true; g.adsUsed++; mode = 'over'; P.sound('coin'); }) });
+  }
+  const bw = pw - 48, bx = px + 24;
+  if (r.won) {
+    const last = stageIdx >= LV.length - 1;
+    button('next', bx, py + 200, bw, 60, last ? '旅程走完了' : '下一关', { size: 26, fn: () => (last ? (mode = 'map') : newStage(stageIdx + 1)) });
+    button('tomap', bx, py + 270, bw, 40, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+  } else {
+    button('again', bx, py + 200, bw, 60, '再试一次', { size: 26, fn: () => newStage(stageIdx) });
+    if (g.adsUsed < C.adMax) {
+      button('revive', bx, py + 270, bw * 0.6 - 6, 44, '清空中宫', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
+      button('tomap', bx + bw * 0.6 + 6, py + 270, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+    } else button('tomap', bx, py + 270, bw, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
 function drawOver() {
+  if (g.stage) return drawStageOver();
   const age = clock - overAt;
   ctx.fillStyle = 'rgba(8,5,3,' + Math.min(0.92, age * 3) + ')';
   ctx.fillRect(0, 0, W, H);
@@ -762,10 +991,150 @@ function drawAd() {
   text(String(left), W / 2, H / 2 + 10, 56, COL.text);
 }
 
+// ---------- 旅程地图（照 Woodoku：一条弯路，关卡是圆圈，两关之间夹一张小图） ----------
+const MAP_SHOW = 5; // 一屏看几关
+function mapNodePos(i, lo) {
+  const top = L.top + 110, bottom = H - 250;
+  const step = (bottom - top) / (MAP_SHOW - 1);
+  return { x: W / 2 + (i % 2 ? 1 : -1) * Math.min(62, W * 0.16), y: bottom - (i - lo) * step, step };
+}
+// 两关之间的小图：第 i 关过了才亮。每 5 关一张画，5 张小图 = 那张画的 5 宫
+function mapPicture(i, x, y, s) {
+  const ch = Math.floor(i / 5) % art.COUNT, b = (i % 5) * 2;
+  const S = paintSize[ch], q = S / 3;
+  const open = i < save.stage;
+  ctx.fillStyle = COL.ink; rr(x - s / 2 - 5, y - s / 2 - 3, s + 10, s + 10, 10); ctx.fill();
+  ctx.fillStyle = COL.steam; rr(x - s / 2 - 5, y - s / 2 - 5, s + 10, s + 10, 10); ctx.fill();
+  ctx.imageSmoothingEnabled = paintSmooth[ch];
+  ctx.drawImage(paintCanvas[ch], (b % 3) * q, Math.floor(b / 3) * q, q, q, x - s / 2, y - s / 2, s, s);
+  if (!open) {
+    ctx.fillStyle = 'rgba(20,12,8,0.82)'; ctx.fillRect(x - s / 2, y - s / 2, s, s);
+    text('?', x, y, s * 0.4, COL.dim);
+  }
+}
+function drawMap() {
+  drawBg();
+  const cur = Math.min(save.stage, LV.length - 1);
+  const done = save.stage >= LV.length;
+  const lo = Math.max(0, Math.min(cur - 1, LV.length - MAP_SHOW));
+  const hi = lo + MAP_SHOW - 1;
+  // 路：先画整条（往两头多画一节，像能接着走），过了的那段是黄铜色
+  for (let i = lo - 1; i <= hi; i++) {
+    if (i < 0 || i + 1 >= LV.length) continue;
+    const a = mapNodePos(i, lo), b = mapNodePos(i + 1, lo);
+    const passed = i + 1 <= save.stage;
+    for (const [w, col] of [[22, COL.ink], [16, passed ? COL.brass : COL.woodDark]]) {
+      ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(a.x, a.y);
+      ctx.bezierCurveTo(a.x, (a.y + b.y) / 2, b.x, (a.y + b.y) / 2, b.x, b.y);
+      ctx.stroke();
+    }
+    // 两关中间的小图，放在路的外侧
+    const pic = Math.min(84, a.step * 0.6, W / 2 - 110);
+    const side = i % 2 ? -1 : 1;
+    if (i >= lo && i < hi) mapPicture(i, W / 2 + side * (W / 2 - pic / 2 - 22), (a.y + b.y) / 2, pic);
+  }
+  // 关卡圆圈
+  for (let i = lo; i <= hi; i++) {
+    const { x, y } = mapNodePos(i, lo);
+    const passed = i < save.stage, isCur = i === cur && !done;
+    const rad = isCur ? 30 + Math.sin(clock * 4) * 2 : 26;
+    if (isCur) {
+      ctx.strokeStyle = 'rgba(111,208,168,' + (0.5 + Math.sin(clock * 4) * 0.3) + ')'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(x, y, rad + 8, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x, y + 3, rad + 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = passed ? COL.brass : isCur ? COL.copper : COL.woodDark;
+    ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+    text(String(i + 1), x, y + 1, isCur ? 26 : 22, passed ? COL.ink : isCur ? COL.text : COL.dim);
+    if (passed) text('✓', x + 20, y - 20, 16, COL.jade);
+    // 每 5 关一个齿轮奖章（拼成一张画）
+    if (i % 5 === 4) gearIcon(x, y - rad - 16, 11, passed ? clock : 0, passed ? COL.brassLight : '#3a2a20');
+    // 过了的关和当前关能点
+    if (i <= cur) buttons.push({ id: 'node' + i, x: x - rad, y: y - rad, w: rad * 2, h: rad * 2, fn: () => newStage(i) });
+  }
+  // 顶栏压在路上面：标题、进度、金币
+  const hg = ctx.createLinearGradient(0, 0, 0, L.top + 70);
+  hg.addColorStop(0, COL.bg); hg.addColorStop(0.75, COL.bg); hg.addColorStop(1, 'rgba(18,12,10,0)');
+  ctx.fillStyle = hg; ctx.fillRect(0, 0, W, L.top + 70);
+  text('旅程', W / 2, L.top + 24, 28, COL.brassLight);
+  text(save.coins + ' 金', W - 20, L.top + 24, 17, COL.brassLight, 'right');
+  text(Math.min(save.stage, LV.length) + ' / ' + LV.length, 20, L.top + 24, 17, COL.dim, 'left');
+  // 底栏同样压住路
+  const fg = ctx.createLinearGradient(0, H - 215, 0, H);
+  fg.addColorStop(0, 'rgba(18,12,10,0)'); fg.addColorStop(0.2, COL.bg); fg.addColorStop(1, COL.bg);
+  ctx.fillStyle = fg; ctx.fillRect(0, H - 215, W, 215);
+  // 下一关要干什么：目标图标
+  const st = LV[cur];
+  const keys = Object.keys(st.goal);
+  const gy = H - 186;
+  const cw = 58, x0 = W / 2 - (cw * keys.length) / 2;
+  keys.forEach((key, n) => {
+    const cx = x0 + cw * n + cw / 2;
+    if (key === 'score') text(st.goal.score + ' 分', cx, gy, 18, COL.text);
+    else { goalIcon(key, cx - 12, gy, 20); text('×' + st.goal[key], cx + 14, gy, 16, COL.text); }
+  });
+  const bw = Math.min(W - 60, 300);
+  button('play', (W - bw) / 2, H - 160, bw, 64, done ? '再玩第 ' + LV.length + ' 关' : '第 ' + (cur + 1) + ' 关', { size: 28, fn: () => newStage(cur) });
+  button('classic', (W - bw) / 2, H - 82, bw * 0.5 - 6, 46, '经典拼画', { size: 17, bg: COL.copper, fn: () => newGame(false) });
+  button('album3', (W - bw) / 2 + bw * 0.5 + 6, H - 82, bw * 0.5 - 6, 46, '画册', { size: 17, bg: COL.wood, fn: () => openAlbum() });
+}
+
+// ---------- 新东西的说明卡（一张小动画 + 一两行字 +「继续」） ----------
+const INTRO = {
+  gem: { title: '收集宝石', lines: ['消掉宝石所在的', '行、列或宫，就收走它'], row: ['b', 'g', 'b', '.', 'b'], key: 'b' },
+  box: { title: '机关匣', lines: ['它消不掉。它在的行、列或宫', '每消一次，收一个'], row: ['b', 'M', 'b', '.', 'b'], key: 'box' },
+  bubble: { title: '泡泡', lines: ['先把块放到泡泡上，', '再消掉那一格，泡泡就破'], row: ['b', 'b', '*', 'b', 'b'], key: 'bubble' },
+};
+function drawIntro() {
+  const it = INTRO[introKind];
+  ctx.fillStyle = 'rgba(8,5,3,0.8)'; ctx.fillRect(0, 0, W, H);
+  const pw = Math.min(W - 40, 340), ph = 330, px = (W - pw) / 2, py = (H - ph) / 2 - 30;
+  ctx.fillStyle = COL.ink; rr(px, py + 6, pw, ph, 18); ctx.fill();
+  ctx.fillStyle = COL.wood; rr(px, py, pw, ph, 18); ctx.fill();
+  ctx.strokeStyle = COL.brass; ctx.lineWidth = 3; rr(px + 6, py + 6, pw - 12, ph - 12, 14); ctx.stroke();
+  text(it.title, W / 2, py + 40, 28, COL.brassLight);
+  // 小动画：一行 5 格，一块落进空格 → 这行消掉 → 东西飞走（2.2 秒一轮）
+  const cs = Math.min(46, (pw - 60) / 5), x0 = W / 2 - cs * 2.5, y0 = py + 80;
+  const a = (clock % 2.2) / 2.2;
+  const hole = it.row.indexOf('.') >= 0 ? it.row.indexOf('.') : it.row.indexOf('*');
+  const cleared = a > 0.45 && a < 0.92;
+  const gemCell = it.row.indexOf('g');
+  for (let n = 0; n < 5; n++) {
+    const x = x0 + n * cs;
+    ctx.fillStyle = n % 2 ? '#3f2a1b' : '#46301f'; ctx.fillRect(x, y0, cs, cs);
+    const ch = it.row[n];
+    if (ch === 'M') { chest(x, y0, cs); continue; }
+    if (cleared) continue;
+    if (ch === 'b' || ch === 'g') { block(x, y0, cs, 1, -1); if (ch === 'g') gem(x, y0, cs, 1); }
+  }
+  // 落下来的那块
+  if (a < 0.45) {
+    const k = Math.min(1, a / 0.3);
+    const yy = y0 - cs * 1.6 * (1 - k * k);
+    block(x0 + hole * cs, yy, cs, 1, 3);
+  }
+  if (it.row[hole] === '*' && !cleared) bubbleAt(x0 + hole * cs, y0, cs);
+  if (a > 0.45 && a < 0.55) { ctx.fillStyle = 'rgba(255,240,200,0.7)'; ctx.fillRect(x0, y0, cs * 5, cs); }
+  // 收走的东西往上飞
+  if (cleared) {
+    const k = (a - 0.45) / 0.47;
+    const from = it.key === 'box' ? it.row.indexOf('M') : it.key === 'bubble' ? hole : gemCell;
+    ctx.globalAlpha = 1 - k;
+    goalIcon(it.key, x0 + from * cs + cs / 2, y0 + cs / 2 - k * 30, cs * 0.8);
+    text('+1', x0 + from * cs + cs / 2 + cs * 0.6, y0 - k * 30, 18, COL.jade);
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = COL.brass; ctx.lineWidth = 2; ctx.strokeRect(x0, y0, cs * 5, cs);
+  it.lines.forEach((ln, n) => text(ln, W / 2, y0 + cs + 40 + n * 28, 18, COL.text, 'center', 'normal'));
+  const bw = pw - 60;
+  button('introOk', px + 30, py + ph - 84, bw, 58, '继续', { size: 24, fn: () => { save.introSeen[introKind] = true; persist(); introKind = null; mode = 'play'; } });
+}
+
 // ---------- 画册 ----------
 let albumFrom = 'play';
 function openAlbum() {
-  albumFrom = mode === 'over' ? 'over' : 'play';
+  albumFrom = mode === 'over' ? 'over' : mode === 'map' ? 'map' : 'play';
   if (albumFrom === 'play' && g && !g.over) { /* 画册打开时时间也走：原型里先这样，开局前看 */ }
   mode = 'album';
 }
@@ -808,8 +1177,8 @@ function drawAlbum() {
     fn: () => endlessOpen && newGame(true),
   });
   const bw = Math.min(W - 60, 300);
-  button('back', (W - bw) / 2, H - 96, bw, 60, albumFrom === 'over' ? '再来' : '回去', {
-    size: 24, fn: () => (albumFrom === 'over' ? newGame(g.endless && save.wins >= 2) : (mode = 'play')),
+  button('back', (W - bw) / 2, H - 96, bw, 60, albumFrom === 'over' && !g.stage ? '再来' : '回去', {
+    size: 24, fn: () => (albumFrom === 'map' ? (mode = 'map') : albumFrom === 'over' ? (g.stage ? (mode = 'over') : newGame(g.endless && save.wins >= 2)) : (mode = 'play')),
   });
 }
 
@@ -823,6 +1192,10 @@ function frame() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (mode === 'album') {
     drawAlbum();
+  } else if (mode === 'map') {
+    ctx.save();
+    drawMap();
+    ctx.restore();
   } else {
     ctx.save();
     if (shake) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
@@ -836,19 +1209,23 @@ function frame() {
     ctx.restore();
     if (flash > 0) { ctx.fillStyle = 'rgba(255,244,214,' + flash + ')'; ctx.fillRect(0, 0, W, H); }
     if (mode === 'over' || (mode === 'ad' && result)) drawOver();
+    if (mode === 'intro') drawIntro();
     if (mode === 'ad') drawAd();
   }
   P.nextFrame(frame);
 }
 
-newGame(false);
+// 第一次打开：直接进第 1 关（10 秒内爽）；以后先看旅程地图
+if (!save.tutorialDone) newStage(0);
+else { newStage(Math.min(save.stage, LV.length - 1)); mode = 'map'; }
 P.nextFrame(frame);
 
 // 给测试用（只在浏览器里挂到 window 上）
 P.exposeForTest('__game', {
   get g() { return g; }, get mode() { return mode; }, get result() { return result; }, get save() { return save; },
   get paintIdx() { return paintIdx; }, stats, L, fingerFor, slotCenter, buttons: () => buttons.slice(),
-  reset() { save = freshSave(); persist(); newGame(false); },
+  get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; }, LV, newStage,
+  reset() { save = freshSave(); persist(); newStage(0); },
   setSave(o) { Object.assign(save, o); persist(); },
   newGame, endGame, core,
 });

@@ -40,7 +40,7 @@ SHAPES.forEach(([id, cat, rows]) => {
 const IDS = Object.keys(PIECES);
 const HARD = ['sq3', '5h', '5v', 'L5a', 'L5d'];
 
-// ---------- 棋盘：81 格，0 空 1 有块 ----------
+// ---------- 棋盘：81 格，0 空 1 有块 2 机关匣（旅程里的固定格：占地方、算满，但消不掉） ----------
 const boxOf = (r, c) => Math.floor(r / 3) * 3 + Math.floor(c / 3);
 const UNITS = []; // 27 个：0–8 行，9–17 列，18–26 宫
 for (let r = 0; r < 9; r++) UNITS.push(Array.from({ length: 9 }, (_, c) => r * 9 + c));
@@ -79,8 +79,8 @@ function placeAndClear(board, p, r, c) {
   const units = fullUnits(b);
   const cells = new Set();
   units.forEach((u) => UNITS[u].forEach((i) => cells.add(i)));
-  cells.forEach((i) => (b[i] = 0));
-  return { board: b, units, cells: [...cells] };
+  cells.forEach((i) => b[i] !== 2 && (b[i] = 0));
+  return { board: b, units, cells: [...cells].filter((i) => b[i] !== 2) };
 }
 // 有没有一种顺序和摆法，能把这几块全放下（中间会消除）
 function solvable(board, pieces) {
@@ -123,12 +123,15 @@ function dealHand(board, rand, d, guarantee) {
 }
 
 // ---------- 一局 ----------
-// opts: { level, endless, seed, items:{sparrow,crossbow,turtle}, single, tutorial }
+// opts: { level, endless, seed, items:{sparrow,crossbow,turtle}, single, tutorial, stage }
+// stage = 旅程的一关（js/levels.js 里的一项）：不限时、开局有预放的盘面、目标是冲分 / 收宝石 / 机关匣 / 泡泡，
+// 达到目标就过关，只有三块都放不下才输。照 Woodoku「旅程」模式（../关卡拆解_Woodoku旅程_20261120.md）。
 function createGame(opts) {
   const o = opts || {};
   const rand = rng(o.seed || (Date.now() & 0x7fffffff));
   const level = o.level || 0;
-  const timeLimit = o.endless ? Infinity : level === 0 ? C.timeFirst : C.timeNormal;
+  const st = o.stage || null;
+  const timeLimit = o.endless || st ? Infinity : level === 0 ? C.timeFirst : C.timeNormal;
   const g = {
     level, endless: !!o.endless, items: o.items || {}, rand,
     board: new Array(81).fill(0),
@@ -141,9 +144,16 @@ function createGame(opts) {
     adsUsed: 0, turtleUsed: false,
     over: false, won: false, reason: null,
     deals: 0,
+    stage: st, // 旅程：这一关
+    gem: new Array(81).fill(0), // 格子上的宝石：0 没有，1–5 = GEMS 的第几种
+    bubble: new Array(81).fill(0), // 泡泡：格子上放块、再把这格消掉才算戳破
+    handGem: [null, null, null], // 托盘里的块带的宝石 { cell, kind }
+    got: {}, // 收了多少：b/g/o/p/v（宝石）、box、bubble
   };
+  if (st) loadStage(g, st);
 
   g.diff = () => {
+    if (st) return st.d || 0;
     const frac = g.endless ? Math.min(1, g.moves / 120) : 1 - g.timeLeft / g.timeLimit;
     const d = Math.min(C.diffMax, level * C.diffPerLevel + frac * C.diffPerTime);
     return level === 0 && !g.endless ? d * C.diffFirstScale : d;
@@ -158,6 +168,7 @@ function createGame(opts) {
       g.hand = dealHand(g.board, g.rand, g.diff(), guarantee);
       if (o.single && g.deals === 1) g.hand[2] = PIECES['1'];
     }
+    g.handGem = g.hand.map((p) => gemForPiece(g, p));
   };
   g.handPieces = () => g.hand.filter(Boolean);
   g.fits = (i) => !!g.hand[i] && anyPlacement(g.board, g.hand[i]);
@@ -169,14 +180,20 @@ function createGame(opts) {
   g.place = (i, r, c) => {
     const p = g.hand[i];
     if (!p || g.over || !canPlace(g.board, p, r, c)) return null;
+    // 块上带的宝石先落到盘上
+    const hg = g.handGem[i];
+    if (hg) g.gem[(r + p.cells[hg.cell][0]) * 9 + c + p.cells[hg.cell][1]] = hg.kind;
+    const before = g.board;
     const res = placeAndClear(g.board, p, r, c);
     g.board = res.board;
     g.hand[i] = null;
+    g.handGem[i] = null;
     g.moves++;
-    const ev = { piece: p, r, c, units: res.units, cells: res.cells, gained: p.cells.length, newlyLit: [], revealed: [], center: false, crossbow: null, win: false };
+    const ev = { piece: p, r, c, units: res.units, cells: res.cells, gained: p.cells.length, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, collected: [] };
+    if (st) collect(g, res, before, ev);
     let pts = 0;
     for (const u of res.units) {
-      const center = u === CENTER_UNIT;
+      const center = u === CENTER_UNIT && !st;
       if (center) ev.center = true;
       pts += C.scoreUnit * (center ? C.centerMul : 1);
     }
@@ -204,8 +221,8 @@ function createGame(opts) {
         ev.gained += hit.length * 2;
       }
     }
-    // 擦亮底下的画
-    for (const k of ev.cells) if (!g.revealed[k]) { g.revealed[k] = 1; ev.revealed.push(k); }
+    // 擦亮底下的画（旅程里不压画）
+    if (!st) for (const k of ev.cells) if (!g.revealed[k]) { g.revealed[k] = 1; ev.revealed.push(k); }
     for (let b = 0; b < 9; b++) {
       if (!g.lit[b] && UNITS[18 + b].every((k) => g.revealed[k])) {
         g.lit[b] = true; g.litOrder.push(b); ev.newlyLit.push(b);
@@ -217,7 +234,12 @@ function createGame(opts) {
       : ev.center || res.units.length >= 4 ? 5
       : res.units.length >= 2 || g.streak >= 3 ? 4
       : res.units.some((u) => u >= 18) ? 3 : 2;
-    if (!g.endless && g.lit.every(Boolean)) {
+    if (st && goalDone(g)) {
+      ev.win = true; ev.beat = Math.max(ev.beat, 4);
+      g.over = true; g.won = true; g.reason = 'win';
+      return ev;
+    }
+    if (!g.endless && !st && g.lit.every(Boolean)) {
       ev.win = true; ev.beat = 6;
       ev.timeBonus = Math.round(g.timeLeft * C.timeBonusPerSec);
       g.score += ev.timeBonus;
@@ -261,16 +283,125 @@ function createGame(opts) {
     g.adsUsed++;
     if (g.reason === 'time') g.timeLeft += C.reviveTime;
     else {
-      UNITS[CENTER_UNIT].forEach((k) => (g.board[k] = 0));
+      UNITS[CENTER_UNIT].forEach((k) => { if (g.board[k] === 1) { g.board[k] = 0; g.gem[k] = 0; } });
       if (g.stuck()) g.reroll(), g.adsUsed--;
     }
     g.over = false; g.reason = null;
   };
   g.litCount = () => g.lit.filter(Boolean).length;
-  // 差一点：画只差 1–2 宫没亮
-  g.nearMiss = () => !g.won && g.litCount() >= 7;
+  // 差一点：画只差 1–2 宫没亮；旅程里 = 目标完成了七成以上
+  g.nearMiss = () => !g.won && (st ? goalFrac(g) >= 0.7 : g.litCount() >= 7);
+  g.goalLeft = () => goalLeft(g);
+  g.goalFrac = () => goalFrac(g);
   g.deal();
   return g;
+}
+
+// ---------- 旅程：盘面、目标、收集 ----------
+// 宝石五种（Woodoku 用蓝 / 绿 / 橙 / 粉 / 紫，我们换成矿石名）
+const GEMS = [null,
+  { id: 'b', name: '青金' }, { id: 'g', name: '翠玉' }, { id: 'o', name: '琥珀' }, { id: 'p', name: '粉晶' }, { id: 'v', name: '紫晶' }];
+const GEM_OF = { b: 1, g: 2, o: 3, p: 4, v: 5 };
+// 盘面用 9 行字符写：. 空  # 预放的块  b g o p v 带宝石的块  M 机关匣  * 空格上的泡泡  + 泡泡上已经压着块
+function loadStage(g, st) {
+  st.board.forEach((row, r) => row.split('').forEach((ch, c) => {
+    const k = r * 9 + c;
+    if (ch === '#') g.board[k] = 1;
+    else if (GEM_OF[ch]) { g.board[k] = 1; g.gem[k] = GEM_OF[ch]; }
+    else if (ch === 'M') g.board[k] = 2;
+    else if (ch === '*') g.bubble[k] = 1;
+    else if (ch === '+') { g.board[k] = 1; g.bubble[k] = 1; }
+  }));
+  for (const key in st.goal) g.got[key] = 0;
+}
+// 还差多少：{ key: 还差几个 }
+function goalLeft(g) {
+  const out = {};
+  for (const key in g.stage.goal) {
+    const have = key === 'score' ? g.score : g.got[key] || 0;
+    out[key] = Math.max(0, g.stage.goal[key] - have);
+  }
+  return out;
+}
+function goalDone(g) {
+  const left = goalLeft(g);
+  return Object.keys(left).every((k) => left[k] === 0);
+}
+function goalFrac(g) {
+  let need = 0, have = 0;
+  for (const key in g.stage.goal) {
+    const n = g.stage.goal[key];
+    need += n;
+    have += Math.min(n, key === 'score' ? g.score : g.got[key] || 0);
+  }
+  return need ? have / need : 1;
+}
+// 发块时：收宝石的关，有一定机会让块上带一颗还缺的宝石（宝石永远收得完，不会卡死）
+function gemForPiece(g, p) {
+  const st = g.stage;
+  if (!st || !p || !st.gemRate || g.rand() >= st.gemRate) return null;
+  const left = goalLeft(g);
+  const need = [];
+  for (const key in left) if (GEM_OF[key] && left[key] > 0) {
+    // 盘上已经有的不算缺
+    const onBoard = g.gem.filter((x) => x === GEM_OF[key]).length;
+    if (left[key] > onBoard) need.push(GEM_OF[key]);
+  }
+  if (!need.length) return null;
+  return { cell: Math.floor(g.rand() * p.cells.length), kind: need[Math.floor(g.rand() * need.length)] };
+}
+// 这一步消掉了什么：宝石、泡泡、碰到机关匣
+function collect(g, res, before, ev) {
+  for (const k of res.cells) {
+    if (g.gem[k]) {
+      const id = GEMS[g.gem[k]].id;
+      if (id in g.got) { g.got[id]++; ev.collected.push({ k, what: id }); }
+      g.gem[k] = 0;
+    }
+    if (g.bubble[k]) {
+      g.bubble[k] = 0;
+      if ('bubble' in g.got) { g.got.bubble++; ev.collected.push({ k, what: 'bubble' }); }
+    }
+  }
+  // 机关匣：消掉的行 / 列 / 宫里有它，就收一个（一步最多收一个，照 Woodoku 的信箱）
+  if ('box' in g.got) {
+    const boxCell = res.units.map((u) => UNITS[u].find((k) => g.board[k] === 2)).find((k) => k !== undefined);
+    if (boxCell !== undefined) { g.got.box++; ev.collected.push({ k: boxCell, what: 'box' }); }
+  }
+}
+// 机器人看目标：这一步能收几个（只数还缺的）
+function goalGain(g, res, p, r, c, hi) {
+  const st = g.stage;
+  if (!st) return 0;
+  const left = goalLeft(g);
+  let v = 0;
+  const placed = new Set(p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc));
+  const handCell = g.handGem[hi] ? (r + p.cells[g.handGem[hi].cell][0]) * 9 + c + p.cells[g.handGem[hi].cell][1] : -1;
+  for (const k of res.cells) {
+    const kind = k === handCell ? g.handGem[hi].kind : g.gem[k];
+    if (kind && left[GEMS[kind].id] > 0) v += 14;
+    if (g.bubble[k] && left.bubble > 0) v += 8;
+  }
+  if (left.box > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === 2))) v += 16;
+  // 盖住泡泡也有一点好处（下一步才能戳破）
+  if (left.bubble > 0) for (const k of placed) if (g.bubble[k] && !res.cells.includes(k)) v += 1.5;
+  if (left.score > 0) v += res.units.length * 2;
+  return v;
+}
+// 目标格附近的行 / 列 / 宫快满了：值得留着凑
+function goalShape(g, board) {
+  const st = g.stage;
+  if (!st) return 0;
+  const left = goalLeft(g);
+  let s = 0;
+  for (let u = 0; u < 27; u++) {
+    const cells = UNITS[u];
+    const hasTarget = cells.some((k) => (g.gem[k] && left[GEMS[g.gem[k]].id] > 0 && board[k]) || (g.bubble[k] && left.bubble > 0) || (board[k] === 2 && left.box > 0));
+    if (!hasTarget) continue;
+    const n = cells.filter((k) => board[k]).length;
+    if (n >= 5) s += (n - 4) * 0.7;
+  }
+  return s;
 }
 
 // ---------- 机器人 ----------
@@ -290,13 +421,13 @@ function evalBoard(board, revealed) {
   }
   // 边缘越碎越坏
   let edges = 0;
-  for (let r = 0; r < 9; r++) for (let c = 0; c < 8; c++) if (board[r * 9 + c] !== board[r * 9 + c + 1]) edges++;
-  for (let r = 0; r < 8; r++) for (let c = 0; c < 9; c++) if (board[r * 9 + c] !== board[r * 9 + c + 9]) edges++;
+  for (let r = 0; r < 9; r++) for (let c = 0; c < 8; c++) if (!board[r * 9 + c] !== !board[r * 9 + c + 1]) edges++;
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 9; c++) if (!board[r * 9 + c] !== !board[r * 9 + c + 9]) edges++;
   s -= edges * 0.35;
   // 大块还能不能放
   for (const id of HARD) if (anyPlacement(board, PIECES[id])) s += 2.5;
   // 越空越好
-  s -= board.reduce((a, b) => a + b, 0) * 0.15;
+  s -= board.reduce((a, b) => a + (b ? 1 : 0), 0) * 0.15;
   // 一宫里快满、但那宫还没亮：值得留着凑
   if (revealed) {
     for (let b = 0; b < 9; b++) {
@@ -317,8 +448,9 @@ function bestMove(g, skill) {
       const res = placeAndClear(g.board, p, r, c);
       let newRev = 0;
       for (const k of res.cells) if (!g.revealed[k]) newRev++;
-      const centerBonus = res.units.includes(CENTER_UNIT) ? 6 : 0;
-      const v = res.units.length * 9 + newRev * 1.2 + centerBonus + evalBoard(res.board, g.revealed);
+      const centerBonus = res.units.includes(CENTER_UNIT) && !g.stage ? 6 : 0;
+      const v = res.units.length * 9 + (g.stage ? 0 : newRev * 1.2) + centerBonus + evalBoard(res.board, g.stage ? null : g.revealed)
+        + goalGain(g, res, p, r, c, i) + goalShape(g, res.board);
       cands.push({ i, r, c, v, board: res.board });
     }
   });
@@ -359,4 +491,4 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { rng, PIECES, IDS, UNITS, CENTER_UNIT, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, bestMove, randomMove, simulate, evalBoard };
+module.exports = { GEMS, GEM_OF, goalLeft, rng, PIECES, IDS, UNITS, CENTER_UNIT, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, bestMove, randomMove, simulate, evalBoard };

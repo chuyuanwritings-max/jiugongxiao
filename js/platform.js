@@ -70,6 +70,18 @@ function makeCanvas(w, h) {
   return c;
 }
 
+// 读一张图片（微信 wx.createImage，浏览器 new Image）。读不到就调 fail，不报错
+function loadImage(src, ok, fail) {
+  try {
+    const img = isWx ? wx.createImage() : new Image();
+    img.onload = () => ok(img);
+    img.onerror = () => fail && fail();
+    img.src = src;
+  } catch (e) {
+    if (fail) fail();
+  }
+}
+
 function now() {
   return Date.now();
 }
@@ -177,4 +189,4 @@ function exposeForTest(name, value) {
   if (!isWx && typeof window !== 'undefined') window[name] = value;
 }
 
-module.exports = { isWx, setup, makeCanvas, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+module.exports = { isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };

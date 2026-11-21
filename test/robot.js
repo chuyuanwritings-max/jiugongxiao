@@ -106,6 +106,36 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   st = await page.evaluate(() => ({ mode: window.__game.mode, btn: window.__game.buttons().map((b) => b.id) }));
   ok(st.mode === 'map' && st.btn.includes('play') && st.btn.includes('node1') && st.btn.includes('classic'), '左上「‹」回地图：有「第 N 关」、能点过的关、有「经典拼画」');
 
+  // ---------- 守城（肉鸽试玩版） ----------
+  await click('siege');
+  await page.waitForTimeout(400);
+  st = await page.evaluate(() => ({ siege: !!window.__game.g.siege, phase: window.__game.g.phase, first: window.__game.g.firstRun }));
+  ok(st.siege && st.phase === 'play' && st.first, '地图点「守城」进肉鸽试玩：第一局不先选，直接打第一辆车');
+  await dragTo(0, 3, 3);
+  await page.waitForTimeout(1900);
+  await shot('09_守城_三选一');
+  st = await page.evaluate(() => ({ phase: window.__game.g.phase, offer: window.__game.g.offer, btn: window.__game.buttons().map((b) => b.id) }));
+  ok(st.phase === 'choose' && st.offer.join() === 'crossbow,thunder,inkline' && st.btn.includes('pick0'), '第一下 3×3 进中宫打掉小车，弹三选一：连弩 / 火雷 / 墨斗');
+  await click('pick0');
+  await page.waitForTimeout(300);
+  let sawRelic = false;
+  for (let k = 0; k < 60; k++) {
+    const m = await page.evaluate(() => { const G = window.__game; if (G.g.over) return 'over'; if (G.g.phase === 'choose') return 'choose'; if (G.siegeBusy()) return 'busy'; const b = G.SG.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c }; });
+    if (m === 'over') break;
+    if (m === 'busy') { await page.waitForTimeout(150); continue; }
+    if (m === 'choose') { await page.waitForTimeout(700); await click('pick0'); await page.waitForTimeout(250); continue; }
+    if (!m) break;
+    await dragTo(m.i, m.r, m.c);
+    await page.waitForTimeout(160);
+    if (!sawRelic && (await page.evaluate(() => Object.keys(window.__game.g.triggers).length > 0))) { sawRelic = true; await page.waitForTimeout(80); await shot('10_守城_机关发动'); }
+  }
+  await page.waitForTimeout(1500);
+  st = await page.evaluate(() => ({ waves: window.__game.g.wavesWon, trig: window.__game.g.triggers, mode: window.__game.mode, won: window.__game.g.won, reason: window.__game.g.reason }));
+  await shot('11_守城_结算');
+  ok(st.waves >= 2 && sawRelic && st.mode === 'over', '真鼠标守了 ' + st.waves + ' 波（' + (st.won ? '守住' : st.reason) + '），机关发动 ' + JSON.stringify(st.trig));
+  await click('tomap');
+  await page.waitForTimeout(300);
+
   // ---------- 经典拼画（0.1 / 0.2 的玩法） ----------
   await click('classic');
   await page.waitForTimeout(300);
@@ -121,12 +151,12 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
       await page.mouse.move(off.x + pos.from.x, off.y + pos.from.y); await page.mouse.down();
       await page.mouse.move(off.x + pos.to.x, off.y + pos.to.y, { steps: 5 });
       await page.waitForTimeout(60);
-      await shot('09_经典_拖动中_落点高亮');
+      await shot('12_经典_拖动中_落点高亮');
       sawGhost = true;
       await page.mouse.up();
     } else await dragTo(m.i, m.r, m.c);
     await page.waitForTimeout(moves % 7 === 3 ? 90 : 30);
-    if (moves === 15) await shot('10_经典_玩到一半');
+    if (moves === 15) await shot('13_经典_玩到一半');
   }
   st = await page.evaluate(() => ({ moves: window.__game.g.moves, lit: window.__game.g.litCount(), score: window.__game.g.score }));
   ok(st.moves >= 15, '真鼠标拖了 ' + st.moves + ' 步，亮了 ' + st.lit + ' 宫，' + st.score + ' 分');
@@ -135,7 +165,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   // 时间到 → 结算页
   await page.evaluate(() => { window.__game.g.timeLeft = 0.05; });
   await page.waitForTimeout(800);
-  await shot('11_经典_时间到');
+  await shot('14_经典_时间到');
   st = await page.evaluate(() => ({ mode: window.__game.mode, btn: window.__game.buttons().map((b) => b.id) }));
   ok(st.mode === 'over' && st.btn.includes('again') && st.btn.includes('revive'), '时间到出结算页，有「再来」和「+20 秒」');
 
@@ -169,13 +199,13 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     G.g.over = true; G.g.reason = 'stuck'; G.endGame();
   });
   await page.waitForTimeout(700);
-  await shot('12_经典_只差2宫');
+  await shot('15_经典_只差2宫');
   const near = await page.evaluate(() => window.__game.result.near);
   ok(near, '亮 7 宫输了算「差一点」，失败页写「只差 2 宫」');
   const rv = await page.evaluate(() => window.__game.buttons().find((b) => b.id === 'revive'));
   await page.mouse.click(off.x + rv.x + 20, off.y + rv.y + 20);
   await page.waitForTimeout(400);
-  await shot('13_广告占位');
+  await shot('16_广告占位');
   await page.waitForTimeout(3200);
   st = await page.evaluate(() => { const G = window.__game; return { mode: G.mode, center: G.core.UNITS[22].every((k) => !G.g.board[k]) }; });
   ok(st.mode === 'play' && st.center, '看完占位广告：复活、中宫清空');
@@ -190,9 +220,9 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   });
   await dragTo(0, 6, 6);
   await page.waitForTimeout(80);
-  await shot('14_经典_拼成白闪');
+  await shot('17_经典_拼成白闪');
   await page.waitForTimeout(900);
-  await shot('15_经典_拼成结算');
+  await shot('18_经典_拼成结算');
   st = await page.evaluate(() => ({ won: window.__game.result && window.__game.result.won, wins: window.__game.save.wins, items: window.__game.save.items }));
   ok(st.won && st.wins === 1 && st.items.sparrow, '拼成第一张画：收进画册、得到铜雀');
 
@@ -200,7 +230,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   const alb = await page.evaluate(() => window.__game.buttons().find((b) => b.id === 'album2'));
   await page.mouse.click(off.x + alb.x + 20, off.y + alb.y + 20);
   await page.waitForTimeout(300);
-  await shot('16_画册');
+  await shot('19_画册');
   ok((await page.evaluate(() => window.__game.mode)) === 'album', '画册打开');
 
   ok(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));

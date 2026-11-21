@@ -1017,7 +1017,7 @@ const SG = require('./siege.js');
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
 const ITEMS = [
-  { id: 'sparrow', name: '铜雀', tip: '消中宫 +5 秒' },
+  { id: 'sparrow', name: '铜雀', tip: '消掉正中间的大格 +5 秒' },
   { id: 'crossbow', name: '连弩车', tip: '连击 3 射穿一行' },
   { id: 'turtle', name: '蒸汽龟', tip: '堆死时送单格' },
 ];
@@ -1029,10 +1029,13 @@ function freshSave() {
     stage: 0, introSeen: {}, // 旅程：已经过了几关、哪些说明卡看过
     siegeDone: false, siegeBest: 0, // 守城：第一局（教学）打过没有、最多守住几波
     daily: null, // 每日一城：{ date, tries, extra, best, bestHit }
+    siegeRuns: 0, relicSeen: {}, relicGot: {}, // 守城玩过几局；哪些机关见过发动、拿到过（第一次发动打一句说明、卡上标「新」）
   };
 }
 let save = Object.assign(freshSave(), P.load(KEY) || {});
 if (!save.introSeen) save.introSeen = {};
+if (!save.relicSeen) save.relicSeen = {};
+if (!save.relicGot) save.relicGot = {};
 const persist = () => P.save(KEY, save);
 
 // ---------- 画布和布局 ----------
@@ -1472,7 +1475,7 @@ function juice(ev) {
   if (ev.turtle) texts.push({ s: '蒸汽龟！', x: W / 2, y: L.trayY - 8, t: clock, size: 22, col: COL.jade });
   if (ev.win && g.stage) { P.sound('win', 0.8); say('过关！'); flash = 0.4; }
   else if (ev.win) { P.sound('win', 0.8); say('成了！'); flash = 0.6; }
-  else if (ev.center) say('城心！');
+  else if (ev.center) say('正中间！');
   else if (ev.beat >= 4) say(ev.combo >= 2 ? '好！' : '连上了');
   else if (ev.newlyLit.length) say('亮了');
 }
@@ -2000,7 +2003,7 @@ function drawStageOver() {
   } else {
     button('again', bx, py + 200, bw, 60, '再试一次', { size: 26, fn: () => newStage(stageIdx) });
     if (g.adsUsed < C.adMax) {
-      button('revive', bx, py + 270, bw * 0.6 - 6, 44, '清空中宫', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
+      button('revive', bx, py + 270, bw * 0.6 - 6, 44, '清空正中间', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
       button('tomap', bx + bw * 0.6 + 6, py + 270, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
     } else button('tomap', bx, py + 270, bw, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
   }
@@ -2020,8 +2023,8 @@ function drawOver() {
   let title;
   if (g.endless) title = g.score + ' 分';
   else if (r.won) title = '拼成了！';
-  else if (9 - r.lit <= 2) title = '只差 ' + (9 - r.lit) + ' 宫！';
-  else title = '亮了 ' + r.lit + ' / 9 宫';
+  else if (9 - r.lit <= 2) title = '只差 ' + (9 - r.lit) + ' 块画！';
+  else title = '亮了 ' + r.lit + ' / 9 块画';
   text(title, W / 2, L.top + 30, 34, r.won ? COL.brassLight : r.near ? COL.red : COL.text);
   drawPainting(paintIdx, px0, py0, s, r.won ? new Array(9).fill(true) : g.lit, !r.won && !g.endless);
   let y = py0 + s + 30;
@@ -2042,7 +2045,7 @@ function drawOver() {
   const by = Math.max(y + 8, H - 210);
   button('again', (W - bw) / 2, by, bw, 64, r.won ? '下一张' : '再来', { size: 28, fn: () => newGame(g.endless) });
   if (!r.won && g.adsUsed < C.adMax) {
-    const lbl = g.reason === 'time' ? '+20 秒' : '清空中宫';
+    const lbl = g.reason === 'time' ? '+20 秒' : '清空正中间';
     button('revive', (W - bw) / 2, by + 76, bw * 0.62 - 6, 50, lbl, { size: 19, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
     button('album2', (W - bw) / 2 + bw * 0.62 + 6, by + 76, bw * 0.38 - 6, 50, '画册', { size: 19, bg: COL.wood, fn: () => openAlbum() });
   } else {
@@ -2144,8 +2147,9 @@ function drawMap() {
   button('play', (W - bw) / 2, H - 160, bw, 64, done ? '再玩第 ' + LV.length + ' 关' : '第 ' + (cur + 1) + ' 关', { size: 28, fn: () => newStage(cur) });
   const bw4 = Math.min(W - 24, 360), b4 = (bw4 - 18) / 4, bx4 = (W - bw4) / 2;
   button('siege', bx4, H - 82, b4, 46, '守城', { size: 17, bg: COL.red, fn: () => newSiege() });
+  const dailyOpen = (save.siegeRuns || 0) >= 3; // 每日一城要 8 件机关全开放，守城玩过 3 局再开
   const dl = dailyLeft();
-  button('daily', bx4 + b4 + 6, H - 82, b4, 46, '每日一城', { size: 14, bg: dl > 0 ? '#3f9a7c' : COL.woodDark, fn: () => (dl > 0 ? newDaily() : null) });
+  button('daily', bx4 + b4 + 6, H - 82, b4, 46, '每日一城', { size: 14, bg: dailyOpen && dl > 0 ? '#3f9a7c' : COL.woodDark, fg: dailyOpen ? COL.text : COL.dim, fn: () => (dailyOpen && dl > 0 ? newDaily() : null) });
   button('classic', bx4 + (b4 + 6) * 2, H - 82, b4, 46, '经典拼画', { size: 14, bg: COL.copper, fn: () => newGame(false) });
   button('album3', bx4 + (b4 + 6) * 3, H - 82, b4, 46, '画册', { size: 16, bg: COL.wood, fn: () => openAlbum() });
   // 「守城」是肉鸽试玩版：角上一个「新」；每日一城角上写今天还剩几次 / 今天最好几波
@@ -2153,13 +2157,13 @@ function drawMap() {
   ctx.font = 'bold 12px "PingFang SC", sans-serif'; ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('新', bx4 + b4 - 6, H - 81);
   const dr = dailyRec();
-  text(dl > 0 ? '今天剩 ' + dl + ' 次' + (dr.best ? ' · 最好 ' + dr.best + ' 波' : '') : '今天最好 ' + dr.best + ' 波 · 明天再来', W / 2, H - 22, 12, COL.dim, 'center', 'normal');
+  text(!dailyOpen ? '每日一城：守城玩 3 局后开放（已玩 ' + (save.siegeRuns || 0) + ' 局）' : dl > 0 ? '每日一城今天剩 ' + dl + ' 次' + (dr.best ? ' · 最好 ' + dr.best + ' 波' : '') : '每日一城今天最好 ' + dr.best + ' 波 · 明天再来', W / 2, H - 22, 12, COL.dim, 'center', 'normal');
 }
 
 // ---------- 新东西的说明卡（一张小动画 + 一两行字 +「继续」） ----------
 const INTRO = {
-  gem: { title: '收集宝石', lines: ['消掉宝石所在的', '行、列或宫，就收走它'], row: ['b', 'g', 'b', '.', 'b'], key: 'b' },
-  box: { title: '机关匣', lines: ['它消不掉。它在的行、列或宫', '每消一次，收一个'], row: ['b', 'M', 'b', '.', 'b'], key: 'box' },
+  gem: { title: '收集宝石', lines: ['宝石所在的那一排或那个大格', '一消掉，就收走它'], row: ['b', 'g', 'b', '.', 'b'], key: 'b' },
+  box: { title: '机关匣', lines: ['它自己消不掉。它在的那一排', '或大格每消掉一次，收一个'], row: ['b', 'M', 'b', '.', 'b'], key: 'box' },
   bubble: { title: '泡泡', lines: ['先把块放到泡泡上，', '再消掉那一格，泡泡就破'], row: ['b', 'b', '*', 'b', 'b'], key: 'bubble' },
 };
 function drawIntro() {
@@ -2290,7 +2294,7 @@ function newDaily() {
 }
 function newSiege(daily) {
   stageIdx = -1;
-  g = daily ? SG.createSiege({ daily }) : SG.createSiege({ seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: !save.siegeDone });
+  g = daily ? SG.createSiege({ daily }) : SG.createSiege({ seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: !save.siegeDone, runNo: save.siegeRuns || 0 });
   startCommon();
   for (const k of g.prefilled) colorAt[k] = -1;
   timeline = []; ghosts = []; relicPop = {}; beams = []; colBolts = [];
@@ -2299,7 +2303,14 @@ function newSiege(daily) {
 }
 function waveBanner() {
   const w = g.waveDef;
-  siegeFx.banner = { text: '第 ' + (g.wave + 1) + ' 波 · ' + w.name + (w.bossLine ? '' : ''), sub: w.bossLine || '', t: clock };
+  const sub = w.bossLine || (g.firstRun && g.wave === 0 ? '把方块消掉，就是在打攻城车' : '');
+  siegeFx.banner = { text: '第 ' + (g.wave + 1) + ' 波 · ' + w.name, sub, t: clock, boss: !!w.bossLine };
+}
+// 机关第一次发动：屏幕中间打一句大白话，告诉你刚才发生了什么
+function firstTimeCaption(id) {
+  if (save.relicSeen[id] || !SG.RELICS[id]) return;
+  save.relicSeen[id] = true; persist();
+  siegeFx.caption = { text: SG.RELICS[id].first, t: clock };
 }
 // 机关栏里第 n 格的中心
 function relicSlotPos(n) {
@@ -2328,6 +2339,7 @@ function juiceSiege(sev, colorsBefore) {
     const at = t;
     timeline.push({ t: at, fn: () => {
       relicPop[st.id] = clock;
+      firstTimeCaption(st.id);
       const col = SCHOOL_COL[SG.RELICS[st.id].school];
       if (st.id === 'crossbow') {
         st.lines.forEach((l) => { if (l.axis === 'row') bolts.push({ row: l.idx + 0.5, t: clock, dir: 1 }); else colBolts.push({ col: l.idx + 0.5, t: clock }); beams.push({ from, to: lineCenter(l), t: clock, col }); });
@@ -2351,6 +2363,7 @@ function juiceSiege(sev, colorsBefore) {
     const at = t;
     timeline.push({ t: at, fn: () => {
       relicPop[m.id] = clock;
+      firstTimeCaption(m.id);
       const lbl = '×' + (Math.round(m.m * 100) / 100);
       texts.push({ s: lbl, x: W / 2, y: L.by + L.board * 0.38, t: clock, size: 52, col: m.id === 'star' ? '#d3bdf0' : COL.brassLight, big: true });
       P.sound('five', 0.5);
@@ -2476,7 +2489,7 @@ function drawSiegeHud() {
   }
   // 右边：第几波、车名（上弦时换成上弦倍率）
   text((g.daily ? '每日 · ' : '') + '第 ' + (g.wave + 1) + ' 波', W - 12, y + 50, 13, g.daily ? COL.jade : COL.dim, 'right', 'normal');
-  if (g.charge > 1) text('上弦 ×' + g.charge, W - 12, y + 67, 13, COL.brassLight, 'right');
+  if (g.charge > 1) text('下次 ×' + g.charge, W - 12, y + 67, 13, COL.brassLight, 'right');
   else text(g.waveDef.name, W - 12, y + 67, 13, g.waveDef.boss ? COL.red : COL.text, 'right');
   // 机关栏
   for (let n = 0; n < SG.SLOTS; n++) {
@@ -2507,10 +2520,24 @@ function drawSiegeHud() {
     const a = Math.min(1, (clock - bn.t) * 4) * Math.min(1, (2.2 - (clock - bn.t)) * 3);
     ctx.globalAlpha = a;
     ctx.fillStyle = COL.shade + '0.75)'; ctx.fillRect(0, L.by + L.board * 0.36, W, bn.sub ? 76 : 50);
-    text(bn.text, W / 2, L.by + L.board * 0.36 + 25, 26, bn.sub ? COL.red : COL.brassLight);
-    if (bn.sub) text(bn.sub, W / 2, L.by + L.board * 0.36 + 56, 15, COL.text, 'center', 'normal');
+    text(bn.text, W / 2, L.by + L.board * 0.36 + 25, 26, bn.boss ? COL.red : COL.brassLight);
+    if (bn.sub) text(bn.sub, W / 2, L.by + L.board * 0.36 + 56, 16, COL.text, 'center', 'normal');
     ctx.globalAlpha = 1;
   }
+}
+// 机关第一次发动时的那句说明（压在棋盘下沿，2.6 秒）
+function drawCaption() {
+  const cp = siegeFx.caption;
+  if (!cp || clock - cp.t > 2.6) return;
+  const a = Math.min(1, (clock - cp.t) * 5) * Math.min(1, (2.6 - (clock - cp.t)) * 3);
+  ctx.globalAlpha = a;
+  ctx.font = 'bold 16px "PingFang SC", sans-serif';
+  const tw = Math.min(W - 20, ctx.measureText(cp.text).width + 28);
+  const y = L.by + L.board - 52;
+  ctx.fillStyle = COL.steam; rr((W - tw) / 2, y, tw, 40, 10); ctx.fill();
+  ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(cp.text, W / 2, y + 21, W - 40);
+  ctx.globalAlpha = 1;
 }
 // 攻城车：木车身 + 两个轮子 + 前面一根撞木；头目是红顶
 function drawCart(x, y, boss, white) {
@@ -2531,8 +2558,9 @@ function drawSiegeChoose() {
   const age = clock - siegeFx.chooseAt;
   ctx.fillStyle = COL.shade + Math.min(0.85, age * 3) + ')'; ctx.fillRect(0, 0, W, H);
   const opening = g.wavesWon === 0;
-  text(opening ? '开局挑一件机关' : '打掉了！挑一件机关', W / 2, L.by + 10, 26, COL.brassLight);
-  text(opening ? '机关会自己发动' : '下一波：' + (SG.WAVES[g.wave + 1] ? SG.WAVES[g.wave + 1].name : '重车'), W / 2, L.by + 42, 14, COL.dim, 'center', 'normal');
+  const single = g.offer.length === 1;
+  text(single ? '打掉了！送你一件机关' : opening ? '开局挑一件机关' : '打掉了！挑一件机关', W / 2, L.by + 10, 26, COL.brassLight);
+  text(single || !Object.keys(save.relicGot).length ? '机关会自己帮你打车，你照常消方块就行' : '下一波：' + (SG.WAVES[g.wave + 1] ? SG.WAVES[g.wave + 1].name : '重车'), W / 2, L.by + 42, 14, COL.dim, 'center', 'normal');
   const cw = Math.min(W - 40, 360), ch = 96, x = (W - cw) / 2;
   g.offer.forEach((id, n) => {
     const k = Math.min(1, Math.max(0, (age - n * 0.06) / 0.18));
@@ -2549,9 +2577,11 @@ function drawSiegeChoose() {
     text(R.name + (have ? '  升到 ' + (have + 1) + ' 级' : ''), x + 84, y + 28, 20, COL.text, 'left');
     text(R.desc[Math.min(2, have)], x + 84, y + 58, 15, COL.text, 'left', 'normal');
     const pal = SG.palOf(g, id);
-    if (pal && !have) text('配你的' + pal, x + cw - 14, y + 26, 13, COL.jade, 'right');
+    if (!save.relicGot[id]) text('新！', x + cw - 14, y + 26, 15, COL.red, 'right');
+    else if (pal && !have) text('配你的' + pal, x + cw - 14, y + 26, 13, COL.jade, 'right');
     ctx.globalAlpha = 1;
     buttons.push({ id: 'pick' + n, x, y, w: cw, h: ch, fn: () => {
+      save.relicGot[id] = true; persist();
       g.pick(id);
       relicPop[id] = clock + 0.05;
       P.sound('coin', 0.6);
@@ -2562,6 +2592,7 @@ function drawSiegeChoose() {
 }
 function endSiege() {
   if (g.won && g.firstRun && !save.siegeDone) save.siegeDone = true;
+  if (!g.daily && !g.endlessOn && (!g.firstRun || g.won)) save.siegeRuns = (save.siegeRuns || 0) + 1;
   const prevBest = save.siegeBest || 0;
   let dailyPrev = 0;
   if (g.daily) {
@@ -2626,7 +2657,7 @@ function drawSiegeOver() {
   } else {
     button('again', bx, py + 196, bw, 58, '再守一次', { size: 24, fn: () => newSiege() });
     if (g.adsUsed < C.adMax) {
-      button('revive', bx, py + 266, bw * 0.6 - 6, 46, g.reason === 'gate' ? '多打一轮' : '清空中宫', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
+      button('revive', bx, py + 266, bw * 0.6 - 6, 46, g.reason === 'gate' ? '多打一轮' : '清空正中间', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
       button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
     } else button('tomap', bx, py + 266, bw, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
   }
@@ -2688,7 +2719,7 @@ function frame() {
     if (mode === 'over' || mode === 'share' || (mode === 'ad' && result)) drawOver();
     if (mode === 'share') { buttons = buttons.filter((b) => b.id === 'map'); drawShareCard(); }
     if (mode === 'intro') drawIntro();
-    if (mode === 'play' && g.siege) drawSiegeChoose();
+    if (mode === 'play' && g.siege) { drawCaption(); drawSiegeChoose(); }
     if (mode === 'ad') drawAd();
   }
   P.nextFrame(frame);
@@ -2989,9 +3020,9 @@ const { UNITS, PIECES } = core;
 const WAVES = [
   { name: '小车', hp: 60 },
   { name: '冲车', hp: 100 },
-  { name: '云梯', hp: 140, boss: 'ladder', bossLine: '云梯：只有消行、消列才打得动它' },
+  { name: '云梯', hp: 140, boss: 'ladder', bossLine: '云梯：只有消掉一排才打得到它' },
   { name: '重车', hp: 180 },
-  { name: '铁甲车', hp: 250, boss: 'armor', bossLine: '铁甲车：一手打不到 30 点的全被挡掉' },
+  { name: '铁甲车', hp: 250, boss: 'armor', bossLine: '铁甲车：一下打不到 30 点就打不动' },
 ];
 const FIRST_RUN_WAVES = 3; // 试玩版：3 波算守住，之后可以「继续守」
 const ROUNDS = 4;
@@ -3004,26 +3035,44 @@ const SLOTS = 5; // 机关栏几格
 const LUOSHU_BOX = { 4: 0, 9: 1, 2: 2, 3: 3, 5: 4, 7: 5, 8: 6, 1: 7, 6: 8 };
 const STAR_PATH = [5, 6, 7, 8, 9, 1, 2, 3, 4].map((n) => LUOSHU_BOX[n]);
 
-// ---------- 8 件机关（一行字，16 字以内） ----------
+// ---------- 8 件机关 ----------
+// 说明只用大白话（Cc 11-21：「什么中宫这个那个的，完全让人看不懂」）：
+//   「一排」= 横着或竖着一整排；「大格」= 棋盘上被铜线隔开的 3×3 那一块（共 9 个）；「正中间」= 正中那个大格
 // school：流派（卡片边的颜色）  pal：能和谁连（三选一卡上标「配你的 XX」）
 const RELICS = {
   crossbow: { name: '连弩', glyph: '弩', school: 'bow', pal: ['loader', 'inkline'],
-    desc: ['消行或列，隔壁更满的那条也射穿', '消行或列，两边各射穿一条', '两边各射穿，每格多打 2 点'] },
+    desc: ['消掉一排，旁边一排也射掉', '消掉一排，两边各射掉一排', '两边各射掉一排，打得更疼'],
+    first: '连弩：你消掉一排，它把旁边一排也射掉了！' },
   loader: { name: '弩机上弦', glyph: '弦', school: 'bow', pal: ['crossbow'],
-    desc: ['消行列：下次消除 ×2，送长条', '消行列：下次消除 ×2.5，送长条', '消行列：下次消除 ×3，送两根'] },
+    desc: ['消掉一排，下一次打车翻倍', '消掉一排，下一次打车 ×2.5', '消掉一排，下一次打车 ×3'],
+    first: '弩机上弦：消掉了一排，下一次打车翻倍！' },
   inkline: { name: '墨斗', glyph: '墨', school: 'ink', pal: ['crossbow', 'thunder'],
-    desc: ['一消就把只差三格的一行补满', '一消就把只差四格的一行补满', '一消就补满两条只差四格的'] },
+    desc: ['一消掉东西，就补满快满的一排', '能补满差得更多的一排', '一次补满两排'],
+    first: '墨斗：它把一排快满的补满，又消掉了一排！' },
   thunder: { name: '火雷', glyph: '雷', school: 'fire', pal: ['chain', 'inkline'],
-    desc: ['消一宫，旁边最满的一宫也炸平', '消一宫，旁边最满的两宫炸平', '炸平两宫，每格多打 3 点'] },
+    desc: ['消掉一个大格，旁边大格也炸掉', '旁边两个大格都炸掉', '炸掉两个大格，打得更疼'],
+    first: '火雷：你消掉一个大格，它把旁边的大格也炸了！' },
   chain: { name: '连环雷', glyph: '连', school: 'fire', pal: ['thunder'],
-    desc: ['炸平的宫接着炸旁边，连 2 次', '炸平的宫接着炸旁边，连 3 次', '炸平的宫接着炸旁边，连 4 次'] },
+    desc: ['火雷炸掉的大格，会接着炸旁边', '接着炸，最多 3 下', '接着炸，最多 4 下'],
+    first: '连环雷：炸掉的大格又接着炸了旁边！' },
   center5: { name: '五居中', glyph: '五', school: 'luoshu', pal: ['hetu', 'star'],
-    desc: ['消中宫，这一手伤害 ×5', '消中宫，这一手伤害 ×6', '消中宫，这一手伤害 ×8'] },
+    desc: ['消掉正中间的大格，伤害 ×5', '消掉正中间的大格，伤害 ×6', '消掉正中间的大格，伤害 ×8'],
+    first: '五居中：消掉了正中间，伤害 ×5！' },
   hetu: { name: '河图', glyph: '河', school: 'luoshu', pal: ['center5', 'star'],
-    desc: ['每消一次中宫，倍率永久 +0.3', '每消一次中宫，倍率永久 +0.45', '每消一次中宫，倍率永久 +0.6'] },
+    desc: ['每消一次正中间，以后都更疼', '每消一次正中间，以后更疼', '每消一次正中间，以后狠狠更疼'],
+    first: '河图：消了正中间，这局以后每下都更疼了！' },
   star: { name: '飞星', glyph: '星', school: 'star', pal: ['center5', 'hetu'],
-    desc: ['星每轮飞一宫，消到星那宫 ×3', '星每轮飞一宫，消到星那宫 ×4', '星每轮飞一宫，消到星那宫 ×5'] },
+    desc: ['星星在哪个大格，消到那里 ×3', '星星在哪，消到那里 ×4', '星星在哪，消到那里 ×5'],
+    first: '飞星：消到了星星那个大格，伤害 ×3！星星每轮会挪一格' },
 };
+// 循序渐进（Cc：「刚开始先玩什么道具都没有的，再加一个道具，再逐渐越加越多」）
+// 第 1 局：第 1 波什么都没有；打掉以后送连弩；打掉第 2 波，再二选一；之后每局多开放几件
+const POOL_BY_RUN = [
+  ['crossbow', 'inkline', 'thunder'],
+  ['crossbow', 'inkline', 'thunder', 'loader'],
+  ['crossbow', 'inkline', 'thunder', 'loader', 'chain', 'center5'],
+];
+const offerCount = (runNo) => (runNo <= 2 ? 2 : 3);
 const RELIC_IDS = Object.keys(RELICS);
 const lv = (st, id) => st.relics.find((r) => r.id === id)?.lv || 0;
 
@@ -3211,14 +3260,16 @@ function createSiege(opts) {
   Object.assign(g, {
     siege: true,
     wave: 0, waveDef: WAVES[0], hp: WAVES[0].hp, hpMax: WAVES[0].hp, round: 1,
-    hpScale: o.tutorial ? 0.6 : 1, // 第一局车的血打七五折：第一局必须守得住
+    hpScale: o.tutorial ? 0.6 : (o.runNo || 0) <= 2 && !o.daily ? 0.8 : 1, // 第一局车血六折（必须守得住），第 2、3 局八折（机关还少）
+    runNo: o.daily ? 99 : o.runNo || 0, // 这是第几局守城（0 起）：决定开放几件机关、三选一还是二选一
     relics: (o.relics || []).map((x) => ({ ...x })),
     starBox: STAR_PATH[0], starStep: 0, hetuBonus: 0,
-    pendingLoader: 0, tutorialX5: !!o.tutorial,
+    pendingLoader: 0, tutorialX5: false, // 不再白送 ×5（第一下太多数字，看不懂）
     phase: 'play', // play / choose / won（守住 3 波）
     offer: null, wavesWon: 0, totalDmg: 0, waveDmg: 0, bestHit: 0, maxChain: 0,
     triggers: {}, firstRun: !!o.tutorial,
   });
+  if (o.tutorial) { g.hp = 25; g.hpMax = 25; } // 第一辆车：第一手 3×3 一放就打掉
   if (o.daily) {
     g.daily = o.daily;
     g.endlessOn = true; // 不在第 3 波停，一直守
@@ -3279,7 +3330,7 @@ function createSiege(opts) {
     if (g.hp <= 0) {
       ev.killed = true;
       g.wavesWon++;
-      if (g.firstRun && g.wavesWon >= FIRST_RUN_WAVES && !g.endlessOn) {
+      if (!g.daily && g.wavesWon >= FIRST_RUN_WAVES && !g.endlessOn) { // 每局守住 3 波算赢，之后可以继续守
         g.phase = 'won'; ev.runWon = true; g.over = true; g.won = true; g.reason = 'win';
         return ev;
       }
@@ -3335,15 +3386,19 @@ function createSiege(opts) {
   g.nearMiss = () => !g.won && g.reason === 'gate' && g.hp <= g.hpMax * 0.3;
   g.lvOf = (id) => lv(g, id);
   // 开局：第一局先打一辆车再选；以后开局先三选一
-  if (!o.tutorial && !o.noRelics && !o.relics) { g.phase = 'choose'; g.offer = makeOffer(g); g.openingPick = true; }
+  // 开局先挑一件：玩过 3 局以后才有（之前都是空手开局，打掉车才拿）
+  if (!o.tutorial && !o.noRelics && !o.relics && g.runNo >= 3) { g.phase = 'choose'; g.offer = makeOffer(g); g.openingPick = true; }
   return g;
 }
 
 // 三选一：第一局固定连弩 / 火雷 / 墨斗；之后随机，偏向「能和已有的连上」和升级。机关栏满了只出升级
 function makeOffer(g) {
-  if (g.firstRun && g.wavesWon === 1 && !g.relics.length) return ['crossbow', 'thunder', 'inkline'];
+  // 第一局：打掉第 1 辆车只送连弩一件；打掉第 2 辆，在墨斗和火雷里挑一件
+  if (g.firstRun && g.wavesWon === 1 && !g.relics.length) return ['crossbow'];
+  if (g.firstRun && g.wavesWon === 2) return ['inkline', 'thunder'];
   const owned = g.relics.map((r) => r.id);
-  let pool = RELIC_IDS.filter((id) => (owned.includes(id) ? lv(g, id) < 3 : owned.length < SLOTS));
+  const open = POOL_BY_RUN[g.runNo] || RELIC_IDS;
+  let pool = open.filter((id) => (owned.includes(id) ? lv(g, id) < 3 : owned.length < SLOTS));
   // 每日一城：每一波的三选一按日期和第几波定，人人一样（不按各人拿过什么调权重）
   const rnd = g.daily ? core.rng(((g.daily ^ ((g.wavesWon + 1) * 40503)) * 2246822519) >>> 0) : g.rand;
   const weight = g.daily ? () => 1 : (id) => {
@@ -3353,7 +3408,7 @@ function makeOffer(g) {
     return w;
   };
   const out = [];
-  while (out.length < 3 && pool.length) {
+  while (out.length < (g.daily ? 3 : offerCount(g.runNo)) && pool.length) {
     const tot = pool.reduce((a, id) => a + weight(id), 0);
     let t = rnd() * tot;
     let k = 0;
@@ -3425,7 +3480,7 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { WAVES, FIRST_RUN_WAVES, ROUNDS, SLOTS, RELICS, RELIC_IDS, STAR_PATH, resolve, createSiege, makeOffer, palOf, bestMove, bestPick, simulate };
+module.exports = { POOL_BY_RUN, WAVES, FIRST_RUN_WAVES, ROUNDS, SLOTS, RELICS, RELIC_IDS, STAR_PATH, resolve, createSiege, makeOffer, palOf, bestMove, bestPick, simulate };
 
 });
 __require('')('./game.js');

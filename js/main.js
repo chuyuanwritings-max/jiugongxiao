@@ -9,7 +9,7 @@ const SG = require('./siege.js');
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
 const ITEMS = [
-  { id: 'sparrow', name: '铜雀', tip: '消中宫 +5 秒' },
+  { id: 'sparrow', name: '铜雀', tip: '消掉正中间的大格 +5 秒' },
   { id: 'crossbow', name: '连弩车', tip: '连击 3 射穿一行' },
   { id: 'turtle', name: '蒸汽龟', tip: '堆死时送单格' },
 ];
@@ -21,10 +21,13 @@ function freshSave() {
     stage: 0, introSeen: {}, // 旅程：已经过了几关、哪些说明卡看过
     siegeDone: false, siegeBest: 0, // 守城：第一局（教学）打过没有、最多守住几波
     daily: null, // 每日一城：{ date, tries, extra, best, bestHit }
+    siegeRuns: 0, relicSeen: {}, relicGot: {}, // 守城玩过几局；哪些机关见过发动、拿到过（第一次发动打一句说明、卡上标「新」）
   };
 }
 let save = Object.assign(freshSave(), P.load(KEY) || {});
 if (!save.introSeen) save.introSeen = {};
+if (!save.relicSeen) save.relicSeen = {};
+if (!save.relicGot) save.relicGot = {};
 const persist = () => P.save(KEY, save);
 
 // ---------- 画布和布局 ----------
@@ -464,7 +467,7 @@ function juice(ev) {
   if (ev.turtle) texts.push({ s: '蒸汽龟！', x: W / 2, y: L.trayY - 8, t: clock, size: 22, col: COL.jade });
   if (ev.win && g.stage) { P.sound('win', 0.8); say('过关！'); flash = 0.4; }
   else if (ev.win) { P.sound('win', 0.8); say('成了！'); flash = 0.6; }
-  else if (ev.center) say('城心！');
+  else if (ev.center) say('正中间！');
   else if (ev.beat >= 4) say(ev.combo >= 2 ? '好！' : '连上了');
   else if (ev.newlyLit.length) say('亮了');
 }
@@ -992,7 +995,7 @@ function drawStageOver() {
   } else {
     button('again', bx, py + 200, bw, 60, '再试一次', { size: 26, fn: () => newStage(stageIdx) });
     if (g.adsUsed < C.adMax) {
-      button('revive', bx, py + 270, bw * 0.6 - 6, 44, '清空中宫', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
+      button('revive', bx, py + 270, bw * 0.6 - 6, 44, '清空正中间', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
       button('tomap', bx + bw * 0.6 + 6, py + 270, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
     } else button('tomap', bx, py + 270, bw, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
   }
@@ -1012,8 +1015,8 @@ function drawOver() {
   let title;
   if (g.endless) title = g.score + ' 分';
   else if (r.won) title = '拼成了！';
-  else if (9 - r.lit <= 2) title = '只差 ' + (9 - r.lit) + ' 宫！';
-  else title = '亮了 ' + r.lit + ' / 9 宫';
+  else if (9 - r.lit <= 2) title = '只差 ' + (9 - r.lit) + ' 块画！';
+  else title = '亮了 ' + r.lit + ' / 9 块画';
   text(title, W / 2, L.top + 30, 34, r.won ? COL.brassLight : r.near ? COL.red : COL.text);
   drawPainting(paintIdx, px0, py0, s, r.won ? new Array(9).fill(true) : g.lit, !r.won && !g.endless);
   let y = py0 + s + 30;
@@ -1034,7 +1037,7 @@ function drawOver() {
   const by = Math.max(y + 8, H - 210);
   button('again', (W - bw) / 2, by, bw, 64, r.won ? '下一张' : '再来', { size: 28, fn: () => newGame(g.endless) });
   if (!r.won && g.adsUsed < C.adMax) {
-    const lbl = g.reason === 'time' ? '+20 秒' : '清空中宫';
+    const lbl = g.reason === 'time' ? '+20 秒' : '清空正中间';
     button('revive', (W - bw) / 2, by + 76, bw * 0.62 - 6, 50, lbl, { size: 19, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
     button('album2', (W - bw) / 2 + bw * 0.62 + 6, by + 76, bw * 0.38 - 6, 50, '画册', { size: 19, bg: COL.wood, fn: () => openAlbum() });
   } else {
@@ -1136,8 +1139,9 @@ function drawMap() {
   button('play', (W - bw) / 2, H - 160, bw, 64, done ? '再玩第 ' + LV.length + ' 关' : '第 ' + (cur + 1) + ' 关', { size: 28, fn: () => newStage(cur) });
   const bw4 = Math.min(W - 24, 360), b4 = (bw4 - 18) / 4, bx4 = (W - bw4) / 2;
   button('siege', bx4, H - 82, b4, 46, '守城', { size: 17, bg: COL.red, fn: () => newSiege() });
+  const dailyOpen = (save.siegeRuns || 0) >= 3; // 每日一城要 8 件机关全开放，守城玩过 3 局再开
   const dl = dailyLeft();
-  button('daily', bx4 + b4 + 6, H - 82, b4, 46, '每日一城', { size: 14, bg: dl > 0 ? '#3f9a7c' : COL.woodDark, fn: () => (dl > 0 ? newDaily() : null) });
+  button('daily', bx4 + b4 + 6, H - 82, b4, 46, '每日一城', { size: 14, bg: dailyOpen && dl > 0 ? '#3f9a7c' : COL.woodDark, fg: dailyOpen ? COL.text : COL.dim, fn: () => (dailyOpen && dl > 0 ? newDaily() : null) });
   button('classic', bx4 + (b4 + 6) * 2, H - 82, b4, 46, '经典拼画', { size: 14, bg: COL.copper, fn: () => newGame(false) });
   button('album3', bx4 + (b4 + 6) * 3, H - 82, b4, 46, '画册', { size: 16, bg: COL.wood, fn: () => openAlbum() });
   // 「守城」是肉鸽试玩版：角上一个「新」；每日一城角上写今天还剩几次 / 今天最好几波
@@ -1145,13 +1149,13 @@ function drawMap() {
   ctx.font = 'bold 12px "PingFang SC", sans-serif'; ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('新', bx4 + b4 - 6, H - 81);
   const dr = dailyRec();
-  text(dl > 0 ? '今天剩 ' + dl + ' 次' + (dr.best ? ' · 最好 ' + dr.best + ' 波' : '') : '今天最好 ' + dr.best + ' 波 · 明天再来', W / 2, H - 22, 12, COL.dim, 'center', 'normal');
+  text(!dailyOpen ? '每日一城：守城玩 3 局后开放（已玩 ' + (save.siegeRuns || 0) + ' 局）' : dl > 0 ? '每日一城今天剩 ' + dl + ' 次' + (dr.best ? ' · 最好 ' + dr.best + ' 波' : '') : '每日一城今天最好 ' + dr.best + ' 波 · 明天再来', W / 2, H - 22, 12, COL.dim, 'center', 'normal');
 }
 
 // ---------- 新东西的说明卡（一张小动画 + 一两行字 +「继续」） ----------
 const INTRO = {
-  gem: { title: '收集宝石', lines: ['消掉宝石所在的', '行、列或宫，就收走它'], row: ['b', 'g', 'b', '.', 'b'], key: 'b' },
-  box: { title: '机关匣', lines: ['它消不掉。它在的行、列或宫', '每消一次，收一个'], row: ['b', 'M', 'b', '.', 'b'], key: 'box' },
+  gem: { title: '收集宝石', lines: ['宝石所在的那一排或那个大格', '一消掉，就收走它'], row: ['b', 'g', 'b', '.', 'b'], key: 'b' },
+  box: { title: '机关匣', lines: ['它自己消不掉。它在的那一排', '或大格每消掉一次，收一个'], row: ['b', 'M', 'b', '.', 'b'], key: 'box' },
   bubble: { title: '泡泡', lines: ['先把块放到泡泡上，', '再消掉那一格，泡泡就破'], row: ['b', 'b', '*', 'b', 'b'], key: 'bubble' },
 };
 function drawIntro() {
@@ -1282,7 +1286,7 @@ function newDaily() {
 }
 function newSiege(daily) {
   stageIdx = -1;
-  g = daily ? SG.createSiege({ daily }) : SG.createSiege({ seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: !save.siegeDone });
+  g = daily ? SG.createSiege({ daily }) : SG.createSiege({ seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: !save.siegeDone, runNo: save.siegeRuns || 0 });
   startCommon();
   for (const k of g.prefilled) colorAt[k] = -1;
   timeline = []; ghosts = []; relicPop = {}; beams = []; colBolts = [];
@@ -1291,7 +1295,14 @@ function newSiege(daily) {
 }
 function waveBanner() {
   const w = g.waveDef;
-  siegeFx.banner = { text: '第 ' + (g.wave + 1) + ' 波 · ' + w.name + (w.bossLine ? '' : ''), sub: w.bossLine || '', t: clock };
+  const sub = w.bossLine || (g.firstRun && g.wave === 0 ? '把方块消掉，就是在打攻城车' : '');
+  siegeFx.banner = { text: '第 ' + (g.wave + 1) + ' 波 · ' + w.name, sub, t: clock, boss: !!w.bossLine };
+}
+// 机关第一次发动：屏幕中间打一句大白话，告诉你刚才发生了什么
+function firstTimeCaption(id) {
+  if (save.relicSeen[id] || !SG.RELICS[id]) return;
+  save.relicSeen[id] = true; persist();
+  siegeFx.caption = { text: SG.RELICS[id].first, t: clock };
 }
 // 机关栏里第 n 格的中心
 function relicSlotPos(n) {
@@ -1320,6 +1331,7 @@ function juiceSiege(sev, colorsBefore) {
     const at = t;
     timeline.push({ t: at, fn: () => {
       relicPop[st.id] = clock;
+      firstTimeCaption(st.id);
       const col = SCHOOL_COL[SG.RELICS[st.id].school];
       if (st.id === 'crossbow') {
         st.lines.forEach((l) => { if (l.axis === 'row') bolts.push({ row: l.idx + 0.5, t: clock, dir: 1 }); else colBolts.push({ col: l.idx + 0.5, t: clock }); beams.push({ from, to: lineCenter(l), t: clock, col }); });
@@ -1343,6 +1355,7 @@ function juiceSiege(sev, colorsBefore) {
     const at = t;
     timeline.push({ t: at, fn: () => {
       relicPop[m.id] = clock;
+      firstTimeCaption(m.id);
       const lbl = '×' + (Math.round(m.m * 100) / 100);
       texts.push({ s: lbl, x: W / 2, y: L.by + L.board * 0.38, t: clock, size: 52, col: m.id === 'star' ? '#d3bdf0' : COL.brassLight, big: true });
       P.sound('five', 0.5);
@@ -1468,7 +1481,7 @@ function drawSiegeHud() {
   }
   // 右边：第几波、车名（上弦时换成上弦倍率）
   text((g.daily ? '每日 · ' : '') + '第 ' + (g.wave + 1) + ' 波', W - 12, y + 50, 13, g.daily ? COL.jade : COL.dim, 'right', 'normal');
-  if (g.charge > 1) text('上弦 ×' + g.charge, W - 12, y + 67, 13, COL.brassLight, 'right');
+  if (g.charge > 1) text('下次 ×' + g.charge, W - 12, y + 67, 13, COL.brassLight, 'right');
   else text(g.waveDef.name, W - 12, y + 67, 13, g.waveDef.boss ? COL.red : COL.text, 'right');
   // 机关栏
   for (let n = 0; n < SG.SLOTS; n++) {
@@ -1499,10 +1512,24 @@ function drawSiegeHud() {
     const a = Math.min(1, (clock - bn.t) * 4) * Math.min(1, (2.2 - (clock - bn.t)) * 3);
     ctx.globalAlpha = a;
     ctx.fillStyle = COL.shade + '0.75)'; ctx.fillRect(0, L.by + L.board * 0.36, W, bn.sub ? 76 : 50);
-    text(bn.text, W / 2, L.by + L.board * 0.36 + 25, 26, bn.sub ? COL.red : COL.brassLight);
-    if (bn.sub) text(bn.sub, W / 2, L.by + L.board * 0.36 + 56, 15, COL.text, 'center', 'normal');
+    text(bn.text, W / 2, L.by + L.board * 0.36 + 25, 26, bn.boss ? COL.red : COL.brassLight);
+    if (bn.sub) text(bn.sub, W / 2, L.by + L.board * 0.36 + 56, 16, COL.text, 'center', 'normal');
     ctx.globalAlpha = 1;
   }
+}
+// 机关第一次发动时的那句说明（压在棋盘下沿，2.6 秒）
+function drawCaption() {
+  const cp = siegeFx.caption;
+  if (!cp || clock - cp.t > 2.6) return;
+  const a = Math.min(1, (clock - cp.t) * 5) * Math.min(1, (2.6 - (clock - cp.t)) * 3);
+  ctx.globalAlpha = a;
+  ctx.font = 'bold 16px "PingFang SC", sans-serif';
+  const tw = Math.min(W - 20, ctx.measureText(cp.text).width + 28);
+  const y = L.by + L.board - 52;
+  ctx.fillStyle = COL.steam; rr((W - tw) / 2, y, tw, 40, 10); ctx.fill();
+  ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(cp.text, W / 2, y + 21, W - 40);
+  ctx.globalAlpha = 1;
 }
 // 攻城车：木车身 + 两个轮子 + 前面一根撞木；头目是红顶
 function drawCart(x, y, boss, white) {
@@ -1523,8 +1550,9 @@ function drawSiegeChoose() {
   const age = clock - siegeFx.chooseAt;
   ctx.fillStyle = COL.shade + Math.min(0.85, age * 3) + ')'; ctx.fillRect(0, 0, W, H);
   const opening = g.wavesWon === 0;
-  text(opening ? '开局挑一件机关' : '打掉了！挑一件机关', W / 2, L.by + 10, 26, COL.brassLight);
-  text(opening ? '机关会自己发动' : '下一波：' + (SG.WAVES[g.wave + 1] ? SG.WAVES[g.wave + 1].name : '重车'), W / 2, L.by + 42, 14, COL.dim, 'center', 'normal');
+  const single = g.offer.length === 1;
+  text(single ? '打掉了！送你一件机关' : opening ? '开局挑一件机关' : '打掉了！挑一件机关', W / 2, L.by + 10, 26, COL.brassLight);
+  text(single || !Object.keys(save.relicGot).length ? '机关会自己帮你打车，你照常消方块就行' : '下一波：' + (SG.WAVES[g.wave + 1] ? SG.WAVES[g.wave + 1].name : '重车'), W / 2, L.by + 42, 14, COL.dim, 'center', 'normal');
   const cw = Math.min(W - 40, 360), ch = 96, x = (W - cw) / 2;
   g.offer.forEach((id, n) => {
     const k = Math.min(1, Math.max(0, (age - n * 0.06) / 0.18));
@@ -1541,9 +1569,11 @@ function drawSiegeChoose() {
     text(R.name + (have ? '  升到 ' + (have + 1) + ' 级' : ''), x + 84, y + 28, 20, COL.text, 'left');
     text(R.desc[Math.min(2, have)], x + 84, y + 58, 15, COL.text, 'left', 'normal');
     const pal = SG.palOf(g, id);
-    if (pal && !have) text('配你的' + pal, x + cw - 14, y + 26, 13, COL.jade, 'right');
+    if (!save.relicGot[id]) text('新！', x + cw - 14, y + 26, 15, COL.red, 'right');
+    else if (pal && !have) text('配你的' + pal, x + cw - 14, y + 26, 13, COL.jade, 'right');
     ctx.globalAlpha = 1;
     buttons.push({ id: 'pick' + n, x, y, w: cw, h: ch, fn: () => {
+      save.relicGot[id] = true; persist();
       g.pick(id);
       relicPop[id] = clock + 0.05;
       P.sound('coin', 0.6);
@@ -1554,6 +1584,7 @@ function drawSiegeChoose() {
 }
 function endSiege() {
   if (g.won && g.firstRun && !save.siegeDone) save.siegeDone = true;
+  if (!g.daily && !g.endlessOn && (!g.firstRun || g.won)) save.siegeRuns = (save.siegeRuns || 0) + 1;
   const prevBest = save.siegeBest || 0;
   let dailyPrev = 0;
   if (g.daily) {
@@ -1618,7 +1649,7 @@ function drawSiegeOver() {
   } else {
     button('again', bx, py + 196, bw, 58, '再守一次', { size: 24, fn: () => newSiege() });
     if (g.adsUsed < C.adMax) {
-      button('revive', bx, py + 266, bw * 0.6 - 6, 46, g.reason === 'gate' ? '多打一轮' : '清空中宫', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
+      button('revive', bx, py + 266, bw * 0.6 - 6, 46, g.reason === 'gate' ? '多打一轮' : '清空正中间', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); mode = 'play'; result = null; stats.starts.push(P.now()); }) });
       button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
     } else button('tomap', bx, py + 266, bw, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
   }
@@ -1680,7 +1711,7 @@ function frame() {
     if (mode === 'over' || mode === 'share' || (mode === 'ad' && result)) drawOver();
     if (mode === 'share') { buttons = buttons.filter((b) => b.id === 'map'); drawShareCard(); }
     if (mode === 'intro') drawIntro();
-    if (mode === 'play' && g.siege) drawSiegeChoose();
+    if (mode === 'play' && g.siege) { drawCaption(); drawSiegeChoose(); }
     if (mode === 'ad') drawAd();
   }
   P.nextFrame(frame);

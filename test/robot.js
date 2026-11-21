@@ -115,7 +115,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await page.waitForTimeout(1900);
   await shot('09_守城_三选一');
   st = await page.evaluate(() => ({ phase: window.__game.g.phase, offer: window.__game.g.offer, btn: window.__game.buttons().map((b) => b.id) }));
-  ok(st.phase === 'choose' && st.offer.join() === 'crossbow,thunder,inkline' && st.btn.includes('pick0'), '第一下 3×3 进中宫打掉小车，弹三选一：连弩 / 火雷 / 墨斗');
+  ok(st.phase === 'choose' && st.offer.join() === 'crossbow' && st.btn.includes('pick0'), '第一局：第 1 波空手，第一下 3×3 打掉小车，只送一件连弩（循序渐进）');
   await click('pick0');
   await page.waitForTimeout(300);
   let sawRelic = false;
@@ -143,6 +143,8 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     return { same: a.offer.join() === b.offer.join() && a.hand.map((p) => p.id).join() === b.hand.map((p) => p.id).join(), left: G.dailyLeft() };
   });
   ok(st.same && st.left === 3, '每日一城：同一天两局开局的三选一和第一手一样；今天 3 次');
+  await page.evaluate(() => window.__game.setSave({ siegeRuns: 3 })); // 守城玩满 3 局才开放
+  await page.waitForTimeout(100);
   await click('daily');
   await page.waitForTimeout(500);
   await page.evaluate(() => { const G = window.__game; G.g.pick(G.g.offer[0]); G.g.wavesWon = 3; G.g.bestHit = 120; G.g.over = true; G.g.reason = 'gate'; G.endGame(); });

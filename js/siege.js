@@ -9,9 +9,9 @@ const { UNITS, PIECES } = core;
 const WAVES = [
   { name: '小车', hp: 60 },
   { name: '冲车', hp: 100 },
-  { name: '云梯', hp: 140, boss: 'ladder', bossLine: '云梯：只有消行、消列才打得动它' },
+  { name: '云梯', hp: 140, boss: 'ladder', bossLine: '云梯：只有消掉一排才打得到它' },
   { name: '重车', hp: 180 },
-  { name: '铁甲车', hp: 250, boss: 'armor', bossLine: '铁甲车：一手打不到 30 点的全被挡掉' },
+  { name: '铁甲车', hp: 250, boss: 'armor', bossLine: '铁甲车：一下打不到 30 点就打不动' },
 ];
 const FIRST_RUN_WAVES = 3; // 试玩版：3 波算守住，之后可以「继续守」
 const ROUNDS = 4;
@@ -24,26 +24,44 @@ const SLOTS = 5; // 机关栏几格
 const LUOSHU_BOX = { 4: 0, 9: 1, 2: 2, 3: 3, 5: 4, 7: 5, 8: 6, 1: 7, 6: 8 };
 const STAR_PATH = [5, 6, 7, 8, 9, 1, 2, 3, 4].map((n) => LUOSHU_BOX[n]);
 
-// ---------- 8 件机关（一行字，16 字以内） ----------
+// ---------- 8 件机关 ----------
+// 说明只用大白话（Cc 11-21：「什么中宫这个那个的，完全让人看不懂」）：
+//   「一排」= 横着或竖着一整排；「大格」= 棋盘上被铜线隔开的 3×3 那一块（共 9 个）；「正中间」= 正中那个大格
 // school：流派（卡片边的颜色）  pal：能和谁连（三选一卡上标「配你的 XX」）
 const RELICS = {
   crossbow: { name: '连弩', glyph: '弩', school: 'bow', pal: ['loader', 'inkline'],
-    desc: ['消行或列，隔壁更满的那条也射穿', '消行或列，两边各射穿一条', '两边各射穿，每格多打 2 点'] },
+    desc: ['消掉一排，旁边一排也射掉', '消掉一排，两边各射掉一排', '两边各射掉一排，打得更疼'],
+    first: '连弩：你消掉一排，它把旁边一排也射掉了！' },
   loader: { name: '弩机上弦', glyph: '弦', school: 'bow', pal: ['crossbow'],
-    desc: ['消行列：下次消除 ×2，送长条', '消行列：下次消除 ×2.5，送长条', '消行列：下次消除 ×3，送两根'] },
+    desc: ['消掉一排，下一次打车翻倍', '消掉一排，下一次打车 ×2.5', '消掉一排，下一次打车 ×3'],
+    first: '弩机上弦：消掉了一排，下一次打车翻倍！' },
   inkline: { name: '墨斗', glyph: '墨', school: 'ink', pal: ['crossbow', 'thunder'],
-    desc: ['一消就把只差三格的一行补满', '一消就把只差四格的一行补满', '一消就补满两条只差四格的'] },
+    desc: ['一消掉东西，就补满快满的一排', '能补满差得更多的一排', '一次补满两排'],
+    first: '墨斗：它把一排快满的补满，又消掉了一排！' },
   thunder: { name: '火雷', glyph: '雷', school: 'fire', pal: ['chain', 'inkline'],
-    desc: ['消一宫，旁边最满的一宫也炸平', '消一宫，旁边最满的两宫炸平', '炸平两宫，每格多打 3 点'] },
+    desc: ['消掉一个大格，旁边大格也炸掉', '旁边两个大格都炸掉', '炸掉两个大格，打得更疼'],
+    first: '火雷：你消掉一个大格，它把旁边的大格也炸了！' },
   chain: { name: '连环雷', glyph: '连', school: 'fire', pal: ['thunder'],
-    desc: ['炸平的宫接着炸旁边，连 2 次', '炸平的宫接着炸旁边，连 3 次', '炸平的宫接着炸旁边，连 4 次'] },
+    desc: ['火雷炸掉的大格，会接着炸旁边', '接着炸，最多 3 下', '接着炸，最多 4 下'],
+    first: '连环雷：炸掉的大格又接着炸了旁边！' },
   center5: { name: '五居中', glyph: '五', school: 'luoshu', pal: ['hetu', 'star'],
-    desc: ['消中宫，这一手伤害 ×5', '消中宫，这一手伤害 ×6', '消中宫，这一手伤害 ×8'] },
+    desc: ['消掉正中间的大格，伤害 ×5', '消掉正中间的大格，伤害 ×6', '消掉正中间的大格，伤害 ×8'],
+    first: '五居中：消掉了正中间，伤害 ×5！' },
   hetu: { name: '河图', glyph: '河', school: 'luoshu', pal: ['center5', 'star'],
-    desc: ['每消一次中宫，倍率永久 +0.3', '每消一次中宫，倍率永久 +0.45', '每消一次中宫，倍率永久 +0.6'] },
+    desc: ['每消一次正中间，以后都更疼', '每消一次正中间，以后更疼', '每消一次正中间，以后狠狠更疼'],
+    first: '河图：消了正中间，这局以后每下都更疼了！' },
   star: { name: '飞星', glyph: '星', school: 'star', pal: ['center5', 'hetu'],
-    desc: ['星每轮飞一宫，消到星那宫 ×3', '星每轮飞一宫，消到星那宫 ×4', '星每轮飞一宫，消到星那宫 ×5'] },
+    desc: ['星星在哪个大格，消到那里 ×3', '星星在哪，消到那里 ×4', '星星在哪，消到那里 ×5'],
+    first: '飞星：消到了星星那个大格，伤害 ×3！星星每轮会挪一格' },
 };
+// 循序渐进（Cc：「刚开始先玩什么道具都没有的，再加一个道具，再逐渐越加越多」）
+// 第 1 局：第 1 波什么都没有；打掉以后送连弩；打掉第 2 波，再二选一；之后每局多开放几件
+const POOL_BY_RUN = [
+  ['crossbow', 'inkline', 'thunder'],
+  ['crossbow', 'inkline', 'thunder', 'loader'],
+  ['crossbow', 'inkline', 'thunder', 'loader', 'chain', 'center5'],
+];
+const offerCount = (runNo) => (runNo <= 2 ? 2 : 3);
 const RELIC_IDS = Object.keys(RELICS);
 const lv = (st, id) => st.relics.find((r) => r.id === id)?.lv || 0;
 
@@ -231,14 +249,16 @@ function createSiege(opts) {
   Object.assign(g, {
     siege: true,
     wave: 0, waveDef: WAVES[0], hp: WAVES[0].hp, hpMax: WAVES[0].hp, round: 1,
-    hpScale: o.tutorial ? 0.6 : 1, // 第一局车的血打七五折：第一局必须守得住
+    hpScale: o.tutorial ? 0.6 : (o.runNo || 0) <= 2 && !o.daily ? 0.8 : 1, // 第一局车血六折（必须守得住），第 2、3 局八折（机关还少）
+    runNo: o.daily ? 99 : o.runNo || 0, // 这是第几局守城（0 起）：决定开放几件机关、三选一还是二选一
     relics: (o.relics || []).map((x) => ({ ...x })),
     starBox: STAR_PATH[0], starStep: 0, hetuBonus: 0,
-    pendingLoader: 0, tutorialX5: !!o.tutorial,
+    pendingLoader: 0, tutorialX5: false, // 不再白送 ×5（第一下太多数字，看不懂）
     phase: 'play', // play / choose / won（守住 3 波）
     offer: null, wavesWon: 0, totalDmg: 0, waveDmg: 0, bestHit: 0, maxChain: 0,
     triggers: {}, firstRun: !!o.tutorial,
   });
+  if (o.tutorial) { g.hp = 25; g.hpMax = 25; } // 第一辆车：第一手 3×3 一放就打掉
   if (o.daily) {
     g.daily = o.daily;
     g.endlessOn = true; // 不在第 3 波停，一直守
@@ -299,7 +319,7 @@ function createSiege(opts) {
     if (g.hp <= 0) {
       ev.killed = true;
       g.wavesWon++;
-      if (g.firstRun && g.wavesWon >= FIRST_RUN_WAVES && !g.endlessOn) {
+      if (!g.daily && g.wavesWon >= FIRST_RUN_WAVES && !g.endlessOn) { // 每局守住 3 波算赢，之后可以继续守
         g.phase = 'won'; ev.runWon = true; g.over = true; g.won = true; g.reason = 'win';
         return ev;
       }
@@ -355,15 +375,19 @@ function createSiege(opts) {
   g.nearMiss = () => !g.won && g.reason === 'gate' && g.hp <= g.hpMax * 0.3;
   g.lvOf = (id) => lv(g, id);
   // 开局：第一局先打一辆车再选；以后开局先三选一
-  if (!o.tutorial && !o.noRelics && !o.relics) { g.phase = 'choose'; g.offer = makeOffer(g); g.openingPick = true; }
+  // 开局先挑一件：玩过 3 局以后才有（之前都是空手开局，打掉车才拿）
+  if (!o.tutorial && !o.noRelics && !o.relics && g.runNo >= 3) { g.phase = 'choose'; g.offer = makeOffer(g); g.openingPick = true; }
   return g;
 }
 
 // 三选一：第一局固定连弩 / 火雷 / 墨斗；之后随机，偏向「能和已有的连上」和升级。机关栏满了只出升级
 function makeOffer(g) {
-  if (g.firstRun && g.wavesWon === 1 && !g.relics.length) return ['crossbow', 'thunder', 'inkline'];
+  // 第一局：打掉第 1 辆车只送连弩一件；打掉第 2 辆，在墨斗和火雷里挑一件
+  if (g.firstRun && g.wavesWon === 1 && !g.relics.length) return ['crossbow'];
+  if (g.firstRun && g.wavesWon === 2) return ['inkline', 'thunder'];
   const owned = g.relics.map((r) => r.id);
-  let pool = RELIC_IDS.filter((id) => (owned.includes(id) ? lv(g, id) < 3 : owned.length < SLOTS));
+  const open = POOL_BY_RUN[g.runNo] || RELIC_IDS;
+  let pool = open.filter((id) => (owned.includes(id) ? lv(g, id) < 3 : owned.length < SLOTS));
   // 每日一城：每一波的三选一按日期和第几波定，人人一样（不按各人拿过什么调权重）
   const rnd = g.daily ? core.rng(((g.daily ^ ((g.wavesWon + 1) * 40503)) * 2246822519) >>> 0) : g.rand;
   const weight = g.daily ? () => 1 : (id) => {
@@ -373,7 +397,7 @@ function makeOffer(g) {
     return w;
   };
   const out = [];
-  while (out.length < 3 && pool.length) {
+  while (out.length < (g.daily ? 3 : offerCount(g.runNo)) && pool.length) {
     const tot = pool.reduce((a, id) => a + weight(id), 0);
     let t = rnd() * tot;
     let k = 0;
@@ -445,4 +469,4 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { WAVES, FIRST_RUN_WAVES, ROUNDS, SLOTS, RELICS, RELIC_IDS, STAR_PATH, resolve, createSiege, makeOffer, palOf, bestMove, bestPick, simulate };
+module.exports = { POOL_BY_RUN, WAVES, FIRST_RUN_WAVES, ROUNDS, SLOTS, RELICS, RELIC_IDS, STAR_PATH, resolve, createSiege, makeOffer, palOf, bestMove, bestPick, simulate };

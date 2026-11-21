@@ -136,6 +136,27 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   await click('tomap');
   await page.waitForTimeout(300);
 
+  // ---------- 每日一城 ----------
+  st = await page.evaluate(() => {
+    const G = window.__game;
+    const a = G.SG.createSiege({ daily: 20261121 }), b = G.SG.createSiege({ daily: 20261121 });
+    return { same: a.offer.join() === b.offer.join() && a.hand.map((p) => p.id).join() === b.hand.map((p) => p.id).join(), left: G.dailyLeft() };
+  });
+  ok(st.same && st.left === 3, '每日一城：同一天两局开局的三选一和第一手一样；今天 3 次');
+  await click('daily');
+  await page.waitForTimeout(500);
+  await page.evaluate(() => { const G = window.__game; G.g.pick(G.g.offer[0]); G.g.wavesWon = 3; G.g.bestHit = 120; G.g.over = true; G.g.reason = 'gate'; G.endGame(); });
+  await page.waitForTimeout(700);
+  await click('share');
+  await page.waitForTimeout(300);
+  await shot('11b_每日一城_晒成绩');
+  st = await page.evaluate(() => ({ mode: window.__game.mode, best: window.__game.save.daily.best, left: window.__game.dailyLeft() }));
+  ok(st.mode === 'share' && st.best === 3 && st.left === 2, '每日一城守住 3 波：记今天最好 3 波、剩 2 次、能出晒成绩卡');
+  await click('shareClose');
+  await page.waitForTimeout(200);
+  await click('tomap');
+  await page.waitForTimeout(300);
+
   // ---------- 经典拼画（0.1 / 0.2 的玩法） ----------
   await click('classic');
   await page.waitForTimeout(300);

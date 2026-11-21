@@ -20,6 +20,7 @@ function freshSave() {
     coins: 0, best: 0, bestEndless: 0, items: {}, tutorialDone: false, buySingle: false, plays: 0,
     stage: 0, introSeen: {}, // 旅程：已经过了几关、哪些说明卡看过
     siegeDone: false, siegeBest: 0, // 守城：第一局（教学）打过没有、最多守住几波
+    daily: null, // 每日一城：{ date, tries, extra, best, bestHit }
   };
 }
 let save = Object.assign(freshSave(), P.load(KEY) || {});
@@ -1133,13 +1134,18 @@ function drawMap() {
   });
   const bw = Math.min(W - 60, 300);
   button('play', (W - bw) / 2, H - 160, bw, 64, done ? '再玩第 ' + LV.length + ' 关' : '第 ' + (cur + 1) + ' 关', { size: 28, fn: () => newStage(cur) });
-  const b3 = (bw - 16) / 3, bx3 = (W - bw) / 2;
-  button('siege', bx3, H - 82, b3, 46, '守城', { size: 18, bg: COL.red, fn: () => newSiege() });
-  button('classic', bx3 + b3 + 8, H - 82, b3, 46, '经典拼画', { size: 15, bg: COL.copper, fn: () => newGame(false) });
-  button('album3', bx3 + (b3 + 8) * 2, H - 82, b3, 46, '画册', { size: 17, bg: COL.wood, fn: () => openAlbum() });
-  // 「守城」是肉鸽试玩版：角上一个小红点「新」
-  ctx.fillStyle = COL.jade; ctx.beginPath(); ctx.arc(bx3 + b3 - 6, H - 80, 9, 0, Math.PI * 2); ctx.fill();
-  text('新', bx3 + b3 - 6, H - 80, 11, COL.ink, 'center');
+  const bw4 = Math.min(W - 24, 360), b4 = (bw4 - 18) / 4, bx4 = (W - bw4) / 2;
+  button('siege', bx4, H - 82, b4, 46, '守城', { size: 17, bg: COL.red, fn: () => newSiege() });
+  const dl = dailyLeft();
+  button('daily', bx4 + b4 + 6, H - 82, b4, 46, '每日一城', { size: 14, bg: dl > 0 ? '#3f9a7c' : COL.woodDark, fn: () => (dl > 0 ? newDaily() : null) });
+  button('classic', bx4 + (b4 + 6) * 2, H - 82, b4, 46, '经典拼画', { size: 14, bg: COL.copper, fn: () => newGame(false) });
+  button('album3', bx4 + (b4 + 6) * 3, H - 82, b4, 46, '画册', { size: 16, bg: COL.wood, fn: () => openAlbum() });
+  // 「守城」是肉鸽试玩版：角上一个「新」；每日一城角上写今天还剩几次 / 今天最好几波
+  ctx.fillStyle = COL.jade; ctx.beginPath(); ctx.arc(bx4 + b4 - 6, H - 82, 11, 0, Math.PI * 2); ctx.fill();
+  ctx.font = 'bold 12px "PingFang SC", sans-serif'; ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('新', bx4 + b4 - 6, H - 81);
+  const dr = dailyRec();
+  text(dl > 0 ? '今天剩 ' + dl + ' 次' + (dr.best ? ' · 最好 ' + dr.best + ' 波' : '') : '今天最好 ' + dr.best + ' 波 · 明天再来', W / 2, H - 22, 12, COL.dim, 'center', 'normal');
 }
 
 // ---------- 新东西的说明卡（一张小动画 + 一两行字 +「继续」） ----------
@@ -1259,9 +1265,24 @@ function runTimeline() {
   due.forEach((e) => e.fn());
 }
 const siegeBusy = () => timeline.length > 0;
-function newSiege() {
+// 每日一城：北京时间的日期。每天 3 次，看广告多 1 次，记当天最好的波数
+const DAILY_TRIES = 3;
+function todayKey() { return new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); }
+function dailyRec() {
+  const key = todayKey();
+  if (!save.daily || save.daily.date !== key) save.daily = { date: key, tries: 0, extra: 0, best: 0, bestHit: 0 };
+  return save.daily;
+}
+const dailyLeft = () => { const d = dailyRec(); return DAILY_TRIES + d.extra - d.tries; };
+function newDaily() {
+  const d = dailyRec();
+  if (dailyLeft() <= 0) return;
+  d.tries++;
+  newSiege(+d.date.replace(/-/g, ''));
+}
+function newSiege(daily) {
   stageIdx = -1;
-  g = SG.createSiege({ seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: !save.siegeDone });
+  g = daily ? SG.createSiege({ daily }) : SG.createSiege({ seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: !save.siegeDone });
   startCommon();
   for (const k of g.prefilled) colorAt[k] = -1;
   timeline = []; ghosts = []; relicPop = {}; beams = []; colBolts = [];
@@ -1446,7 +1467,7 @@ function drawSiegeHud() {
     text(String(g.hp), cx + bw / 2 + 16, cy - 25, 13, COL.text);
   }
   // 右边：第几波、车名（上弦时换成上弦倍率）
-  text('第 ' + (g.wave + 1) + ' 波', W - 12, y + 50, 13, COL.dim, 'right', 'normal');
+  text((g.daily ? '每日 · ' : '') + '第 ' + (g.wave + 1) + ' 波', W - 12, y + 50, 13, g.daily ? COL.jade : COL.dim, 'right', 'normal');
   if (g.charge > 1) text('上弦 ×' + g.charge, W - 12, y + 67, 13, COL.brassLight, 'right');
   else text(g.waveDef.name, W - 12, y + 67, 13, g.waveDef.boss ? COL.red : COL.text, 'right');
   // 机关栏
@@ -1533,13 +1554,33 @@ function drawSiegeChoose() {
 }
 function endSiege() {
   if (g.won && g.firstRun && !save.siegeDone) save.siegeDone = true;
-  save.siegeBest = Math.max(save.siegeBest || 0, g.wavesWon);
+  const prevBest = save.siegeBest || 0;
+  let dailyPrev = 0;
+  if (g.daily) {
+    const d = dailyRec();
+    dailyPrev = d.best;
+    d.best = Math.max(d.best, g.wavesWon);
+    d.bestHit = Math.max(d.bestHit, g.bestHit);
+  } else save.siegeBest = Math.max(prevBest, g.wavesWon);
   coinsGot = Math.floor(g.totalDmg / 40) + g.wavesWon * 3;
   save.coins += coinsGot;
   persist();
-  result = { won: g.won, reason: g.reason, near: g.nearMiss(), doubled: false };
+  result = { won: g.won, reason: g.reason, near: g.nearMiss(), doubled: false, prevBest, dailyPrev, record: g.daily ? g.wavesWon > dailyPrev : g.endlessOn && g.wavesWon > prevBest };
   mode = 'over';
   if (!g.won) { P.sound('lose', 0.6); say(g.reason === 'gate' ? '城破了' : '堵住了'); }
+}
+// 失败时那一句「差几波」（Cc 定的方向：失败时显示「差一波就守住了」）
+function wavesLine() {
+  const r = result, n = g.wavesWon;
+  if (g.daily) {
+    if (r.record) return n > 0 ? '今天新纪录：守住 ' + n + ' 波！' : '';
+    const gap = r.dailyPrev - n;
+    return gap === 0 ? '追平今天最好的 ' + r.dailyPrev + ' 波，再守一波就破纪录' : '差 ' + gap + ' 波追平今天最好的 ' + r.dailyPrev + ' 波';
+  }
+  if (!g.endlessOn) { const gap = SG.FIRST_RUN_WAVES - n; return gap === 1 ? '差一波就守住了！' : '守住 ' + n + ' 波，差 ' + gap + ' 波就守住了'; }
+  if (r.record) return '新纪录：守住 ' + n + ' 波！';
+  const gap = r.prevBest - n;
+  return gap <= 0 ? '' : '差 ' + gap + ' 波追上你最好的 ' + r.prevBest + ' 波';
 }
 function drawSiegeOver() {
   const age = clock - overAt;
@@ -1550,15 +1591,26 @@ function drawSiegeOver() {
   ctx.fillStyle = COL.ink; rr(px, py + 6, pw, ph, 18); ctx.fill();
   ctx.fillStyle = COL.wood; rr(px, py, pw, ph, 18); ctx.fill();
   ctx.strokeStyle = COL.brass; ctx.lineWidth = 3; rr(px + 6, py + 6, pw - 12, ph - 12, 14); ctx.stroke();
-  const title = r.won ? '守住了！' : g.reason === 'gate' ? (r.near ? '只差 ' + g.hp + ' 点！' : '城破了') : '堵住了';
-  text(title, W / 2, py + 42, 30, r.won ? COL.brassLight : r.near ? COL.red : COL.text);
-  text('打下 ' + g.wavesWon + ' 波  ·  最狠一手 ' + g.bestHit + ' 点', W / 2, py + 82, 16, COL.text, 'center', 'normal');
+  const title = r.won ? '守住了！' : g.daily && r.record && g.wavesWon > 0 ? '新纪录！' : g.reason === 'gate' ? (r.near ? '只差 ' + g.hp + ' 点！' : '城破了') : '堵住了';
+  text(title, W / 2, py + 38, 30, r.won ? COL.brassLight : r.near ? COL.red : COL.text);
+  const wl = r.won ? '' : wavesLine();
+  if (wl) text(wl, W / 2, py + 72, 17, r.record ? COL.brassLight : COL.red);
+  text('打下 ' + g.wavesWon + ' 波  ·  最狠一手 ' + g.bestHit + ' 点', W / 2, py + (wl ? 98 : 82), 15, COL.text, 'center', 'normal');
   // 这一局的机关
   const n = g.relics.length;
-  g.relics.forEach((rl, i) => relicIcon(rl.id, W / 2 + (i - (n - 1) / 2) * 50, py + 126, 40, rl.lv, 0));
-  if (!n) text('（没拿机关）', W / 2, py + 126, 14, COL.dim, 'center', 'normal');
-  text('+' + coinsGot + ' 金  ·  最多守住 ' + save.siegeBest + ' 波', W / 2, py + 170, 15, COL.brassLight, 'center', 'normal');
+  g.relics.forEach((rl, i) => relicIcon(rl.id, W / 2 + (i - (n - 1) / 2) * 50, py + 132, 38, rl.lv, 0));
+  if (!n) text('（没拿机关）', W / 2, py + 132, 14, COL.dim, 'center', 'normal');
+  text('+' + coinsGot + ' 金  ·  ' + (g.daily ? '今天最好 ' + dailyRec().best + ' 波' : '最多守住 ' + save.siegeBest + ' 波'), W / 2, py + 172, 15, COL.brassLight, 'center', 'normal');
   const bw = pw - 48, bx = px + 24;
+  if (g.daily) {
+    // 每日一城：晒成绩最大；再守一次要看今天还剩几次
+    button('share', bx, py + 196, bw, 58, '晒成绩', { size: 24, fn: () => { mode = 'share'; } });
+    const left = dailyLeft();
+    if (left > 0) button('again', bx, py + 266, bw * 0.6 - 6, 46, '再守（剩 ' + left + ' 次）', { size: 16, bg: COL.copper, fn: () => newDaily() });
+    else button('dailyAd', bx, py + 266, bw * 0.6 - 6, 46, '再来一次', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { dailyRec().extra++; persist(); newDaily(); }) });
+    button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+    return;
+  }
   if (r.won) {
     button('cont', bx, py + 196, bw, 58, '继续守（车更硬）', { size: 22, fn: () => { g.continueRun(); mode = 'play'; result = null; siegeFx.chooseAt = clock + 0.1; } });
     button('again', bx, py + 266, bw * 0.6 - 6, 46, '再守一次', { size: 18, bg: COL.copper, fn: () => newSiege() });
@@ -1570,6 +1622,33 @@ function drawSiegeOver() {
       button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
     } else button('tomap', bx, py + 266, bw, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
   }
+}
+
+// 晒成绩：一张竖卡（微信里接分享给好友；浏览器试玩版只显示这张卡）
+function drawShareCard() {
+  ctx.fillStyle = COL.shade + '0.9)'; ctx.fillRect(0, 0, W, H);
+  const cw = Math.min(W - 60, 320), chh = Math.min(H - 220, 470), x = (W - cw) / 2, y = (H - chh) / 2 - 30;
+  ctx.fillStyle = COL.ink; rr(x, y + 6, cw, chh, 18); ctx.fill();
+  const bgG = ctx.createLinearGradient(0, y, 0, y + chh);
+  bgG.addColorStop(0, COL.bg); bgG.addColorStop(1, COL.bgLow);
+  ctx.fillStyle = bgG; rr(x, y, cw, chh, 18); ctx.fill();
+  ctx.strokeStyle = COL.brass; ctx.lineWidth = 3; rr(x + 6, y + 6, cw - 12, chh - 12, 14); ctx.stroke();
+  const d = dailyRec();
+  const [yy, mm, dd] = d.date.split('-');
+  text('每日一城 · ' + (+mm) + ' 月 ' + (+dd) + ' 日', W / 2, y + 40, 18, COL.jade);
+  text('守住', W / 2, y + 92, 20, COL.text, 'center', 'normal');
+  text(String(g.wavesWon), W / 2, y + 150, 88, COL.brassLight);
+  text('波', W / 2, y + 206, 20, COL.text, 'center', 'normal');
+  drawCart(W / 2 - 70, y + 250, true, false);
+  starShape(W / 2 + 70, y + 250, 16, '#efe2ff');
+  const n = g.relics.length;
+  g.relics.forEach((rl, i) => relicIcon(rl.id, W / 2 + (i - (n - 1) / 2) * 46, y + 304, 36, rl.lv, 0));
+  text('最狠一手 ' + g.bestHit + ' 点', W / 2, y + 352, 16, COL.text, 'center', 'normal');
+  text('今天人人守同一座城，你能守几波？', W / 2, y + chh - 50, 14, COL.dim, 'center', 'normal');
+  text('九宫消', W / 2, y + chh - 24, 16, COL.brassLight);
+  text('（微信里点「发给好友」就把这张图发出去）', W / 2, y + chh + 30, 13, COL.dim, 'center', 'normal');
+  const bw = Math.min(W - 60, 300);
+  button('shareClose', (W - bw) / 2, y + chh + 52, bw, 50, '好', { size: 20, fn: () => { mode = 'over'; } });
 }
 
 // ---------- 主循环 ----------
@@ -1598,7 +1677,8 @@ function frame() {
     drawTutorial();
     ctx.restore();
     if (flash > 0) { ctx.fillStyle = 'rgba(255,244,214,' + flash + ')'; ctx.fillRect(0, 0, W, H); }
-    if (mode === 'over' || (mode === 'ad' && result)) drawOver();
+    if (mode === 'over' || mode === 'share' || (mode === 'ad' && result)) drawOver();
+    if (mode === 'share') { buttons = buttons.filter((b) => b.id === 'map'); drawShareCard(); }
     if (mode === 'intro') drawIntro();
     if (mode === 'play' && g.siege) drawSiegeChoose();
     if (mode === 'ad') drawAd();
@@ -1615,7 +1695,7 @@ P.nextFrame(frame);
 P.exposeForTest('__game', {
   get g() { return g; }, get mode() { return mode; }, get result() { return result; }, get save() { return save; },
   get paintIdx() { return paintIdx; }, stats, L, fingerFor, slotCenter, buttons: () => buttons.slice(),
-  get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; }, LV, newStage, SG, newSiege, siegeBusy: () => siegeBusy(),
+  get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; }, LV, newStage, SG, newSiege, newDaily, dailyLeft: () => dailyLeft(), siegeBusy: () => siegeBusy(),
   reset() { save = freshSave(); persist(); newStage(0); },
   setSave(o) { Object.assign(save, o); persist(); },
   newGame, endGame, core,

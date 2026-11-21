@@ -219,7 +219,8 @@ function resolve(board, st, p, r, c) {
 }
 
 // ---------- 一局 ----------
-// opts: { seed, tutorial, relics:[{id,lv}]（测试用：开局直接带）, noRelics（测试用：不拿机关） }
+// opts: { seed, tutorial, daily（每日一城：当天日期 20261121 这样的数）, relics:[{id,lv}]（测试用：开局直接带）, noRelics（测试用：不拿机关） }
+// 每日一城：所有人当天同一串候选块、每一波同一组三选一；不封顶，一直守到城破，比谁守的波数多
 function createSiege(opts) {
   const o = opts || {};
   const stage = { goal: {}, board: ['.........', '....#....'.replace('#', '.'), '.........', '.........', '.........', '.........', '.........', '.........', '.........'], d: 0.12 };
@@ -238,12 +239,19 @@ function createSiege(opts) {
     offer: null, wavesWon: 0, totalDmg: 0, waveDmg: 0, bestHit: 0, maxChain: 0,
     triggers: {}, firstRun: !!o.tutorial,
   });
+  if (o.daily) {
+    g.daily = o.daily;
+    g.endlessOn = true; // 不在第 3 波停，一直守
+    g.pieceRand = core.rng((o.daily * 2654435761) >>> 0); // 出块单独一条随机数：不受拿了什么机关影响
+    g.hand = core.dealHand(g.board, g.pieceRand, g.diff(), true);
+  }
   g.prefilled = new Set(START.flatMap((row, r) => row.split('').map((ch, c) => (ch === '#' ? r * 9 + c : -1))).filter((k) => k >= 0));
   g.diff = () => Math.min(0.6, 0.12 + g.wave * 0.08);
   const baseDeal = g.deal;
   // 发一轮：车走一步（第一轮不算）、星飞一宫、弩机上弦的长条
   g.newRound = () => {
-    baseDeal();
+    if (g.pieceRand) { g.deals++; g.hand = core.dealHand(g.board, g.pieceRand, g.diff(), true); }
+    else baseDeal();
     if (g.pendingLoader) {
       const L = g.pendingLoader;
       const ids = L >= 2 ? ['5h', '5v'] : ['4h', '4v'];
@@ -356,7 +364,9 @@ function makeOffer(g) {
   if (g.firstRun && g.wavesWon === 1 && !g.relics.length) return ['crossbow', 'thunder', 'inkline'];
   const owned = g.relics.map((r) => r.id);
   let pool = RELIC_IDS.filter((id) => (owned.includes(id) ? lv(g, id) < 3 : owned.length < SLOTS));
-  const weight = (id) => {
+  // 每日一城：每一波的三选一按日期和第几波定，人人一样（不按各人拿过什么调权重）
+  const rnd = g.daily ? core.rng(((g.daily ^ ((g.wavesWon + 1) * 40503)) * 2246822519) >>> 0) : g.rand;
+  const weight = g.daily ? () => 1 : (id) => {
     let w = 1;
     if (owned.includes(id)) w += 0.6;
     if (owned.some((o2) => RELICS[o2].pal.includes(id))) w += 1.2;
@@ -365,7 +375,7 @@ function makeOffer(g) {
   const out = [];
   while (out.length < 3 && pool.length) {
     const tot = pool.reduce((a, id) => a + weight(id), 0);
-    let t = g.rand() * tot;
+    let t = rnd() * tot;
     let k = 0;
     while (k < pool.length - 1 && t > weight(pool[k])) { t -= weight(pool[k]); k++; }
     out.push(pool[k]);

@@ -7,11 +7,11 @@ const { UNITS, PIECES } = core;
 // ---------- 波次 ----------
 // 每波 4 轮（一轮 = 发三块），车每轮走一步，4 轮里血没打光 = 城破
 const WAVES = [
-  { name: '小车', hp: 60 },
-  { name: '冲车', hp: 100 },
-  { name: '云梯', hp: 140, boss: 'ladder', bossLine: '云梯：只有消掉一排才打得到它' },
-  { name: '重车', hp: 180 },
-  { name: '铁甲车', hp: 250, boss: 'armor', bossLine: '铁甲车：一下打不到 30 点就打不动' },
+  { name: '小车', hp: 40 },
+  { name: '冲车', hp: 65 },
+  { name: '云梯', hp: 90, boss: 'ladder', bossLine: '云梯：只有消掉一排才打得到它' },
+  { name: '重车', hp: 115 },
+  { name: '铁甲车', hp: 160, boss: 'armor', bossLine: '铁甲车：一下打不到 25 点就打不动' },
 ];
 const FIRST_RUN_WAVES = 3; // 试玩版：3 波算守住，之后可以「继续守」
 const ROUNDS = 4;
@@ -123,7 +123,8 @@ function resolve(board, st, p, r, c) {
     });
     steps.push({ kind: 'clear', units, cells: [...cells], dmg: base });
   }
-  if (!events.length) return { board: b, dmg: Math.round(base * (1 + (st.hetuBonus || 0))), base, mult: 1 + (st.hetuBonus || 0), mults: [], steps, events, loader: 0, centerHit: false, starHit: false, placed };
+  // 没消掉就不打车（Cc 11-24 看不懂上面在干嘛：只放块也掉血会让人糊涂，改成「消掉才打车」）
+  if (!events.length) return { board: b, dmg: 0, base: 0, mult: 1, mults: [], steps, events, loader: 0, centerHit: false, starHit: false, placed };
 
   // 火雷：把 bx 旁边最满的宫炸平（算消一宫）；连环雷：炸平的宫再引爆它旁边最满的，一层层传
   let chainLeft = lv(st, 'chain') ? lv(st, 'chain') + 1 : 0;
@@ -232,7 +233,7 @@ function resolve(board, st, p, r, c) {
   if (starHit) { const m = [0, 3, 4, 5][lv(st, 'star')]; mult *= m; mults.push({ id: 'star', m }); }
   if (st.hetuBonus) mults.push({ id: 'hetu', m: 1 + st.hetuBonus });
   let dmg = Math.round(base * mult);
-  if (st.boss === 'armor' && dmg < 30) dmg = 0;
+  if (st.boss === 'armor' && dmg < 25) dmg = 0;
   return { board: b, dmg, base, mult, mults, steps, events, loader, centerHit, starHit, placed };
 }
 

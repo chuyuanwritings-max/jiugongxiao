@@ -34,12 +34,12 @@ for (const [name, relics] of Object.entries(sets)) {
   console.log(line); out.push(line);
 }
 // B. 真玩：第一局（教学，3 波）和普通局（开局三选一，打满 5 波），机器人自己三选一
-for (const [label, opt] of [['第一局（3 波）', { tutorial: true }], ['普通局（5 波）', { maxWaves: 5 }]]) {
+for (const [label, opt] of [['第 1 局（3 波，教学）', { tutorial: true }], ['第 2 局（3 波，4 件）', { runNo: 1 }], ['第 4 局（3 波，8 件全开）', { runNo: 3 }], ['每日一城（不封顶）', { daily: true }]]) {
   let won = 0, secs = 0, waves = 0, gate = 0, stuck = 0, near = 0;
   for (let s = 1; s <= N; s++) {
-    const g = S.simulate(Object.assign({ seed: s * 31 + 7, pick: 'auto', secPerMove: human }, opt));
+    const g = S.simulate(Object.assign({ seed: s * 31 + 7, pick: 'auto', secPerMove: human }, opt, opt.daily ? { daily: 20261121 + s } : {}));
     secs += g.elapsed; waves += g.wavesWon;
-    const goal = opt.tutorial ? 3 : 5;
+    const goal = opt.daily ? 99 : 3;
     if (g.wavesWon >= goal) won++; else { if (g.reason === 'gate') gate++; if (g.reason === 'stuck') stuck++; if (g.nearMiss()) near++; }
   }
   const lost = N - won;

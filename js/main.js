@@ -34,22 +34,29 @@ const persist = () => P.save(KEY, save);
 const scr = P.setup(onTouch);
 const { ctx, width: W, height: H, dpr } = scr;
 const L = {};
-(function layout() {
+// 守城要在棋盘上面留一大块「战场」（车从上往下压向城墙），所以棋盘小一点、往下挪
+function setLayout(kind) {
+  const siege = kind === 'siege';
+  L.kind = kind;
   L.top = H > 760 ? 34 : 14;
-  const B = Math.min(W - 20, Math.floor(H * 0.48), 432);
+  const head = siege ? 240 : 86; // 棋盘上面留多高
+  let B = Math.min(W - 20, Math.floor(H * (siege ? 0.43 : 0.48)), 432);
+  // 守城：上面战场 + 棋盘 + 托盘（至少 110）+ 底下 70，装不下就把棋盘再缩
+  if (siege) B = Math.min(B, H - L.top - head - 22 - 110 - 70);
   L.cell = Math.floor(B / 9);
   L.board = L.cell * 9;
   L.bx = Math.round((W - L.board) / 2);
-  L.by = L.top + 86;
+  L.by = L.top + head;
   L.trayH = Math.max(110, Math.min(L.cell * 4, H - (L.by + L.board + 22) - 96));
   // 屏幕高出来的部分：整体往下挪一点，手指够得着
   const slack = H - (L.by + L.board + 22 + L.trayH + 96);
-  if (slack > 0) { L.top += Math.round(slack * 0.45); L.by += Math.round(slack * 0.45); }
+  if (slack > 0) { const sh = Math.round(slack * (siege ? 0.3 : 0.45)); L.top += sh; L.by += sh; }
   L.trayY = L.by + L.board + 22;
   L.mini = Math.max(20, Math.round(L.cell * 0.82)); // 底下三块的格子大小
   L.lift = Math.round(L.cell * 2.1); // 拖起来浮在手指上方多高
   L.footY = L.trayY + L.trayH + 8;
-})();
+}
+setLayout('normal');
 
 // 每张画一张小画布
 const paintCanvas = [0, 1, 2].map((i) => art.render(i, P.makeCanvas(art.SIZE, art.SIZE)));
@@ -129,6 +136,7 @@ function newStage(i) {
   if (st.intro && !save.introSeen[st.intro]) { introKind = st.intro; mode = 'intro'; }
 }
 function startCommon() {
+  setLayout(g && g.siege ? 'siege' : 'normal');
   g.seedColor = save.plays % 7;
   colorAt.fill(0);
   save.plays++;
@@ -855,6 +863,7 @@ function drawFoot() {
   }
 }
 function drawFx() {
+  if (g && g.siege) drawMissiles();
   flyers.forEach((f) => {
     const a = (clock - f.t) / 0.55;
     if (f.what === 'dmg') {
@@ -1261,7 +1270,7 @@ let ghosts = []; // 被机关打掉、还没轮到它碎的格子 { k, t, ci }
 let relicPop = {}; // 机关栏图标跳一下 { id: 时刻 }
 let beams = []; // 机关栏连到棋盘的一道光 { from, to, t, col }
 let colBolts = []; // 竖着射的连弩 { col, t }
-let siegeFx = { cartX: 0, cartHit: -9, cartDead: -9, banner: null, chooseAt: 0, tip: null, lastWave: -1 };
+let siegeFx = { cartStep: 0, cartHit: -9, cartDead: -9, banner: null, chooseAt: 0, tip: null, lastWave: -1 };
 function runTimeline() {
   if (!timeline.length) return;
   const due = timeline.filter((e) => clock >= e.t);
@@ -1290,7 +1299,7 @@ function newSiege(daily) {
   startCommon();
   for (const k of g.prefilled) colorAt[k] = -1;
   timeline = []; ghosts = []; relicPop = {}; beams = []; colBolts = [];
-  siegeFx = { cartX: 0, cartHit: -9, cartDead: -9, banner: null, chooseAt: clock + (g.phase === 'choose' ? 0.2 : 0), tip: null, lastWave: -1 };
+  siegeFx = { cartStep: 0, hpShow: undefined, cartHit: -9, cartDead: -9, banner: null, chooseAt: clock + (g.phase === 'choose' ? 0.2 : 0), tip: null, lastWave: -1 }; missiles = [];
   waveBanner();
 }
 function waveBanner() {
@@ -1304,14 +1313,25 @@ function firstTimeCaption(id) {
   save.relicSeen[id] = true; persist();
   siegeFx.caption = { text: SG.RELICS[id].first, t: clock };
 }
-// 机关栏里第 n 格的中心
+// 战场：上面一条路，攻城车从上往下压；下面是城墙，机关装在城墙上，城墙下面就是棋盘（城里）
+function siegeGeo() {
+  const wallY = L.by - 46; // 城墙上沿
+  const roadTop = L.top + 92, roadBot = wallY - 42; // 车能走的范围（4 步）
+  return { wallY, roadTop, roadBot };
+}
+function cartPos() {
+  const G2 = siegeGeo();
+  return { x: W / 2, y: G2.roadTop + siegeFx.cartStep * (G2.roadBot - G2.roadTop) / (SG.ROUNDS - 1) };
+}
+// 机关栏里第 n 格的中心：嵌在城墙上，中间留给城门
 function relicSlotPos(n) {
-  const s = 40, gap = 8, tot = SG.SLOTS * s + (SG.SLOTS - 1) * gap;
-  return { x: (W - tot) / 2 + n * (s + gap) + s / 2, y: L.top + 66, s };
+  const s = 36, G2 = siegeGeo();
+  const xs = [W / 2 - 150, W / 2 - 98, W / 2 + 98, W / 2 + 150, W / 2 - 46].map((x) => Math.max(s / 2 + 4, Math.min(W - s / 2 - 4, x)));
+  return { x: xs[n], y: G2.wallY + 18, s };
 }
 function boxCenter(b) { return { x: cellX((b % 3) * 3) + L.cell * 1.5, y: cellY(Math.floor(b / 3) * 3) + L.cell * 1.5 }; }
 function lineCenter(l) { return l.axis === 'row' ? { x: L.bx + L.board / 2, y: cellY(l.idx) + L.cell / 2 } : { x: cellX(l.idx) + L.cell / 2, y: L.by + L.board / 2 }; }
-const cartLane = () => ({ x0: 40, x1: W - 58, y: L.top + 26 });
+let missiles = []; // 消除打出去的弩箭：从棋盘飞到车上 { x0, y0, t, dmg, hp }
 function juiceSiege(sev, colorsBefore) {
   const res = sev.res;
   const nRelic = res.steps.filter((x) => x.kind === 'relic').length + (res.mults || []).length;
@@ -1362,20 +1382,29 @@ function juiceSiege(sev, colorsBefore) {
     } });
     t += 0.2;
   });
-  // 最后：总伤害飞上去砸在车上
-  const lane = cartLane();
+  // 最后：从棋盘射出一支大弩箭，飞上去扎在车上；血条这时才掉
+  const hpAfter = g.hp;
   timeline.push({ t, fn: () => {
     if (res.dmg > 0) {
-      flyers.push({ what: 'dmg', s: '-' + res.dmg, x: L.bx + L.board / 2, y: L.by + L.board * 0.5, t: clock, to: { x: lane.x0 + siegeFx.cartX, y: lane.y } });
+      const from = clearStep ? lineCenter(clearStep.units[0] < 9 ? { axis: 'row', idx: clearStep.units[0] } : clearStep.units[0] < 18 ? { axis: 'col', idx: clearStep.units[0] - 9 } : { axis: 'row', idx: Math.floor((clearStep.units[0] - 18) / 3) * 3 + 1 }) : { x: W / 2, y: L.by + L.board / 2 };
+      missiles.push({ x0: from.x, y0: from.y, t: clock, dmg: res.dmg });
+      P.sound('bolt', 0.5);
       if (nRelic >= 2) say(nRelic >= 4 ? '好一串！' : '连上了');
     }
   } });
-  timeline.push({ t: t + 0.5, fn: () => {
-    if (res.dmg > 0) { siegeFx.cartHit = clock; P.sound(res.dmg >= 60 ? 'combo4' : 'place', 0.6); }
+  timeline.push({ t: t + 0.4, fn: () => {
+    if (res.dmg > 0) {
+      siegeFx.cartHit = clock; siegeFx.hpShow = hpAfter;
+      const cp = cartPos();
+      texts.push({ s: '-' + res.dmg, x: cp.x + 70, y: cp.y - 4, t: clock, size: 26 + Math.min(20, res.dmg / 10), col: COL.red, big: res.dmg >= 60 });
+      P.sound(res.dmg >= 60 ? 'combo4' : 'place', 0.6);
+      shake = Math.max(shake, res.dmg >= 60 ? 6 : 2);
+    }
     if (sev.killed) {
       siegeFx.cartDead = clock;
-      const lx = lane.x0 + siegeFx.cartX;
-      for (let n = 0; n < 14; n++) { const a = Math.random() * Math.PI * 2, sp = 100 + Math.random() * 160; fx.push({ kind: 'gear', x: lx, y: lane.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 100, t: clock, life: 0.9, s: 5 + Math.random() * 6, a: 0 }); }
+      const cp = cartPos();
+      for (let n = 0; n < 16; n++) { const a = Math.random() * Math.PI * 2, sp = 100 + Math.random() * 180; fx.push({ kind: 'gear', x: cp.x, y: cp.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 100, t: clock, life: 0.9, s: 5 + Math.random() * 7, a: 0 }); }
+      texts.push({ s: '打掉了！', x: W / 2, y: cp.y + 30, t: clock + 0.05, size: 30, col: COL.brassLight, big: true });
       P.sound('win', 0.6); flash = 0.3;
       say('打掉了！');
       siegeFx.chooseAt = clock + 0.6;
@@ -1446,76 +1475,112 @@ function relicIcon(id, x, y, s, lvl, pop) {
   }
 }
 function drawSiegeHud() {
-  const y = L.top;
-  button('map', 12, y + 48, 40, 36, '‹', { size: 26, bg: COL.wood, fn: () => { timeline = []; mode = 'map'; } });
-  // 车道：从左往右四步，右边是城门
-  const lane = cartLane();
-  ctx.fillStyle = COL.ink; rr(lane.x0 - 10, lane.y + 10, lane.x1 - lane.x0 + 20, 8, 4); ctx.fill();
-  ctx.fillStyle = '#5a4630'; rr(lane.x0 - 10, lane.y + 9, lane.x1 - lane.x0 + 20, 6, 3); ctx.fill();
-  for (let n = 0; n <= SG.ROUNDS; n++) {
-    const x = lane.x0 + ((lane.x1 - lane.x0) * n) / SG.ROUNDS;
-    ctx.fillStyle = n === SG.ROUNDS ? COL.red : COL.woodLine; ctx.fillRect(x - 1, lane.y + 6, 2, 12);
+  const G2 = siegeGeo();
+  const top = L.top;
+  // 战场底色：远山剪影
+  ctx.fillStyle = 'rgba(42,55,104,0.55)';
+  ctx.beginPath(); ctx.moveTo(0, G2.wallY); ctx.lineTo(0, top + 60); ctx.lineTo(W * 0.18, top + 26); ctx.lineTo(W * 0.32, top + 70); ctx.lineTo(W * 0.5, top + 8); ctx.lineTo(W * 0.68, top + 64); ctx.lineTo(W * 0.84, top + 30); ctx.lineTo(W, top + 72); ctx.lineTo(W, G2.wallY); ctx.closePath(); ctx.fill();
+  // 路：从远处一直通到城门，越近越宽
+  ctx.fillStyle = '#4d3c2a';
+  ctx.beginPath(); ctx.moveTo(W / 2 - 22, top + 6); ctx.lineTo(W / 2 + 22, top + 6); ctx.lineTo(W / 2 + 62, G2.wallY + 4); ctx.lineTo(W / 2 - 62, G2.wallY + 4); ctx.closePath(); ctx.fill();
+  // 路上的 4 个站点（车一轮走一步）
+  for (let k = 0; k < SG.ROUNDS; k++) {
+    const y = G2.roadTop + k * (G2.roadBot - G2.roadTop) / (SG.ROUNDS - 1);
+    ctx.fillStyle = k < siegeFx.cartStep ? 'rgba(0,0,0,0.25)' : 'rgba(255,240,200,0.18)';
+    ctx.fillRect(W / 2 - 30 - k * 6, y + 26, 60 + k * 12, 3);
   }
-  // 城门
-  const gx = lane.x1 + 14;
-  ctx.fillStyle = COL.ink; rr(gx - 16, lane.y - 16, 32, 36, 4); ctx.fill();
-  ctx.fillStyle = '#6b5a44'; rr(gx - 14, lane.y - 14, 28, 32, 3); ctx.fill();
-  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(gx, lane.y + 18, 8, Math.PI, 0); ctx.fill();
-  ctx.fillStyle = COL.red; ctx.fillRect(gx - 14, lane.y - 18, 28, 5);
-  // 车：每轮走一步，平滑地挪过去
-  const target = ((g.round - 1) / SG.ROUNDS) * (lane.x1 - lane.x0);
-  if (siegeFx.lastWave !== g.wave) { siegeFx.lastWave = g.wave; siegeFx.cartX = 0; waveBanner(); }
-  siegeFx.cartX += (target - siegeFx.cartX) * Math.min(1, 0.1);
+  // 车：一轮走一步，平滑地挪
+  if (siegeFx.lastWave !== g.wave) { siegeFx.lastWave = g.wave; siegeFx.cartStep = 0; siegeFx.hpShow = g.hp; waveBanner(); }
+  const target = g.round - 1;
+  siegeFx.cartStep += (target - siegeFx.cartStep) * 0.12;
+  if (siegeFx.hpShow === undefined || siegeFx.hpShow > g.hpMax) siegeFx.hpShow = g.hp;
   const dead = g.phase !== 'play' || clock - siegeFx.cartDead < 0.6;
+  const cp = cartPos();
   if (!dead) {
     const hitA = clock - siegeFx.cartHit;
-    const jig = hitA < 0.25 ? Math.sin(hitA * 60) * 4 : 0;
-    const cx = lane.x0 + siegeFx.cartX + jig, cy = lane.y;
-    drawCart(cx, cy, g.waveDef.boss, hitA < 0.12);
-    // 血条
-    const bw = 64, frac = g.hp / g.hpMax;
-    ctx.fillStyle = COL.ink; rr(cx - bw / 2 - 2, cy - 30, bw + 4, 11, 5); ctx.fill();
-    ctx.fillStyle = COL.woodDark; rr(cx - bw / 2, cy - 29, bw, 8, 4); ctx.fill();
-    ctx.fillStyle = frac < 0.3 ? COL.jade : COL.red; rr(cx - bw / 2, cy - 29, Math.max(4, bw * frac), 8, 4); ctx.fill();
-    text(String(g.hp), cx + bw / 2 + 16, cy - 25, 13, COL.text);
+    const jig = hitA < 0.3 ? Math.sin(hitA * 70) * 5 : 0;
+    drawCart(cp.x + jig, cp.y, g.waveDef.boss, hitA < 0.12);
+    // 大血条：固定在顶上第二行，整条宽，写着车名和剩多少血
+    const bw = W - 120, bh = 18, bx = 78, by = L.top + 36;
+    const frac = Math.max(0, siegeFx.hpShow / g.hpMax);
+    ctx.fillStyle = COL.ink; rr(bx - 2, by - 2, bw + 4, bh + 4, 8); ctx.fill();
+    ctx.fillStyle = '#2a1414'; rr(bx, by, bw, bh, 7); ctx.fill();
+    ctx.fillStyle = frac < 0.3 ? '#ff7a4a' : COL.red; rr(bx, by, Math.max(6, bw * frac), bh, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(bx + 4, by + 2, Math.max(0, bw * frac - 8), 3);
+    text('血 ' + Math.max(0, Math.round(siegeFx.hpShow)) + ' / ' + g.hpMax, bx + bw / 2, by + bh / 2 + 1, 14, COL.text);
+    text(g.waveDef.name, bx - 8, by + bh / 2, 16, g.waveDef.boss ? COL.red : COL.text, 'right');
+    // 一根细线把血条和车连起来，看得出是这辆车的血
+    ctx.strokeStyle = 'rgba(226,85,59,0.35)'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]);
+    ctx.beginPath(); ctx.moveTo(cp.x, by + bh + 2); ctx.lineTo(cp.x, cp.y - 42); ctx.stroke(); ctx.setLineDash([]);
   }
-  // 右边：第几波、车名（上弦时换成上弦倍率）
-  text((g.daily ? '每日 · ' : '') + '第 ' + (g.wave + 1) + ' 波', W - 12, y + 50, 13, g.daily ? COL.jade : COL.dim, 'right', 'normal');
-  if (g.charge > 1) text('下次 ×' + g.charge, W - 12, y + 67, 13, COL.brassLight, 'right');
-  else text(g.waveDef.name, W - 12, y + 67, 13, g.waveDef.boss ? COL.red : COL.text, 'right');
-  // 机关栏
+  // 城墙：砖色一条，带垛口；中间城门
+  const wy = G2.wallY;
+  ctx.fillStyle = COL.ink; ctx.fillRect(0, wy - 2, W, 40);
+  ctx.fillStyle = '#6b5a48'; ctx.fillRect(0, wy, W, 36);
+  for (let x = 0; x < W; x += 26) { ctx.fillStyle = '#7d6a55'; ctx.fillRect(x, wy - 10, 16, 12); ctx.fillStyle = COL.ink; ctx.fillRect(x, wy - 12, 16, 2); }
+  ctx.fillStyle = 'rgba(0,0,0,0.18)'; for (let x = 0; x < W; x += 20) ctx.fillRect(x, wy + 17, 10, 2);
+  // 城门（车撞的就是这里）
+  const near = !dead && g.round >= SG.ROUNDS;
+  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(W / 2, wy + 36, 24, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = near ? (Math.sin(clock * 12) > 0 ? COL.red : '#5a2a20') : '#3a2a1c'; ctx.beginPath(); ctx.arc(W / 2, wy + 36, 20, Math.PI, 0); ctx.fill();
+  // 机关栏：嵌在城墙上
   for (let n = 0; n < SG.SLOTS; n++) {
     const p = relicSlotPos(n);
     const r = g.relics[n];
     if (!r) {
-      ctx.strokeStyle = COL.woodLine; ctx.lineWidth = 2; ctx.setLineDash([3, 4]);
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.s / 2 - 2, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(p.x, p.y, p.s / 2 - 2, 0, Math.PI * 2); ctx.fill();
       continue;
     }
     const pa = relicPop[r.id] ? Math.max(0, 0.3 - (clock - relicPop[r.id])) / 0.3 : 0;
     relicIcon(r.id, p.x, p.y, p.s, r.lv, pa);
     buttons.push({ id: 'relic' + n, x: p.x - p.s / 2, y: p.y - p.s / 2, w: p.s, h: p.s, fn: () => { siegeFx.tip = { id: r.id, t: clock }; } });
   }
+  // 左上：返回、第几波；右上：还有几步撞门
+  button('map', 10, top - 4, 40, 32, '‹', { size: 24, bg: COL.wood, fn: () => { timeline = []; mode = 'map'; } });
+  text((g.daily ? '每日 · ' : '') + '第 ' + (g.wave + 1) + ' 波', 58, top + 12, 15, g.daily ? COL.jade : COL.text, 'left');
+  if (!dead) {
+    const left = SG.ROUNDS - g.round + 1;
+    const urgent = left <= 1;
+    text(urgent ? '下一轮就撞门！' : '还有 ' + left + ' 轮撞门', W - 12, top + 12, urgent ? 16 + Math.sin(clock * 10) : 15, urgent ? COL.red : COL.text, 'right');
+  }
+  if (g.charge > 1) text('下次打车 ×' + g.charge, W - 12, top + 70, 13, COL.brassLight, 'right');
   // 点机关看一行字
   if (siegeFx.tip && clock - siegeFx.tip.t < 2) {
     const R = SG.RELICS[siegeFx.tip.id], L2 = g.lvOf(siegeFx.tip.id);
     const s2 = R.name + '：' + R.desc[Math.max(0, L2 - 1)];
-    ctx.font = 'bold 15px sans-serif';
-    const tw = ctx.measureText(s2).width + 24;
-    ctx.fillStyle = COL.steam; rr((W - tw) / 2, L.top + 90, tw, 30, 8); ctx.fill();
-    ctx.font = 'bold 15px "PingFang SC", sans-serif'; ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(s2, W / 2, L.top + 105);
+    ctx.font = 'bold 15px "PingFang SC", sans-serif';
+    const tw = Math.min(W - 16, ctx.measureText(s2).width + 24);
+    ctx.fillStyle = COL.steam; rr((W - tw) / 2, wy - 40, tw, 30, 8); ctx.fill();
+    ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(s2, W / 2, wy - 25, W - 30);
   }
-  // 换波横幅（头目一行规矩）
+  // 换波横幅
   const bn = siegeFx.banner;
-  if (bn && clock - bn.t < 2.2 && g.phase === 'play') {
-    const a = Math.min(1, (clock - bn.t) * 4) * Math.min(1, (2.2 - (clock - bn.t)) * 3);
+  if (bn && clock - bn.t < 2.4 && g.phase === 'play') {
+    const a = Math.min(1, (clock - bn.t) * 4) * Math.min(1, (2.4 - (clock - bn.t)) * 3);
     ctx.globalAlpha = a;
-    ctx.fillStyle = COL.shade + '0.75)'; ctx.fillRect(0, L.by + L.board * 0.36, W, bn.sub ? 76 : 50);
+    ctx.fillStyle = COL.shade + '0.78)'; ctx.fillRect(0, L.by + L.board * 0.36, W, bn.sub ? 76 : 50);
     text(bn.text, W / 2, L.by + L.board * 0.36 + 25, 26, bn.boss ? COL.red : COL.brassLight);
     if (bn.sub) text(bn.sub, W / 2, L.by + L.board * 0.36 + 56, 16, COL.text, 'center', 'normal');
     ctx.globalAlpha = 1;
   }
+}
+// 弩箭：从消掉的那一排飞到车上（画在最上层）
+function drawMissiles() {
+  missiles = missiles.filter((m) => clock - m.t < 0.4);
+  const cp = cartPos();
+  missiles.forEach((m) => {
+    const a = (clock - m.t) / 0.4, e = a * a;
+    const x = m.x0 + (cp.x - m.x0) * e, y = m.y0 + (cp.y + 10 - m.y0) * e;
+    const ang = Math.atan2(cp.y - m.y0, cp.x - m.x0);
+    const len = 46 + Math.min(40, m.dmg / 4);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+    ctx.fillStyle = 'rgba(255,240,200,0.5)'; ctx.fillRect(-len - 30, -3, 30, 6);
+    ctx.fillStyle = COL.brassLight; ctx.fillRect(-len, -2.5, len, 5);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-6, -8); ctx.lineTo(-6, 8); ctx.fill();
+    ctx.restore();
+    text(String(m.dmg), x + 18, y - 14, 18, COL.brassLight);
+  });
 }
 // 机关第一次发动时的那句说明（压在棋盘下沿，2.6 秒）
 function drawCaption() {
@@ -1531,18 +1596,27 @@ function drawCaption() {
   ctx.fillText(cp.text, W / 2, y + 21, W - 40);
   ctx.globalAlpha = 1;
 }
-// 攻城车：木车身 + 两个轮子 + 前面一根撞木；头目是红顶
+// 攻城车（正面朝下，冲着城门来）：木架子 + 顶棚 + 往下伸的撞木 + 四个轮子；头目是红顶
 function drawCart(x, y, boss, white) {
-  ctx.fillStyle = COL.ink; rr(x - 22, y - 14, 44, 24, 4); ctx.fill();
-  ctx.fillStyle = white ? '#fff' : boss ? '#8f3b2e' : '#7a5a36'; rr(x - 20, y - 12, 40, 20, 3); ctx.fill();
-  ctx.fillStyle = white ? '#fff' : '#a9824f'; ctx.fillRect(x - 18, y - 10, 36, 4);
-  ctx.fillStyle = COL.ink; ctx.fillRect(x + 18, y - 4, 16, 6);
-  ctx.fillStyle = COL.copper; ctx.fillRect(x + 30, y - 6, 6, 10);
-  if (boss) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.moveTo(x - 20, y - 12); ctx.lineTo(x, y - 24); ctx.lineTo(x + 20, y - 12); ctx.fill(); }
-  for (const wx of [x - 12, x + 12]) {
-    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(wx, y + 10, 7, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = COL.copper; ctx.beginPath(); ctx.arc(wx, y + 10, 4.5, 0, Math.PI * 2); ctx.fill();
+  const wood = white ? '#fff' : '#8a6438', dark = white ? '#fff' : '#5e4226';
+  // 轮子
+  for (const [dx, dy] of [[-34, -16], [34, -16], [-34, 14], [34, 14]]) {
+    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x + dx, y + dy, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = COL.copper; ctx.beginPath(); ctx.arc(x + dx, y + dy, 5.5, 0, Math.PI * 2); ctx.fill();
   }
+  // 车身
+  ctx.fillStyle = COL.ink; rr(x - 30, y - 26, 60, 52, 6); ctx.fill();
+  ctx.fillStyle = wood; rr(x - 28, y - 24, 56, 48, 5); ctx.fill();
+  ctx.fillStyle = dark; for (let k = -1; k <= 1; k++) ctx.fillRect(x - 28, y + k * 14 - 1, 56, 3);
+  // 顶棚
+  ctx.fillStyle = white ? '#fff' : boss ? '#b8322a' : '#6b4a2a';
+  ctx.beginPath(); ctx.moveTo(x - 34, y - 20); ctx.lineTo(x, y - 40); ctx.lineTo(x + 34, y - 20); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = COL.ink; ctx.lineWidth = 2; ctx.stroke();
+  // 撞木：往下伸，铜头
+  ctx.fillStyle = COL.ink; ctx.fillRect(x - 7, y + 20, 14, 26);
+  ctx.fillStyle = dark; ctx.fillRect(x - 5, y + 20, 10, 24);
+  ctx.fillStyle = COL.brassLight; rr(x - 9, y + 42, 18, 10, 3); ctx.fill();
+  if (boss) { ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(x, y - 30, 4, 0, Math.PI * 2); ctx.fill(); }
 }
 // 三选一：三张横卡竖着排（拇指够得着）
 function drawSiegeChoose() {

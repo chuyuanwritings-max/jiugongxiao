@@ -3,7 +3,7 @@ const PG = require('../js/petgame.js');
 const LV = require('../js/petlevels.js');
 const N = +process.argv[2] || 60;
 // 打到这一关时，玩家的宠物大概几级（按经验节奏估）
-const lvAt = (i) => (i < 4 ? 1 : i < 8 ? 2 : i < 12 ? 3 : i < 16 ? 4 : 5);
+const lvAt = (i) => (i < 4 ? 1 : i < 8 ? 2 : i < 12 ? 3 : i < 16 ? 4 : i < 22 ? 5 : i < 26 ? 6 : 7);
 function run(stage, team, skill) {
   let won = 0, moves = 0, acts = 0;
   for (let s = 1; s <= N; s++) {

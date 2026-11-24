@@ -158,22 +158,34 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(1600);
   st = await page.evaluate(() => ({ won: window.__game.g.won, team: window.__game.g.team.map((t) => t.id), rock: window.__game.g.got.rock}));
   ok(st.won && st.team[0] === 'baozhu' && st.rock >= 3, '第 11 关：借来的爆竹鼠啃碎 3 块铁石过关');
-  // 第 12 关：铁甲怪——先不带宠物打 25 手：你消掉那排只弹一下锅，一只都抓不走
+  // 第 12 关：甲壳怪——不带宠物也打得死：第一次消掉它掉一层甲，再消一次抓走
   await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 11, activePet: 'jinchique' }); G.newPetLevel(11); G.g.team = []; });
   await page.waitForTimeout(300);
   await closeIntro();
-  await petPlay(25);
-  await shot('12b_第12关_铁甲怪_不带宠物');
-  st = await page.evaluate(() => ({ armor: window.__game.g.board.filter((v) => v === 6).length, got: window.__game.g.got.monster || 0 }));
-  ok(st.armor === 2 && st.got === 0, '第 12 关：不带宠物时铁甲怪抓不走（锅只弹一下，2 只都还在）');
-  // 再带金翅雀打：它扫过去，锅碎了，墨怪被抓
-  await page.evaluate(() => { const G = window.__game; G.newPetLevel(11); });
+  const cracked = await petPlay(40, () => window.__game.g.monStats.cracks > 0);
+  await page.waitForTimeout(200);
+  await shot('12b_第12关_甲壳怪掉一层');
+  await petPlay(60);
+  await page.waitForTimeout(1600);
+  st = await page.evaluate(() => ({ won: window.__game.g.won, cracks: window.__game.g.monStats.cracks }));
+  ok(cracked && st.won && st.cracks >= 2, '第 12 关：不带宠物，消一次甲壳怪掉一层甲（掉了 ' + st.cracks + ' 层），再消抓走，过关');
+  // 第 24 关：墨苔怪 + 馋嘴怪（一边长墨、一边啃块）
+  await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 24, activePet: 'jinchique', cutSeen: Object.assign({ chapter1: 1, chapter2: 1 }, G.save.cutSeen) }); G.newPetLevel(23); G.g.team = []; });
+  await page.waitForTimeout(300);
+  await closeIntro();
+  await petPlay(40, () => { const s = window.__game.g.monStats; return s.eats > 0 && s.moss > 0; });
+  await page.waitForTimeout(200);
+  await shot('12d_第24关_墨苔馋嘴');
+  st = await page.evaluate(() => window.__game.g.monStats);
+  ok(st.eats > 0 && st.moss > 0, '第 24 关：馋嘴怪啃掉 ' + st.eats + ' 块、墨苔怪长出 ' + st.moss + ' 块墨');
+  // 第 27 关：分身怪——打一下裂成两只小墨怪，目标「抓光」
+  await page.evaluate(() => { const G = window.__game; G.newPetLevel(26); G.g.team = []; });
   await page.waitForTimeout(300);
   await closeIntro();
   await petPlay(80);
   await page.waitForTimeout(1600);
-  st = await page.evaluate(() => ({ won: window.__game.g.won, got: window.__game.g.got.monster || 0 }));
-  ok(st.won && st.got >= 2, '第 12 关：带金翅雀出战，扫碎铁锅、抓走铁甲怪过关');
+  st = await page.evaluate(() => ({ won: window.__game.g.won, spawns: window.__game.g.monStats.spawns, left: window.__game.g.monLeft }));
+  ok(st.won && st.spawns >= 2 && st.left === 0, '第 27 关：分身怪裂出 ' + st.spawns + ' 只小墨怪，全部抓光过关');
   // 火麒麟：放块攒能量，吐一颗火球进托盘
   await page.evaluate(() => { const G = window.__game; G.save.pets.qilin = { lv: 1, exp: 0 }; if (!G.save.petOrder.includes('qilin')) G.save.petOrder.push('qilin'); G.setSave({ petStage: 20, activePet: 'qilin' }); G.newPetLevel(19); });
   await page.waitForTimeout(300);
@@ -181,9 +193,10 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   const gotFire = await petPlay(60, () => window.__game.g.hand.some((p) => p && p.special === 'fire'));
   await page.waitForTimeout(400);
   await shot('12c_第20关_火块和吐墨');
-  st = await page.evaluate(() => ({ ink: (window.__game.g.spits || 0) > 0 }));
+  await petPlay(30, () => window.__game.g.monStats.eats > 0);
+  st = await page.evaluate(() => ({ ink: window.__game.g.monStats.eats > 0 }));
   ok(gotFire, '火麒麟出战：攒满往托盘里送一颗火块');
-  ok(st.ink, '第 20 关：大墨怪会往盘上吐墨块');
+  ok(st.ink, '第 20 关：头目大馋嘴会啃掉身边的块（先亮牙印）');
   await page.evaluate(() => { const G = window.__game; G.g.over = true; G.g.reason = 'stuck'; G.endGame(); });
   await page.waitForTimeout(700);
   await click('tomap');

@@ -2,17 +2,27 @@
 // 拖块、凑满一排或一个大格就消，这个不变。多出来的：
 //   ① 方块的颜色有用了：带谁出战，就多发谁颜色的方块；消掉谁的颜色，就给谁多充能。
 //   ② 宠物脚下一条能量，攒满了它自己出手（啄 / 啃 / 吐丝补满），或者吐一颗火球给你亲手放。没地方下手就先憋着，不空放。
-//   ③ 墨怪：小墨怪（消掉它那一排就抓到）、铁甲怪（扣着铁锅，消了只掀掉锅，宠物碰一下才抓走）、跳跳怪（每 3 块跳一格，不出它的大格）、
-//      大墨怪（头目，占 2×2，头上几颗心；会吐墨块、半血跳走、吐完晕一下，晕的时候打中掉 2 颗心）。抓到的收进葫芦，局外炼丹喂宠物。
+//   ③ 墨怪（0.7 起一大家子，图鉴见 ../九宫消_墨怪与头目图鉴_20261124.md）：盘面上都记成 3，种类、甲、颜色、倒数记在 g.mon[k]。
+//      小墨怪、甲壳怪（几层甲，每消一次掉一层）、跳跳怪、馋嘴怪（啃你的块）、挑色怪（那排里要有它的颜色）、墨苔怪（长墨块）、
+//      炸弹怪（倒数到 0 溅墨）、分身怪（打一下分成两只小墨怪）。宠物碰一下伤害加倍、不挑颜色、不让它分身。
+//      头目占 2×2，头上几颗心，半血跳走：大墨怪（吐墨）、大馋嘴（啃块）、分身王（挨一下蹦一只小墨怪）。抓到的收进葫芦，局外炼丹喂宠物。
 //   ④ 铁石（只有宠物打得碎，有的两层）、机关匣、宝石、泡泡；进化关：用宠物的颜色把正中间的大格一格格点亮。
 const C = require('./config.js');
 const core = require('./core.js');
 const { UNITS } = core;
 
-// 盘面的值：0 空 1 块 2 机关匣 3 小墨怪 4 大墨怪 5 铁石 6 铁甲怪 7 跳跳怪
+// 盘面的值：0 空 1 块 2 机关匣 3 墨怪（各种，见 g.mon）4 头目 5 铁石
 // 颜色 = C.blockColors 的序号：0 黄铜金 1 朱砂红 2 青铜绿 3 青金蓝 4 紫晶 5 赤铜 6 水银青；-1 旧铁灰（预放的块）；-2 墨块（大墨怪吐的）
 const COLOR_NAME = ['金色', '红色', '绿色', '蓝色', '紫色', '橙色', '青色'];
-const IS_MON = (v) => v === 3 || v === 6 || v === 7;
+const IS_MON = (v) => v === 3;
+// 墨怪的种类。cd = 隔几手动一次手；hp = 甲壳怪的甲有几层
+const MON = {
+  ink: { name: '小墨怪' }, shell: { name: '甲壳怪' }, jump: { name: '跳跳怪' }, eat: { name: '馋嘴怪', cd: 3 },
+  color: { name: '挑色怪' }, moss: { name: '墨苔怪', cd: 3 }, bomb: { name: '炸弹怪', cd: 9 }, split: { name: '分身怪' },
+};
+const MON_CHAR = { m: 'ink', A: 'shell', B: 'shell', C: 'shell', J: 'jump', E: 'eat', G: 'moss', T: 'bomb', S: 'split' };
+const newMon = (t, extra) => Object.assign({ t, hp: 0, col: -1, cd: MON[t].cd || 0, tgt: null }, extra || {});
+const near8 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const a = r + dr, b = c + dc; if (a >= 0 && a < 9 && b >= 0 && b < 9) out.push(a * 9 + b); } return out; };
 const EATABLE = (v) => v === 1 || IS_MON(v);
 
 // 宠物：从弱鸡慢慢变强（energy(lv) 攒满要几格，越练越少；power(lv) 一次能干多少，越练越多）
@@ -59,15 +69,18 @@ function createPetGame(opts) {
     team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: 0 })),
     bigHp: 0, bigCells: [], boss: null, giftPending: 0,
     jumpPlan: {}, // 跳跳怪：下一手要跳到哪（先探头）
+    mon: new Array(81).fill(null), // 墨怪的种类和状态
+    spawnQ: [], // 分身怪 / 分身王：这一手打完以后要蹦出来的小墨怪（从哪格旁边）
+    monStats: { cracks: 0, eats: 0, moss: 0, bombs: 0, spawns: 0, colorMiss: 0 }, // 这一关墨怪干了几回（测试和以后的统计用）
     evLit: new Set(), evColor: st.evolve ? PETS[st.evolve.pet].color : null,
     caught: 0, petActsTotal: {},
   });
-  // 盘面字符：m 小墨怪；A 铁甲怪；J 跳跳怪；K 大墨怪（2×2）；R 铁石；Q 两层铁石
+  // 盘面字符：m 小墨怪；A/B/C 甲壳怪 1/2/3 层；J 跳跳怪；E 馋嘴怪；G 墨苔怪；T 炸弹怪；S 分身怪；0–6 挑色怪（那种颜色）；
+  //           K 头目（2×2）；R 铁石；Q 两层铁石
   st.board.forEach((row, r) => row.split('').forEach((ch, c) => {
     const k = r * 9 + c;
-    if (ch === 'm') g.board[k] = 3;
-    else if (ch === 'A') g.board[k] = 6;
-    else if (ch === 'J') g.board[k] = 7;
+    if (MON_CHAR[ch]) { g.board[k] = 3; g.mon[k] = newMon(MON_CHAR[ch], { hp: ch === 'A' ? 1 : ch === 'B' ? 2 : ch === 'C' ? 3 : 0 }); }
+    else if (ch >= '0' && ch <= '6') { g.board[k] = 3; g.mon[k] = newMon('color', { col: +ch }); }
     else if (ch === 'K') { g.board[k] = 4; g.bigCells.push(k); }
     else if (ch === 'R') { g.board[k] = 5; g.rockHp[k] = 1; }
     else if (ch === 'Q') { g.board[k] = 5; g.rockHp[k] = 2; }
@@ -75,10 +88,14 @@ function createPetGame(opts) {
   }));
   if (g.bigCells.length) {
     g.bigHp = st.bigHp || 3;
-    g.boss = { hp: g.bigHp, max: g.bigHp, phase: 1, count: 0, nextSpit: null, jumpTo: null, stun: false, angry: !!st.bossAngry };
+    g.boss = { kind: st.bossKind || 'spit', hp: g.bigHp, max: g.bigHp, phase: 1, count: 0, nextSpit: null, eatPlan: null, jumpTo: null, stun: false, angry: !!st.bossAngry };
   }
+  if (g.boss && g.boss.kind === 'split') g.boss.stun = !g.mon.some(Boolean);
+  // 挑色怪的颜色一定发得出来
+  const monCols = [...new Set(g.mon.filter((m) => m && m.col >= 0).map((m) => m.col))]; // 不改关卡表本身
   // 发块的颜色：出战宠物的颜色多发（×2.5），这一关的颜色表里没有它的颜色就自动加上；进化关只发它的颜色和旧铁、蓝
   const palette = (st.colors || [0, 1, 2, 3]).slice();
+  monCols.forEach((ci) => { if (!palette.includes(ci)) palette.push(ci); });
   if (!st.evolve) g.team.forEach((p) => { if (!palette.includes(petDef(p).color)) palette.push(petDef(p).color); });
   g.pickColor = () => {
     const ws = palette.map((ci) => ({ ci, w: g.team.some((p) => petDef(p).color === ci) ? 2.5 : 1 }));
@@ -105,15 +122,27 @@ function createPetGame(opts) {
   }
   g.handColor = g.hand.map(() => g.pickColor());
 
-  // 清掉一批格子。byPet：宠物下的手（铁甲怪只有宠物抓得走；你消掉它那排只是把锅掀了）
-  function clearCells(b, cells, ev, byPet) {
+  // 墨怪挨一下：抓到了返回 true。byPet：宠物下的手（伤害加倍、不挑颜色、不分身）；colorOk(k, col)：消掉的那一排里有没有这种颜色
+  function hitMon(k, ev, byPet, colorOk) {
+    const m = g.mon[k];
+    if (!m) return true;
+    if (m.t === 'shell' && m.hp > 0) {
+      const dmg = byPet ? 2 : 1;
+      if (m.hp >= dmg) { m.hp -= dmg; g.monStats.cracks++; (ev.shellCrack = ev.shellCrack || []).push({ k, left: m.hp, n: dmg }); return false; }
+    }
+    if (m.t === 'color' && !byPet && !(colorOk && colorOk(k, m.col))) { g.monStats.colorMiss++; (ev.colorMiss = ev.colorMiss || []).push(k); return false; }
+    if (m.t === 'split' && !byPet) g.spawnQ.push({ k, n: 2, from: 'split' });
+    return true;
+  }
+  // 清掉一批格子
+  function clearCells(b, cells, ev, byPet, colorOk) {
     for (const k of cells) {
       const v = b[k];
       if (v === 0 || v === 2 || v === 4 || v === 5) continue;
-      // 铁甲怪：你消掉它那一排，锅「当」地弹一下，它缩头，抓不走；宠物碰它一下，锅碎了，变回小墨怪，再消就抓到
-      if (v === 6 && !byPet) { (ev.armorBounce = ev.armorBounce || []).push(k); continue; }
-      if (v === 6 && byPet) { b[k] = 3; (ev.armorBreak = ev.armorBreak || []).push(k); continue; }
-      if (IS_MON(v)) { if ('monster' in g.got) g.got.monster++; g.caught++; ev.collected.push({ k, what: 'monster' }); delete g.jumpPlan[k]; }
+      if (IS_MON(v)) {
+        if (!hitMon(k, ev, byPet, colorOk)) continue;
+        if ('monster' in g.got) g.got.monster++; g.caught++; ev.collected.push({ k, what: 'monster', t: g.mon[k] ? g.mon[k].t : 'ink' }); delete g.jumpPlan[k]; g.mon[k] = null;
+      }
       if (g.gem[k]) { const id = core.GEMS[g.gem[k]].id; if (id in g.got) { g.got[id]++; ev.collected.push({ k, what: id }); } g.gem[k] = 0; }
       if (g.bubble[k]) { g.bubble[k] = 0; if ('bubble' in g.got) { g.got.bubble++; ev.collected.push({ k, what: 'bubble' }); } }
       b[k] = 0;
@@ -127,6 +156,7 @@ function createPetGame(opts) {
       g.bigHp = Math.max(0, g.bigHp - dmg);
       g.boss.hp = g.bigHp;
       ev.bigHits.push({ k: g.bigCells[0], dmg });
+      if (g.boss.kind === 'split' && g.bigHp > 0) g.spawnQ.push({ k: g.bigCells[0], n: 1, from: 'boss' }); // 分身王：挨一下蹦一只小墨怪
       if (g.bigHp === 0) {
         g.bigCells.forEach((k) => (b[k] = 0));
         g.caught += 3;
@@ -142,8 +172,10 @@ function createPetGame(opts) {
   // 宠物挑地方：越满越好；铁石（铁石关）、铁甲怪、跳跳怪、大墨怪加分
   const lineScore = (b, cells) => fillCount(b, cells)
     + (rockLeft() ? cells.filter((k) => b[k] === 5).length * 5 : 0)
-    + cells.filter((k) => b[k] === 6).length * 3 + cells.filter((k) => b[k] === 7).length * 2
+    + cells.reduce((a, k) => a + (b[k] === 3 && g.mon[k] ? monWeight(g.mon[k]) : 0), 0)
     + (g.bigHp > 0 && cells.some((k) => b[k] === 4) ? 4 : 0);
+  // 宠物挑地方时，各种墨怪值多少：会还手的、甲厚的、快爆的先打
+  function monWeight(m) { return m.t === 'shell' ? 2 + m.hp : m.t === 'bomb' ? (m.cd <= 3 ? 6 : 3) : m.t === 'eat' || m.t === 'moss' ? 3 : m.t === 'color' ? 3 : m.t === 'jump' ? 2 : 1; }
   function breakRocks(b, cells, ev) {
     for (const k of cells) {
       if (b[k] !== 5) continue;
@@ -155,7 +187,7 @@ function createPetGame(opts) {
   }
   // 一排 / 一个大格里先啃哪几格：铁石 > 铁甲怪 > 跳跳怪 > 小墨怪 > 带宝石的 > 普通块
   function pickBites(b, cells, n) {
-    const pri = (k) => (b[k] === 5 ? (rockLeft() ? 5 : 0.5) : b[k] === 6 ? 4 : b[k] === 7 ? 3.5 : b[k] === 3 ? 3 : g.gem[k] ? 2 : b[k] === 1 ? 1 : 0);
+    const pri = (k) => (b[k] === 5 ? (rockLeft() ? 5 : 0.5) : b[k] === 3 ? 3 + (g.mon[k] ? monWeight(g.mon[k]) / 10 : 0) : g.gem[k] ? 2 : b[k] === 1 ? 1 : 0);
     return cells.filter((k) => pri(k) > 0).sort((x, y) => pri(y) - pri(x)).slice(0, n);
   }
   // 这只宠物现在能下手的地方（按好坏排）；空 = 没地方下手，先憋着
@@ -193,7 +225,6 @@ function createPetGame(opts) {
       breakRocks(b, eat, ev);
       act.cells.push(...eat.filter((k) => EATABLE(b[k]) || (ev.rocks || []).includes(k) || (ev.rockCrack || []).includes(k)));
       clearCells(b, eat.filter((k) => EATABLE(b[k])), ev, true);
-      eat.filter((k) => b[k] === 3 && (ev.armorBreak || []).includes(k)).forEach((k) => { if (!act.cells.includes(k)) act.cells.push(k); });
     };
     if (d.act === 'row') {
       for (const L of list.slice(0, d.lines || 1)) { bite(lineCells(L.axis, L.i)); act.lines.push({ axis: L.axis, idx: L.i }); }
@@ -221,31 +252,72 @@ function createPetGame(opts) {
     for (const t of list) {
       const b2 = g.board.slice();
       const dummy = { collected: [], bigHits: [] };
-      const save = { got: JSON.stringify(g.got), bigHp: g.bigHp, rockHp: g.rockHp.slice(), color: g.color.slice(), gift: g.giftPending, caught: g.caught };
+      const save = { got: JSON.stringify(g.got), bigHp: g.bigHp, rockHp: g.rockHp.slice(), color: g.color.slice(), gift: g.giftPending, caught: g.caught, mon: JSON.stringify(g.mon), spawn: g.spawnQ.length };
       petAct(b2, p, dummy, [t]);
       const ok = g.hand.some((pc) => pc && core.anyPlacement(b2, pc));
-      g.got = JSON.parse(save.got); g.bigHp = save.bigHp; if (g.boss) g.boss.hp = save.bigHp; g.rockHp = save.rockHp; g.color = save.color; g.giftPending = save.gift; g.caught = save.caught;
+      g.got = JSON.parse(save.got); g.bigHp = save.bigHp; if (g.boss) g.boss.hp = save.bigHp; g.rockHp = save.rockHp; g.color = save.color; g.giftPending = save.gift; g.caught = save.caught; g.mon = JSON.parse(save.mon); g.spawnQ.length = save.spawn;
       if (ok) return [t];
     }
     return null;
   }
 
   // ---------- 墨怪的回合（每放一块之后） ----------
+  // 一块方块所在的一排、一竖、一大格加起来有多满（馋嘴专挑最满的啃，最气人）
+  const crowd = (b, k) => { const r = Math.floor(k / 9), c = k % 9; return [UNITS[r], UNITS[9 + c], UNITS[18 + core.boxOf(r, c)]].reduce((a, u) => a + u.filter((x) => b[x]).length, 0); };
+  const pick = (arr) => arr[Math.floor(g.rand() * arr.length)];
+  const inkAt = (b, k) => { b[k] = 1; g.color[k] = -2; g.gem[k] = 0; };
+  function moveMon(b, from, to) { b[to] = 3; b[from] = 0; g.mon[to] = g.mon[from]; g.mon[from] = null; }
+  // 分身：在 k 旁边的空格蹦出 n 只小墨怪（先找挨着的，再找同一个大格，再随便）
+  function spawnAround(b, k, n, ev) {
+    const pools = [near8(k).filter((x) => b[x] === 0), UNITS[18 + boxOfK(k)].filter((x) => b[x] === 0), [...Array(81).keys()].filter((x) => b[x] === 0)];
+    for (let i = 0; i < n; i++) {
+      const pool = pools.map((pl) => pl.filter((x) => b[x] === 0)).find((pl) => pl.length);
+      if (!pool) return;
+      const to = pick(pool);
+      b[to] = 3; g.mon[to] = newMon('ink');
+      (ev.spawns = ev.spawns || []).push({ from: k, to }); g.monStats.spawns++;
+    }
+  }
   function monsterTurn(b, ev) {
     // 跳跳怪：上一手探过头的，这一手跳过去；每 3 块探一次头
     for (const from of Object.keys(g.jumpPlan).map(Number)) {
       const to = g.jumpPlan[from];
       delete g.jumpPlan[from];
-      if (b[from] === 7 && b[to] === 0) { b[to] = 7; b[from] = 0; (ev.jumps = ev.jumps || []).push({ from, to }); }
+      if (b[from] === 3 && g.mon[from] && g.mon[from].t === 'jump' && b[to] === 0) { moveMon(b, from, to); (ev.jumps = ev.jumps || []).push({ from, to }); }
     }
     if (g.moves % 3 === 2) {
       for (let k = 0; k < 81; k++) {
-        if (b[k] !== 7) continue;
-        const bx = boxOfK(k), empty = UNITS[18 + bx].filter((x) => b[x] === 0 && !Object.values(g.jumpPlan).includes(x));
-        if (empty.length) g.jumpPlan[k] = empty[Math.floor(g.rand() * empty.length)];
+        if (b[k] !== 3 || !g.mon[k] || g.mon[k].t !== 'jump') continue;
+        const empty = UNITS[18 + boxOfK(k)].filter((x) => b[x] === 0 && !Object.values(g.jumpPlan).includes(x));
+        if (empty.length) g.jumpPlan[k] = pick(empty);
       }
     }
-    // 大墨怪
+    // 馋嘴怪 / 墨苔怪：每隔几手先亮出要动的那格（tgt），下一手动手；炸弹怪：倒数到 0 溅墨
+    for (let k = 0; k < 81; k++) {
+      const m = g.mon[k];
+      if (b[k] !== 3 || !m) continue;
+      if (m.t === 'eat' || m.t === 'moss') {
+        if (m.tgt !== null) {
+          const t = m.tgt; m.tgt = null; m.cd = MON[m.t].cd;
+          if (m.t === 'eat' && b[t] === 1) { b[t] = 0; g.color[t] = 0; g.gem[t] = 0; g.monStats.eats++; (ev.eats = ev.eats || []).push({ from: k, k: t }); }
+          if (m.t === 'moss' && b[t] === 0) { inkAt(b, t); g.monStats.moss++; (ev.moss = ev.moss || []).push({ from: k, k: t }); }
+        } else if (--m.cd <= 0) {
+          const opts2 = near8(k).filter((x) => (m.t === 'eat' ? b[x] === 1 : b[x] === 0));
+          if (!opts2.length) { m.cd = 1; continue; }
+          if (m.t === 'eat') { const best = Math.max(...opts2.map((x) => crowd(b, x))); m.tgt = pick(opts2.filter((x) => crowd(b, x) === best)); }
+          else m.tgt = pick(opts2);
+        }
+      } else if (m.t === 'bomb') {
+        if (--m.cd <= 0) {
+          const ring1 = near8(k).filter((x) => b[x] === 0), ring2 = [...new Set(ring1.flatMap(near8))].filter((x) => b[x] === 0 && !ring1.includes(x));
+          const cells = ring1.concat(ring2).slice(0, 6);
+          cells.forEach((x) => inkAt(b, x));
+          (ev.bombs = ev.bombs || []).push({ k, cells }); g.monStats.bombs++;
+          m.cd = MON.bomb.cd;
+        }
+      }
+    }
+    // 头目
     const bs = g.boss;
     if (!bs || g.bigHp <= 0) return;
     bs.count++;
@@ -270,24 +342,44 @@ function createPetGame(opts) {
         if (cells.some((k) => g.bigCells.includes(k))) continue;
         if (cells.every((k) => b[k] === 0 || b[k] === 1)) opts2.push(tl);
       }
-      if (opts2.length) { bs.jumpTo = opts2[Math.floor(g.rand() * opts2.length)]; ev.bossJumpPlan = bs.jumpTo; }
+      if (opts2.length) { bs.jumpTo = pick(opts2); ev.bossJumpPlan = bs.jumpTo; }
     }
-    // 吐墨：阶段一每 4 块、阶段二每 3 块吐一块；吐之前一手先冒黑泡（nextSpit）
-    const every = (bs.phase === 1 ? 4 : 3) - (bs.angry ? 1 : 0); // 第二章的头目吐得更勤
+    // 分身王：盘上没有它的小墨怪时吓得发抖（这时候打它掉 2 颗心）
+    if (bs.kind === 'split') { bs.stun = !g.mon.some(Boolean); return; }
+    const every = (bs.phase === 1 ? (bs.kind === 'eat' ? 3 : 4) : 3) - (bs.angry ? 1 : 0); // 第二阶段、发怒的头目动得更勤
+    const nearCells = (want) => { const out = new Set(); g.bigCells.forEach((k) => { const r = Math.floor(k / 9), c = k % 9; for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) { const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < 9 && cc >= 0 && cc < 9 && want(b[rr * 9 + cc])) out.add(rr * 9 + cc); } }); return [...out]; };
+    if (bs.kind === 'eat') {
+      // 大馋嘴：上一手亮过牙印的两块，这一手啃掉；啃完嘴里塞满在嚼（这一手打它掉 2 颗心）
+      if (bs.eatPlan) {
+        const got = bs.eatPlan.filter((k) => b[k] === 1);
+        got.forEach((k) => { b[k] = 0; g.color[k] = 0; g.gem[k] = 0; });
+        if (got.length) { ev.bossEats = got; g.monStats.eats += got.length; }
+        bs.eatPlan = null; bs.stun = true; return;
+      }
+      bs.stun = false;
+      if (bs.count % every === every - 1) {
+        const pool = nearCells((v) => v === 1).sort((x, y) => crowd(b, y) - crowd(b, x)).slice(0, 6);
+        if (pool.length) { const a = pick(pool); const rest = pool.filter((x) => x !== a); bs.eatPlan = rest.length ? [a, pick(rest)] : [a]; }
+      }
+      return;
+    }
+    // 大墨怪：吐墨。阶段一每 4 块、阶段二每 3 块吐一块；吐之前一手先冒黑泡（nextSpit）
     if (bs.nextSpit !== null) {
       const k = bs.nextSpit;
       bs.nextSpit = null;
-      if (b[k] === 0) { b[k] = 1; g.color[k] = -2; ev.bossSpit = k; bs.stun = true; g.spits = (g.spits || 0) + 1; return; }
+      if (b[k] === 0) { inkAt(b, k); ev.bossSpit = k; bs.stun = true; g.spits = (g.spits || 0) + 1; return; }
     }
     bs.stun = false;
     if (bs.count % every === every - 1) {
-      const near = [];
-      g.bigCells.forEach((k) => { const r = Math.floor(k / 9), c = k % 9; for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) { const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < 9 && cc >= 0 && cc < 9 && b[rr * 9 + cc] === 0) near.push(rr * 9 + cc); } });
+      const near = nearCells((v) => v === 0);
       const pool = near.length ? near : [...Array(81).keys()].filter((k) => b[k] === 0);
-      if (pool.length) bs.nextSpit = pool[Math.floor(g.rand() * pool.length)];
+      if (pool.length) bs.nextSpit = pick(pool);
     }
   }
 
+  // 目标「抓光盘上的墨怪」：all = 1 表示抓光了；monLeft = 还剩几只（顶上显示这个数）
+  function syncAll() { g.monLeft = g.mon.filter(Boolean).length + g.spawnQ.length; if ('all' in g.got) g.got.all = g.monLeft ? 0 : 1; }
+  syncAll();
   g.place = (i, r, c) => {
     const p = g.hand[i];
     if (!p || g.over || !core.canPlace(g.board, p, r, c)) return null;
@@ -314,8 +406,11 @@ function createPetGame(opts) {
     if (units.length) {
       const set = new Set();
       units.forEach((u) => { unitTouches(b, UNITS[u], ev); UNITS[u].forEach((k) => set.add(k)); });
-      clearedCells = [...set].filter((k) => EATABLE(b[k]));
-      clearCells(b, [...set], ev, false);
+      clearedCells = [...set].filter((k) => b[k] === 1 || (IS_MON(b[k]) && !(g.mon[k] && g.mon[k].t === 'shell' && g.mon[k].hp > 0)));
+      // 挑色怪：它在的那几排 / 大格里，有没有它那种颜色的方块
+      const b0 = b.slice(); // 先拍一张：清的过程中格子会一格格变空
+      const colorOk = (k, col) => units.some((u) => UNITS[u].includes(k) && UNITS[u].some((x) => b0[x] === 1 && g.color[x] === col));
+      clearCells(b, [...set], ev, false, colorOk);
     }
     // 火球：9 = 炸空整个大格；5 = 炸十字（放下的那格 + 上下左右）
     if (p.special === 'fire') {
@@ -345,7 +440,10 @@ function createPetGame(opts) {
         if (act) { pt.energy -= energyMax(g, pt); ev.petActs.push(act); g.petActsTotal[pt.id] = (g.petActsTotal[pt.id] || 0) + 1; }
       }
     }
-    // 4. 墨怪的回合（过关就不动了）
+    // 4. 分身：这一手打中的分身怪 / 分身王，现在蹦出小墨怪
+    while (g.spawnQ.length) { const sp = g.spawnQ.shift(); spawnAround(b, sp.k, sp.n, ev); }
+    // 5. 墨怪的回合（过关就不动了）
+    syncAll();
     let left = core.goalLeft(g);
     const done = () => Object.keys(left).every((k) => left[k] === 0);
     if (!done()) monsterTurn(b, ev);
@@ -359,6 +457,7 @@ function createPetGame(opts) {
     g.score += ev.gained;
     ev.combo = units.length; ev.streak = g.streak;
     ev.beat = !units.length && !ev.petActs.length ? 1 : ev.petActs.length >= 2 || units.length >= 3 ? 5 : ev.petActs.length || units.length >= 2 ? 4 : units.some((u) => u >= 18) ? 3 : 2;
+    syncAll();
     left = core.goalLeft(g);
     if (done()) { ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
     if (!g.hand.some(Boolean)) g.deal();
@@ -386,6 +485,7 @@ function createPetGame(opts) {
         g.petActsTotal[pt.id] = (g.petActsTotal[pt.id] || 0) + 1;
         ev.rescue = pt.id;
       }
+      syncAll();
       left = core.goalLeft(g);
       if (done()) { ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
     }
@@ -417,7 +517,21 @@ function bestMove(g, skill) {
         const res = core.placeAndClear(g.board, p, r, c);
         board = res.board;
         v = res.units.length * 9 + core.evalBoard(res.board, null);
-        if (left.monster > 0) v += res.cells.filter((k) => g.board[k] === 3 || g.board[k] === 7).length * 14;
+        // 墨怪：甲壳怪敲一层也算进展；挑色怪要那排里有它的颜色；会还手的（啃、长墨、快爆）不管目标是什么都值得先打
+        const ci0 = g.handColor[i];
+        for (const k of res.cells) {
+          const m = g.board[k] === 3 && g.mon[k];
+          if (!m) continue;
+          let hitV = 14;
+          if (m.t === 'shell' && m.hp > 0) hitV = 7;
+          if (m.t === 'color') {
+            const ok = res.units.some((u) => UNITS[u].includes(k) && UNITS[u].some((x) => (placed.includes(x) ? ci0 : g.board[x] === 1 ? g.color[x] : -9) === m.col));
+            hitV = ok ? 16 : 0;
+          }
+          v += left.monster > 0 || left.all > 0 ? hitV : 0;
+          if (m.t === 'eat' || m.t === 'moss') v += 6;
+          if (m.t === 'bomb') v += m.cd <= 3 ? 12 : 4;
+        }
         if (left.boss > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === 4))) v += 16 + (g.boss && g.boss.stun ? 16 : 0);
         if (left.box > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === 2))) v += 16;
         if (left.rock > 0 || left.acts > 0) v += res.units.length * 3;
@@ -459,4 +573,4 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, IS_MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };

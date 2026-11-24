@@ -319,6 +319,7 @@ function loadStage(g, st) {
 function goalLeft(g) {
   const out = {};
   for (const key in g.stage.goal) {
+    if (key === 'all') { out.all = g.monLeft || 0; continue; } // 抓光盘上的墨怪：还剩几只
     const have = key === 'score' ? g.score : g.got[key] || 0;
     out[key] = Math.max(0, g.stage.goal[key] - have);
   }

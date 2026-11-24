@@ -327,7 +327,7 @@ function goalIcon(key, cx, cy, s) {
   if (core.GEM_OF[key]) gem(x - s * 0.15, y - s * 0.15, s * 1.3, core.GEM_OF[key]);
   else if (key === 'box') chest(x, y, s);
   else if (key === 'bubble') bubbleAt(x - s * 0.1, y - s * 0.1, s * 1.2);
-  else if (key === 'monster') inkMonster(cx, cy, s * 0.55, false);
+  else if (key === 'monster' || key === 'all') inkMonster(cx, cy, s * 0.55, false);
   else if (key === 'rock') ironRock(x, y, s);
   else if (key === 'acts') { const id = (g && g.team && g.team[0] && g.team[0].id) || save.activePet || 'tongque'; petIcon(id, cx, cy, s * 1.1, 0, 0); }
   else if (key === 'boss') inkMonster(cx, cy, s * 0.75, true);
@@ -343,6 +343,112 @@ function skullIcon(x, y, r) {
   ctx.fillRect(x - r * 0.55, y + r * 0.4, r * 1.1, r * 0.7);
   ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x - r * 0.38, y, r * 0.28, 0, Math.PI * 2); ctx.arc(x + r * 0.38, y, r * 0.28, 0, Math.PI * 2); ctx.fill();
   ctx.fillRect(x - 1, y + r * 0.7, 2, r * 0.4);
+}
+// ---------- 墨怪一家（0.7）：每种长得不一样，一眼看出它是谁、还剩几层甲、要干嘛 ----------
+const STEEL = ['#c3c8d4', '#9aa0b0', '#6e7484'];
+function blob(cx, cy, r, fill, shade, hi) {
+  const wob = Math.sin(clock * 5 + cx) * r * 0.06;
+  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(cx, cy + wob, r * 1.05, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = shade; ctx.beginPath(); ctx.arc(cx, cy + wob, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = fill; ctx.beginPath(); ctx.arc(cx - r * 0.06, cy - r * 0.06 + wob, r * 0.9, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = hi; ctx.beginPath(); ctx.arc(cx - r * 0.32, cy - r * 0.38 + wob, r * 0.25, 0, Math.PI * 2); ctx.fill();
+  for (const sx of [-1, 1]) {
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx + sx * r * 0.35, cy - r * 0.05 + wob, r * 0.22, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(cx + sx * r * 0.35, cy + wob, r * 0.1, 0, Math.PI * 2); ctx.fill();
+  }
+}
+// m：墨怪状态（没有就当小墨怪）；k：它在哪格（-1 = 说明卡上的示意）
+function drawMon(m, k, cx, cy, r) {
+  const t = m ? m.t : 'ink';
+  const since = (tab) => (petFx[tab] && petFx[tab][k] !== undefined ? clock - petFx[tab][k] : 9);
+  if (t === 'shell') {
+    // 甲壳怪：身上套几圈铁甲；刚掉一层时整只一抖
+    const sh = since('shellHit') < 0.25 ? Math.sin(clock * 80) * 3 : 0;
+    // 甲越厚身子缩得越小；每层甲是一圈粗铁箍（黑边 + 钢色 + 铆钉），从外往里一层层掉
+    const body = m.hp ? r * 0.66 : r, oy = cy + r * 0.06;
+    inkMonster(cx + sh, oy, body, false);
+    for (let i = 0; i < m.hp; i++) {
+      const rr2 = r * (0.8 + i * 0.22), w = r * 0.2, a0 = Math.PI * 0.82, a1 = Math.PI * 2.18;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = COL.ink; ctx.lineWidth = w + 3; ctx.beginPath(); ctx.arc(cx + sh, oy, rr2, a0, a1); ctx.stroke();
+      ctx.strokeStyle = STEEL[i % 3]; ctx.lineWidth = w; ctx.beginPath(); ctx.arc(cx + sh, oy, rr2, a0, a1); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = w * 0.25; ctx.beginPath(); ctx.arc(cx + sh, oy, rr2 + w * 0.2, Math.PI * 1.15, Math.PI * 1.6); ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = '#3a3f4a';
+      for (const ang of [Math.PI * 1.25, Math.PI * 1.5, Math.PI * 1.75]) ctx.fillRect(cx + sh + Math.cos(ang) * rr2 - 1.5, oy + Math.sin(ang) * rr2 - 1.5, 3, 3); // 铆钉
+    }
+    return;
+  }
+  if (t === 'jump') return jumperMonster(cx, cy, r, g && g.jumpPlan && g.jumpPlan[k] !== undefined ? g.jumpPlan[k] : null, Math.max(0, k));
+  if (t === 'color') {
+    // 挑色怪：整只是那种颜色；颜色不对被打到时晃一下
+    const col = C.blockColors[m.col], sh = since('colorMiss') < 0.35 ? Math.sin(clock * 60) * 4 : 0;
+    blob(cx + sh, cy, r, col[0], col[2], col[1]);
+    return;
+  }
+  if (t === 'bomb') {
+    // 炸弹怪：圆炸弹身子、引信冒火星，肚子上写还剩几手；3 以下变红、跳
+    const warn = m.cd <= 3, pulse = warn ? 1 + Math.abs(Math.sin(clock * 8)) * 0.08 : 1;
+    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(cx, cy + 2, r * 1.02 * pulse, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2a2632'; ctx.beginPath(); ctx.arc(cx, cy, r * pulse, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4a4458'; ctx.beginPath(); ctx.arc(cx - r * 0.35, cy - r * 0.35, r * 0.25, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#c9a050'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx + r * 0.5, cy - r * 0.75); ctx.quadraticCurveTo(cx + r * 0.9, cy - r * 1.2, cx + r * 0.7, cy - r * 1.35); ctx.stroke();
+    if (Math.sin(clock * 20) > -0.3) { ctx.fillStyle = '#ffd36a'; ctx.beginPath(); ctx.arc(cx + r * 0.7, cy - r * 1.35, r * 0.16, 0, Math.PI * 2); ctx.fill(); }
+    text(String(m.cd), cx, cy + 2, Math.round(r * 1.15 * pulse), warn ? '#ff6a50' : COL.text);
+    return;
+  }
+  inkMonster(cx, cy, r, false);
+  if (t === 'eat') {
+    // 馋嘴怪：一张带牙的大嘴；要啃的时候张大
+    const open = m.tgt !== null && m.tgt !== undefined, mh = open ? r * (0.32 + Math.abs(Math.sin(clock * 9)) * 0.12) : r * 0.16;
+    ctx.fillStyle = '#5a1f2a'; ctx.beginPath(); ctx.ellipse(cx, cy + r * 0.42, r * 0.5, mh, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    for (let n = 0; n < 4; n++) { const tx = cx - r * 0.36 + n * r * 0.24; ctx.beginPath(); ctx.moveTo(tx - r * 0.09, cy + r * 0.42 - mh); ctx.lineTo(tx + r * 0.09, cy + r * 0.42 - mh); ctx.lineTo(tx, cy + r * 0.42 - mh + r * 0.16); ctx.fill(); }
+  } else if (t === 'moss') {
+    // 墨苔怪：头顶长着几簇墨绿的苔
+    ctx.fillStyle = '#2f7a4c';
+    for (const [dx, dy, rr2] of [[-0.45, -0.75, 0.22], [0, -0.92, 0.26], [0.45, -0.75, 0.22]]) { ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, rr2 * r, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = '#5fb07a'; ctx.beginPath(); ctx.arc(cx - r * 0.05, cy - r * 0.98, r * 0.1, 0, Math.PI * 2); ctx.fill();
+  } else if (t === 'split') {
+    // 分身怪：身上一道歪歪扭扭的缝，像随时会裂成两半
+    ctx.strokeStyle = '#8a7fa8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy - r * 0.95);
+    for (let n = 1; n <= 5; n++) ctx.lineTo(cx + (n % 2 ? r * 0.12 : -r * 0.12), cy - r * 0.95 + n * r * 0.38);
+    ctx.stroke();
+  }
+}
+// 头目的打扮：大馋嘴一张大嘴、分身王一顶歪王冠
+function bossDress(kind, cx, cy, r) {
+  if (kind === 'eat') {
+    const chew = g && g.boss && g.boss.stun, plan = g && g.boss && g.boss.eatPlan, mh = plan ? r * (0.3 + Math.abs(Math.sin(clock * 9)) * 0.1) : chew ? r * (0.08 + Math.abs(Math.sin(clock * 14)) * 0.1) : r * 0.14;
+    ctx.fillStyle = '#5a1f2a'; ctx.beginPath(); ctx.ellipse(cx, cy + r * 0.45, r * 0.55, mh, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    for (let n = 0; n < 5; n++) { const tx = cx - r * 0.4 + n * r * 0.2; ctx.beginPath(); ctx.moveTo(tx - r * 0.07, cy + r * 0.45 - mh); ctx.lineTo(tx + r * 0.07, cy + r * 0.45 - mh); ctx.lineTo(tx, cy + r * 0.45 - mh + r * 0.13); ctx.fill(); }
+  } else if (kind === 'split') {
+    ctx.fillStyle = COL.brassLight; ctx.beginPath(); const y0 = cy - r * 0.95;
+    ctx.moveTo(cx - r * 0.4, y0); ctx.lineTo(cx - r * 0.45, y0 - r * 0.35); ctx.lineTo(cx - r * 0.2, y0 - r * 0.15); ctx.lineTo(cx, y0 - r * 0.42); ctx.lineTo(cx + r * 0.2, y0 - r * 0.15); ctx.lineTo(cx + r * 0.45, y0 - r * 0.35); ctx.lineTo(cx + r * 0.4, y0); ctx.fill();
+    ctx.strokeStyle = '#8a7fa8'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx, cy - r * 0.6); ctx.lineTo(cx + r * 0.1, cy - r * 0.2); ctx.lineTo(cx - r * 0.08, cy + r * 0.2); ctx.lineTo(cx + r * 0.05, cy + r * 0.6); ctx.stroke();
+  }
+}
+// 墨怪下一手要动手的地方：牙印（馋嘴要啃的块）、黑泡（墨苔要长墨的空格）、红圈（炸弹快爆了，会溅到哪）
+function drawMonHints() {
+  const bite = (k) => {
+    const x = cellX(k % 9), y = cellY(Math.floor(k / 9)), s = L.cell, a = 0.55 + Math.sin(clock * 10) * 0.35;
+    ctx.fillStyle = 'rgba(18,14,24,' + a + ')';
+    for (let n = 0; n < 3; n++) { ctx.beginPath(); ctx.arc(x + s * (0.25 + n * 0.25), y + 2, s * 0.13, 0, Math.PI); ctx.fill(); }
+    ctx.strokeStyle = 'rgba(226,85,59,' + a + ')'; ctx.lineWidth = 2; ctx.strokeRect(x + 2, y + 2, s - 4, s - 4);
+  };
+  const bubbles = (k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 3; n++) { const a = (clock * 1.5 + n / 3) % 1; ctx.globalAlpha = 1 - a; ctx.fillStyle = '#2f5a3c'; ctx.beginPath(); ctx.arc(x + (n - 1) * 8, y + 8 - a * 18, 4 + a * 5, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; };
+  g.mon.forEach((m, k) => {
+    if (!m || g.board[k] !== 3) return;
+    if (m.t === 'eat' && m.tgt !== null) bite(m.tgt);
+    if (m.t === 'moss' && m.tgt !== null) bubbles(m.tgt);
+    if (m.t === 'bomb' && m.cd <= 2) {
+      ctx.strokeStyle = 'rgba(255,106,80,' + (0.4 + Math.sin(clock * 12) * 0.3) + ')'; ctx.lineWidth = 3;
+      const r0 = Math.floor(k / 9), c0 = k % 9, x0 = cellX(Math.max(0, c0 - 1)), y0 = cellY(Math.max(0, r0 - 1));
+      ctx.strokeRect(x0 + 2, y0 + 2, cellX(Math.min(8, c0 + 1)) + L.cell - x0 - 4, cellY(Math.min(8, r0 + 1)) + L.cell - y0 - 4);
+    }
+  });
+  if (g.boss && g.boss.eatPlan) g.boss.eatPlan.forEach(bite);
 }
 // 铁甲怪：小墨怪扣着一口铁锅；锅被弹一下时往上跳
 function armorMonster(cx, cy, r, bounce) {
@@ -829,16 +935,16 @@ function drawBoard(showGhost) {
     const pop = popping.find((p) => p.k === k);
     const sc = pop ? 1 + 0.18 * (1 - (clock - pop.t) / 0.15) : 1;
     const s = cell * sc, x = cellX(k % 9) + (cell - s) / 2, y = cellY(Math.floor(k / 9)) + (cell - s) / 2;
-    if (g.board[k] === 3) { inkMonster(x + s / 2, y + s / 2, s * 0.4, false); continue; }
-    if (g.board[k] === 6) { armorMonster(x + s / 2, y + s / 2, s * 0.4, petFx.armorBounce && petFx.armorBounce[k] ? Math.max(0, 0.3 - (clock - petFx.armorBounce[k])) : 0); continue; }
-    if (g.board[k] === 7) { jumperMonster(x + s / 2, y + s / 2, s * 0.4, g.jumpPlan && g.jumpPlan[k] !== undefined ? g.jumpPlan[k] : null, k); continue; }
+    if (g.board[k] === 3) { drawMon(g.mon && g.mon[k], k, x + s / 2, y + s / 2, s * 0.4); continue; }
     if (g.board[k] === 5) { ironRock(x, y, s); if (g.rockHp && g.rockHp[k] > 1) { ctx.strokeStyle = '#8a90a0'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, y + 4, s - 8, s - 8); ctx.strokeRect(x + 8, y + 8, s - 16, s - 16); } continue; }
     if (g.board[k] === 4) {
       // 大墨怪：2×2 画成一只，只在左上那格画
       if (g.bigCells && g.bigCells[0] === k) {
         const hit = petFx.bossHit && clock - petFx.bossHit < 0.3 ? Math.sin(clock * 70) * 5 : 0;
         const scared = petFx.bossScared ? Math.sin(clock * 40) * 2 : 0;
-        inkMonster(x + s + hit + scared, y + s, s * 0.85 * (petFx.bossScared ? 0.94 : 1), true);
+        const shiver = g.boss && g.boss.kind === 'split' && g.boss.stun ? Math.sin(clock * 50) * 3 : 0; // 分身王：小墨怪抓光了，吓得发抖
+        inkMonster(x + s + hit + scared + shiver, y + s, s * 0.85 * (petFx.bossScared ? 0.94 : 1), true);
+        bossDress(g.boss && g.boss.kind, x + s + hit + scared + shiver, y + s, s * 0.85);
         // 头上几颗红心 = 还要打几下；打中一下碎一颗（宠物咬、或者它晕着时打中，碎两颗）
         const tot = g.stage.bigHp || 3, hs = tot > 5 ? 7 : 10, gap = tot > 5 ? 17 : 26;
         for (let n = 0; n < tot; n++) heart(x + s - (tot - 1) * gap / 2 + n * gap, y - 22, hs, n < g.bigHp);
@@ -1023,7 +1129,7 @@ function drawFx() {
   fx.forEach((f) => {
     const a = 1 - (clock - f.t) / f.life;
     ctx.globalAlpha = Math.max(0, a);
-    if (f.kind === 'shard') { ctx.fillStyle = a > 0.6 ? COL.brassLight : COL.brass; ctx.fillRect(f.x, f.y, f.s, f.s); }
+    if (f.kind === 'shard') { ctx.fillStyle = f.col || (a > 0.6 ? COL.brassLight : COL.brass); ctx.fillRect(f.x, f.y, f.s, f.s); }
     else if (f.kind === 'steam') { ctx.fillStyle = COL.steam; ctx.beginPath(); ctx.arc(f.x, f.y, f.s * (1.6 - a), 0, Math.PI * 2); ctx.fill(); }
     else if (f.kind === 'gear') gearIcon(f.x, f.y, f.s, f.a, COL.copper);
     ctx.globalAlpha = 1;
@@ -1295,7 +1401,7 @@ function drawMap() {
   keys.forEach((key, n) => {
     const cx = x0 + cw * n + cw / 2;
     if (key === 'score') text(st.goal.score + ' 分', cx, gy, 18, COL.text);
-    else { goalIcon(key, cx - 12, gy, 20); text('×' + st.goal[key], cx + 14, gy, 16, COL.text); }
+    else { goalIcon(key, cx - 12, gy, 20); text(key === 'all' ? '抓光' : '×' + st.goal[key], cx + (key === 'all' ? 20 : 14), gy, key === 'all' ? 14 : 16, COL.text); }
   });
   const bestId = !st.team && st.best ? (save.pets[st.best] ? st.best : save.pets[PG.PETS[st.best].evo] ? PG.PETS[st.best].evo : null) : null;
   if (bestId) {
@@ -1331,9 +1437,16 @@ const INTRO = {
   boss: { title: '大墨怪', lines: ['它占四格，消不掉；', '它在的那一排每消一次，打它一下'], pet: null, bossPic: true },
   baozhu: { title: '爆竹鼠出战', lines: ['它会跳下来，', '把最挤的大格啃掉一大块'], pet: 'baozhu' },
   modou: { title: '墨斗蚕出战', lines: ['它会爬过去吐丝，', '把快满的一排补满、消掉'], pet: 'modou' },
-  armor: { title: '铁甲怪', lines: ['你消掉它那排，锅只弹一下；', '宠物碰它一下，锅才碎'], armorPic: true },
+  shell: { title: '甲壳怪', lines: ['身上几圈甲：每消一次掉一层，', '甲掉光再消一次就抓到。宠物一下掉两层'], monPic: { t: 'shell', hp: 2 } },
+  eat: { title: '馋嘴怪', lines: ['每隔几手，它啃掉身边一块；', '要啃的那块先亮牙印'], monPic: { t: 'eat', tgt: 1 } },
+  color: { title: '挑色怪', lines: ['那一排里要有它身上的颜色，', '才打得到它（宠物咬它不挑色）'], monPic: { t: 'color', col: 1 } },
+  moss: { title: '墨苔怪', lines: ['每隔几手，它往身边空格长一块墨；', '要长的地方先冒黑泡'], monPic: { t: 'moss' } },
+  bomb: { title: '炸弹怪', lines: ['肚子上的数字每放一块少 1，', '到 0 就往身边溅一圈墨'], monPic: { t: 'bomb', cd: 3 } },
+  split: { title: '分身怪', lines: ['打它一下，它裂成两只小墨怪；', '宠物抓它就不会裂'], monPic: { t: 'split' } },
+  boss2: { title: '大馋嘴', lines: ['每隔几手啃掉身边两块（先亮牙印）；', '啃完在嚼的那一下，打它掉两颗心'], bossPic: 'eat' },
+  boss3: { title: '分身王', lines: ['每挨一下，身边蹦出一只小墨怪；', '小墨怪抓光了它发抖，打它掉两颗心'], bossPic: 'split' },
   jumper: { title: '跳跳怪', lines: ['每放 3 块它跳一格，', '跳不出它在的那个大格'], jumperPic: true },
-  acts: { title: '让宠物多出手', lines: ['顶上画着几个宠物头像，', '它出手几次才算过关'], pet: 'tongque' },
+  acts: { title: '让宠物多出手', lines: ['顶上画着几个宠物头像，', '它出手几次才算过关'], pet: null, actsPic: true },
 };
 function drawIntro() {
   const it = INTRO[introKind];
@@ -1346,7 +1459,9 @@ function drawIntro() {
   if (!it.row) {
     // 宠物 / 头目：画一个大图，下面两行字
     const cy = py + 118;
-    if (it.bossPic) inkMonster(W / 2, cy, 42, true);
+    if (it.bossPic) { inkMonster(W / 2, cy, 42, true); bossDress(it.bossPic, W / 2, cy, 42); }
+    else if (it.monPic) drawMon(it.monPic, -1, W / 2, cy, 40);
+    else if (it.actsPic) petIcon((g && g.team && g.team[0] && g.team[0].id) || save.activePet || 'tongque', W / 2, cy, 84, 0, Math.sin(clock * 3) * 0.1); // 画正带着的那只
     else if (it.armorPic) armorMonster(W / 2, cy, 40, Math.max(0, Math.sin(clock * 3)) * 0.3);
     else if (it.jumperPic) jumperMonster(W / 2, cy, 40, null, 0);
     else if (it.rockPic) ironRock(W / 2 - 40, cy - 40, 80);
@@ -1479,7 +1594,7 @@ function drawHome() {
   y += 64;
   button('homeClassic', bx, y, hw, 52, '经典拼画', { size: 17, bg: COL.copper, fn: () => newGame(false) });
   button('homeSettings', bx + hw + 12, y, hw, 52, '设置', { size: 19, bg: COL.woodDark, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } });
-  text('试玩版 0.6.1', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
+  text('试玩版 0.7', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -1521,7 +1636,8 @@ const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕
 const EXP_NEED = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 999];
 const DAN_EXP = 2;
 function petNodeLabel(i) { return String(i + 1); }
-const chapterName = (i) => (i < 10 ? '第一章 · 工坊后院' : '第二章 · 水车坊');
+const CHAPTER_NAMES = ['第一章 · 工坊后院', '第二章 · 水车坊', '第三章 · 染坊'];
+const chapterName = (i) => CHAPTER_NAMES[Math.min(CHAPTER_NAMES.length - 1, Math.floor(i / 10))];
 function petLevelName(i) {
   if (i === undefined) i = petIdx;
   const st = PLV[i];
@@ -1614,6 +1730,7 @@ function drawPetBar() {
 // 进化关：正中间铺一层宠物颜色、一亮一暗；亮了的格子金边
 function drawPetBoard() {
   if (g.bigHp > 0) drawBossHints();
+  if (g.mon) drawMonHints();
   // 能量只差 1 格时，它下一次要下手的地方淡淡亮起它的颜色：可以顺着它来，也可以不管
   g.team.forEach((pt) => {
     if (pt.energy !== PG.energyMax(g, pt) - 1 || !g.petTarget) return;
@@ -1704,6 +1821,14 @@ function juicePets(ev, colorsBefore) {
     sp.cells.slice(0, 9).forEach((k, j) => flyers.push({ what: 'spark', pet: sp.id, col: C.blockColors[PG.PETS[sp.id].color][1], x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2, t: clock + 0.05 + j * 0.03, to }));
   });
   if (ev.lit) { ev.lit.forEach((k, j) => setTimeout(() => P.sound('chain' + Math.min(12, g.evLit.size - ev.lit.length + j + 1), 0.6), j * 80)); }
+  const burst = (k, col, n, sp) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let i = 0; i < n; i++) { const a2 = Math.random() * Math.PI * 2, v = (sp || 100) * (0.6 + Math.random() * 0.8); fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 90, t: clock, life: 0.55, s: 3 + Math.random() * 4, col }); } };
+  const mark = (tab, k) => { petFx[tab] = petFx[tab] || {}; petFx[tab][k] = clock; };
+  (ev.shellCrack || []).forEach((h) => { mark('shellHit', h.k); burst(h.k, STEEL[h.left % 3], 7 * h.n, 140); P.sound('tap', 0.9); shake = Math.max(shake, 3); }); // 甲掉一层：铁片飞出去
+  (ev.colorMiss || []).forEach((k) => { mark('colorMiss', k); P.sound('tap', 0.4); });
+  (ev.eats || []).concat((ev.bossEats || []).map((k) => ({ k }))).forEach((e) => { burst(e.k, (C.blockColors[colorsBefore[e.k]] || C.prefillColor)[0], 9, 90); P.sound('pick', 0.7); }); // 被啃掉的块碎成渣
+  (ev.moss || []).forEach((e) => burst(e.k, '#2f5a3c', 6, 60));
+  (ev.bombs || []).forEach((e) => { burst(e.k, '#ffb070', 16, 200); e.cells.forEach((k) => burst(k, '#2a2236', 4, 60)); flash = Math.max(flash, 0.25); shake = Math.max(shake, 8); P.sound('combo4', 0.7); });
+  (ev.spawns || []).forEach((e) => { burst(e.to, '#3b3150', 6, 80); P.sound('select', 0.4); });
   (ev.armorBounce || []).forEach((k) => { petFx.armorBounce = petFx.armorBounce || {}; petFx.armorBounce[k] = clock; P.sound('tap', 0.7); });
   (ev.armorBreak || []).forEach((k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 8; n++) { const a2 = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 120; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 100, t: clock + 0.4, life: 0.6, s: 4 + Math.random() * 4 }); } });
   if (ev.bossSpit !== undefined) {

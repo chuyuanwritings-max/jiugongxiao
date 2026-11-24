@@ -15,7 +15,8 @@ const WOOD = '#5a3a22', WOOD_D = '#3a2416', STONE = '#2a3150';
 // 每章：全景、字、大墨怪蹲在全景的哪一点（0～1）
 const CHAPTERS = [
   { name: '第一章 · 工坊后院', line: '大墨怪躲在后院！', boss: [0.88, 0.62] },
-  { name: '第二章 · 水车坊', line: '大墨怪占了水车坊！', boss: [0.86, 0.6] },
+  { name: '第二章 · 水车坊', line: '大馋嘴占了水车坊！', boss: [0.86, 0.6] },
+  { name: '第三章 · 染坊', line: '分身王躲在布后面！', boss: [0.86, 0.62] },
 ];
 
 module.exports = function (api) {
@@ -77,6 +78,22 @@ module.exports = function (api) {
       smallInk(g, 88, 124); smallInk(g, 186, 125); smallInk(g, 226, 112);
       bigBoss(g, CHAPTERS[0].boss[0] * PW, CHAPTERS[0].boss[1] * PH + 6, 16);
       shed(g, 292, 128, 30, 26, '#7a4a2a');
+    } else if (ch === 2) {
+      // 染坊：晾布架上挂着红蓝绿金的长布 → 一排染缸 → 最右边的布后面露出戴王冠的分身王
+      px(g, 0, 126, PW, 34, '#3a2e3e'); for (let x = 0; x < PW; x += 12) px(g, x, 130 + ((x / 12) % 2) * 8, 10, 1, '#4c3e52');
+      const cloth = ['#c94a3a', '#3f6fb0', '#3f9a5c', '#d9a640', '#8a4fb0'];
+      for (let x = 8; x < 250; x += 46) {
+        px(g, x, 56, 40, 3, WOOD); px(g, x, 56, 2, 72, WOOD_D); px(g, x + 38, 56, 2, 72, WOOD_D);
+        for (let n = 0; n < 3; n++) { const c = cloth[(x / 46 + n) % 5 | 0], h = 34 + ((x + n * 7) % 16); px(g, x + 5 + n * 11, 59, 9, h, c); px(g, x + 5 + n * 11, 59 + h, 9, 2, INK); }
+      }
+      for (let n = 0; n < 5; n++) { const x = 20 + n * 48; disk(g, x, 128, 12, WOOD_D); px(g, x - 12, 122, 25, 6, WOOD); px(g, x - 10, 122, 21, 3, cloth[n]); }
+      lantern(g, 100, 40); lantern(g, 196, 40);
+      smallInk(g, 70, 118); smallInk(g, 160, 118); smallInk(g, 236, 120);
+      const bx = CHAPTERS[2].boss[0] * PW, by = CHAPTERS[2].boss[1] * PH + 8;
+      bigBoss(g, bx, by, 16);
+      for (let k = 0; k < 5; k++) px(g, bx - 8 + k * 4, by - 26 - (k % 2 ? 0 : 4), 3, 6 + (k % 2 ? 0 : 4), BRASS_L); // 王冠
+      px(g, bx - 9, by - 22, 19, 3, BRASS_L);
+      px(g, 300, 50, 3, 80, WOOD_D); px(g, 304, 56, 12, 50, '#c94a3a');
     } else {
       // 水车坊：远山 → 河 → 两座水车磨坊 → 拱桥 → 最右边大墨怪蹲在河里，墨晕开
       for (let x = 0; x < PW; x++) { const h = 14 + Math.round(Math.sin(x * 0.05) * 6 + Math.sin(x * 0.13) * 3); px(g, x, 100 - h, 1, h, '#18204a'); }

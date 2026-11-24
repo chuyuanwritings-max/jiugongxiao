@@ -13,20 +13,31 @@ const COLOR_NAME = ['金色', '红色', '绿色', '蓝色', '紫色', '橙色', 
 // 宠物：每只一行大白话（Cc 规矩：屏幕上只用「一排」「大格」「正中间」）
 // charge：靠什么积蓄能量。clear = 每消掉一排或一个大格攒一格（顺的时候越攒越快）；place = 每放一块攒一格（堵的时候也在攒，能雪中送炭）
 // 不管哪种：消掉它颜色的方块，每 3 块多攒一格；快堵死时，攒到一半以上的宠物会提前出手救你
+// 从弱鸡慢慢变强（Cc 11-24：「上来能力就太强了。应该是能力慢慢变强，刚开始很弱鸡的」「到后来越来越依赖宠物来帮忙了才对」）：
+//   energy(lv)：攒满要几格，越练越少；power(lv)：一次啃几格（9 = 整排 / 整个大格），越练越多
 const PETS = {
-  tongque: { name: '铜雀', color: 0, energy: 4, charge: 'clear', act: 'row', n: 1, desc: '射掉最满的一排', first: '铜雀能量攒满了：帮你射掉最满的一排！', evo: 'jinchique', evoLv: 5 },
-  jinchique: { name: '金翅雀', color: 0, energy: 4, charge: 'clear', act: 'row', n: 2, desc: '一次射掉最满的两排', first: '金翅雀能量攒满了：一次射掉两排！' },
-  baozhu: { name: '爆竹鼠', color: 1, energy: 5, charge: 'clear', act: 'box', desc: '炸掉最挤的一个大格', first: '爆竹鼠能量攒满了：把最挤的大格炸空！' },
-  modou: { name: '墨斗蚕', color: 2, energy: 6, charge: 'place', act: 'fill', desc: '把快满的一排补满', first: '墨斗蚕能量攒满了：把快满的一排补满，消掉！' },
-  qilin: { name: '火麒麟', color: 5, energy: 7, charge: 'place', act: 'gift', desc: '送你一块火块，放哪儿炸哪个大格', first: '火麒麟能量攒满了：送你一块火块，放到哪个大格就炸哪个！' },
+  tongque: { name: '铜雀', color: 0, charge: 'clear', act: 'row', energy: (lv) => Math.max(4, 8 - (lv - 1)), power: (lv) => [0, 3, 5, 7, 9, 9, 9, 9, 9, 9, 9][lv], lines: 1, evo: 'jinchique', evoLv: 5 },
+  jinchique: { name: '金翅雀', color: 0, charge: 'clear', act: 'row', energy: (lv) => Math.max(3, 5 - Math.floor((lv - 5) / 2)), power: () => 9, lines: 2 },
+  baozhu: { name: '爆竹鼠', color: 1, charge: 'clear', act: 'box', energy: (lv) => Math.max(5, 9 - (lv - 1)), power: (lv) => [0, 4, 6, 9, 9, 9, 9, 9, 9, 9, 9][lv] },
+  modou: { name: '墨斗蚕', color: 2, charge: 'place', act: 'fill', energy: (lv) => Math.max(5, 9 - (lv - 1)), power: (lv) => Math.min(3, lv) }, // power = 能补差几格的一排
+  qilin: { name: '火麒麟', color: 5, charge: 'place', act: 'gift', energy: (lv) => Math.max(6, 10 - (lv - 1)), power: (lv) => (lv >= 3 ? 9 : 5) }, // 火块：5 = 炸十字 5 格；9 = 炸整个大格
 };
+// 每只宠物这一级能干什么（一行大白话）
+function petDesc(id, lv) {
+  const d = PETS[id], pw = d.power(lv || 1);
+  if (d.act === 'row') return d.lines > 1 ? '跳出来，啃掉最满的两排' : pw >= 9 ? '跳出来，啃掉最满的一整排' : '跳出来，啃掉最满那排里的 ' + pw + ' 格';
+  if (d.act === 'box') return pw >= 9 ? '跳出来，啃空最挤的一个大格' : '跳出来，啃掉最挤大格里的 ' + pw + ' 格';
+  if (d.act === 'fill') return '把只差 ' + pw + ' 格的一排补满';
+  return pw >= 9 ? '送你火块：放哪儿炸空哪个大格' : '送你火块：放哪儿炸掉一个十字';
+}
 const CHARGE_TEXT = { clear: '每消掉一排，攒一格能量', place: '每放一块，攒一格能量' };
-const FIRE = { id: 'fire', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'fire' };
+const FIRE = { id: 'fire', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'fire', power: 9 };
+const fireOf = (pw) => (pw >= 9 ? FIRE : Object.assign({}, FIRE, { power: 5 }));
 const ROW = (u) => (u < 9 ? 'row' : u < 18 ? 'col' : 'box');
 function petDef(p) { return PETS[p.id]; }
 function energyMax(g, p) {
-  if (g.stage.fastCharge) return 2; // 第 4 关：铜雀充得特别快，让人一眼看到它在帮忙
-  return Math.max(2, petDef(p).energy - (p.lv >= 3 ? 1 : 0));
+  if (g.stage.fastCharge) return 3; // 第 4 关：铜雀充得特别快，让人一眼看到它在帮忙
+  return petDef(p).energy(p.lv);
 }
 
 // opts: { stage, team:[{id,lv}], seed, tutorial }
@@ -73,7 +84,7 @@ function createPetGame(opts) {
     while (g.giftPending > 0) {
       const slot = g.hand.findIndex((x) => !x);
       if (slot < 0) break;
-      g.hand[slot] = FIRE; g.handColor[slot] = 5; if (g.handGem) g.handGem[slot] = null; g.giftPending--;
+      g.hand[slot] = fireOf(g.giftPower || 9); g.handColor[slot] = 5; if (g.handGem) g.handGem[slot] = null; g.giftPending--;
     }
   }
   g.handColor = g.hand.map(() => g.pickColor());
@@ -116,39 +127,42 @@ function createPetGame(opts) {
     for (const k of cells) if (b[k] === 5) { b[k] = 0; if ('rock' in g.got) g.got.rock++; ev.collected.push({ k, what: 'rock' }); (ev.rocks = ev.rocks || []).push(k); }
   }
 
+  // 一排 / 一个大格里，先啃哪几格：铁石 > 小墨怪 > 带宝石的 > 普通块
+  function pickBites(b, cells, n) {
+    const pri = (k) => (b[k] === 5 && rockLeft() ? 4 : b[k] === 3 ? 3 : g.gem[k] ? 2 : b[k] === 1 ? 1 : b[k] === 5 ? 0.5 : 0);
+    return cells.filter((k) => pri(k) > 0).sort((x, y) => pri(y) - pri(x)).slice(0, n);
+  }
   // 宠物出手（在 b 上改），返回画面要的信息
   function petAct(b, p, ev) {
-    const d = petDef(p);
+    const d = petDef(p), pw = d.power(p.lv);
     const act = { id: p.id, kind: d.act, lines: [], boxes: [], cells: [] };
+    const bite = (cells, isUnit) => {
+      // 啃整排 / 整个大格：等于消掉一条（机关匣、大墨怪都算碰到）；只啃几格：只把那几格吃掉，碰到大墨怪也算咬它一口
+      const eat = pw >= 9 ? cells.filter((k) => b[k] === 1 || b[k] === 3 || b[k] === 5) : pickBites(b, cells, pw);
+      if (pw >= 9 || cells.some((k) => b[k] === 4)) unitTouches(b, pw >= 9 ? cells : cells.filter((k) => b[k] === 4), ev);
+      breakRocks(b, eat, ev);
+      act.cells.push(...eat.filter((k) => b[k] === 1 || b[k] === 3));
+      clearCells(b, eat.filter((k) => b[k] === 1 || b[k] === 3), ev);
+      ev.rocks && act.cells.push(...ev.rocks.filter((k) => eat.includes(k) && !act.cells.includes(k)));
+    };
     if (d.act === 'row') {
       const cand = [];
       for (let i = 0; i < 9; i++) { cand.push({ axis: 'row', i, n: lineScore(b, lineCells('row', i)) }); cand.push({ axis: 'col', i, n: lineScore(b, lineCells('col', i)) }); }
       cand.sort((x, y) => y.n - x.n);
-      for (const L of cand.slice(0, d.n)) {
+      for (const L of cand.slice(0, d.lines || 1)) {
         if (!L.n) break;
-        const cells = lineCells(L.axis, L.i);
-        breakRocks(b, cells, ev);
-        unitTouches(b, cells, ev);
-        act.cells.push(...cells.filter((k) => b[k] === 1 || b[k] === 3));
-        clearCells(b, cells, ev);
+        bite(lineCells(L.axis, L.i));
         act.lines.push({ axis: L.axis, idx: L.i });
       }
     } else if (d.act === 'box') {
       let best = -1, bn = 0;
       for (let bx = 0; bx < 9; bx++) { const n = lineScore(b, lineCells('box', bx)); if (n > bn) { bn = n; best = bx; } }
-      if (best >= 0) {
-        const cells = lineCells('box', best);
-        breakRocks(b, cells, ev);
-        unitTouches(b, cells, ev);
-        act.cells.push(...cells.filter((k) => b[k] === 1 || b[k] === 3));
-        clearCells(b, cells, ev);
-        act.boxes.push(best);
-      }
+      if (best >= 0) { bite(lineCells('box', best)); act.boxes.push(best); }
     } else if (d.act === 'fill') {
       let best = null;
       for (const axis of ['row', 'col']) for (let i = 0; i < 9; i++) {
         const e = lineCells(axis, i).filter((k) => !b[k]).length;
-        if (e >= 1 && e <= 3 && (!best || e < best.e)) best = { axis, i, e };
+        if (e >= 1 && e <= pw && (!best || e < best.e)) best = { axis, i, e };
       }
       if (best) {
         const cells = lineCells(best.axis, best.i);
@@ -161,6 +175,7 @@ function createPetGame(opts) {
       }
     } else if (d.act === 'gift') {
       g.giftPending++;
+      g.giftPower = pw;
     }
     return act;
   }
@@ -198,14 +213,15 @@ function createPetGame(opts) {
     // 火块：放哪儿就炸那个大格
     if (p.special === 'fire') {
       const bx = core.boxOf(r, c);
-      const cells = UNITS[18 + bx];
+      // 火块：9 = 炸空整个大格；5 = 炸十字（放下的那格 + 上下左右）
+      const cells = (p.power || 9) >= 9 ? UNITS[18 + bx] : [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]].map(([dr, dc]) => [r + dr, c + dc]).filter(([rr2, cc]) => rr2 >= 0 && rr2 < 9 && cc >= 0 && cc < 9).map(([rr2, cc]) => rr2 * 9 + cc);
       breakRocks(b, cells, ev);
-      unitTouches(b, cells, ev);
+      if ((p.power || 9) >= 9 || cells.some((k) => b[k] === 4)) unitTouches(b, cells, ev);
       const hit = cells.filter((k) => b[k] === 1 || b[k] === 3);
       clearedCells = clearedCells.concat(hit);
       clearCells(b, cells, ev);
-      ev.fire = { box: bx, cells: hit };
-      units.push(18 + bx);
+      ev.fire = { box: bx, cells: hit, small: (p.power || 9) < 9 };
+      if ((p.power || 9) >= 9) units.push(18 + bx);
     }
     ev.units = units; ev.cells = clearedCells;
     // 2. 积蓄能量：消掉东西攒（clear）或每放一块攒（place）；消掉它颜色的块，每 3 块多攒 1 格
@@ -251,7 +267,7 @@ function createPetGame(opts) {
         if (petDef(pt).act === 'gift') {
           // 手上的块都放不下：换掉一块放不下的，换成火块（火块只要有空格就放得下）
           const slot = g.hand.findIndex((x, k) => x && !g.fits(k));
-          if (slot >= 0) { g.hand[slot] = FIRE; g.handColor[slot] = 5; if (g.handGem) g.handGem[slot] = null; }
+          if (slot >= 0) { g.hand[slot] = fireOf(petDef(pt).power(pt.lv)); g.handColor[slot] = 5; if (g.handGem) g.handGem[slot] = null; }
           ev.petActs.push({ id: pt.id, kind: 'gift', lines: [], boxes: [], cells: [], rescue: true });
         } else {
           const b2 = g.board.slice();
@@ -286,7 +302,7 @@ function bestMove(g, skill) {
       let v;
       let board;
       if (p.special === 'fire') {
-        const cells = UNITS[18 + core.boxOf(r, c)];
+        const cells = (p.power || 9) >= 9 ? UNITS[18 + core.boxOf(r, c)] : [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]].map(([dr, dc]) => [r + dr, c + dc]).filter(([a2, b2]) => a2 >= 0 && a2 < 9 && b2 >= 0 && b2 < 9).map(([a2, b2]) => a2 * 9 + b2);
         const n = cells.filter((k) => g.board[k] === 1 || g.board[k] === 3).length;
         board = g.board.slice(); cells.forEach((k) => { if (board[k] === 1 || board[k] === 3) board[k] = 0; });
         v = n * 2 + cells.filter((k) => g.board[k] === 3).length * 14 + (cells.some((k) => g.board[k] === 4) ? 16 : 0) + core.evalBoard(board, null);
@@ -338,4 +354,4 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { CHARGE_TEXT, PETS, FIRE, COLOR_NAME, createPetGame, bestMove, simulate, energyMax };
+module.exports = { petDesc, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, createPetGame, bestMove, simulate, energyMax };

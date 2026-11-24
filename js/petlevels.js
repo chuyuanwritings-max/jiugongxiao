@@ -45,17 +45,17 @@ module.exports = [
     goal: { boss: 1 }, d: 0.12, intro: 'boss', colors: [0, 1, 3], gift: 'baozhu', bigHp: 3,
     board: ['.........', '.#.....#.', '.........', '.........', '...KK....', '...KK....', '.........', '.#.....#.', '.........'],
   },
-  // —— 试玩加场：借你三只宠物，试「搭配」和「送你一块」 ——
+  // —— 试玩加场：每关借你一只宠物试试（只带一只，Cc 11-24）——
   { // 加场 1
-    bonus: true, goal: { score: 320 }, d: 0.2, team: [{ id: 'tongque', lv: 3 }, { id: 'modou', lv: 1 }, { id: 'qilin', lv: 1 }], intro: 'team', colors: [0, 2, 5, 3],
+    bonus: true, goal: { score: 320 }, d: 0.2, team: [{ id: 'qilin', lv: 3 }], intro: 'team', colors: [5, 0, 3],
     board: ['#.......#', '.........', '..#...#..', '.........', '....#....', '.........', '..#...#..', '.........', '#.......#'],
   },
   { // 加场 2
-    bonus: true, goal: { monster: 5 }, d: 0.22, team: [{ id: 'tongque', lv: 3 }, { id: 'modou', lv: 1 }, { id: 'qilin', lv: 1 }], colors: [0, 2, 5, 3],
+    bonus: true, goal: { monster: 5 }, d: 0.22, team: [{ id: 'modou', lv: 3 }], colors: [2, 0, 3],
     board: ['.........', '.m.....m.', '.........', '..#...#..', '....m....', '..#...#..', '.........', '.m.....m.', '.........'],
   },
   { // 加场 3：头目 + 宝石
-    bonus: true, goal: { boss: 1, o: 3 }, d: 0.25, team: [{ id: 'baozhu', lv: 2 }, { id: 'modou', lv: 2 }, { id: 'qilin', lv: 2 }], colors: [1, 2, 5, 3], bigHp: 4, gemRate: 0.25,
+    bonus: true, goal: { boss: 1, o: 3 }, d: 0.25, team: [{ id: 'baozhu', lv: 3 }], colors: [1, 0, 3], bigHp: 4, gemRate: 0.25,
     board: ['o.......o', '.........', '.........', '.........', '...KK....', '...KK....', '.........', '.........', '....o....'],
   },
 ];

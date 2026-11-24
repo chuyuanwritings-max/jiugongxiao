@@ -207,13 +207,18 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   st = await page.evaluate(() => ({ ink: window.__game.g.monStats.eats > 0 }));
   ok(gotFire, '火麒麟出战：攒满往托盘里送一颗火块');
   ok(st.ink, '第 20 关：头目大馋嘴会啃掉身边的块（先亮牙印）');
+  // 0.8 专属关：第 13 关点名铜雀；出战的是爆竹鼠，点开打自动换上金翅雀（铜雀进化后的也算），营地里的选择不变
+  await page.evaluate(() => { const G = window.__game; G.save.introSeen.shell = 1; G.setSave({ activePet: 'baozhu' }); G.newPetLevel(12); });
+  await page.waitForTimeout(200);
+  st = await page.evaluate(() => ({ team: window.__game.g.team[0].id, active: window.__game.save.activePet }));
+  ok(st.team === 'jinchique' && st.active === 'baozhu', '专属关（第 13 关点名铜雀）：自动换上金翅雀，营地里选的爆竹鼠不变');
   await page.evaluate(() => { const G = window.__game; G.g.over = true; G.g.reason = 'stuck'; G.endGame(); });
   await page.waitForTimeout(700);
   await click('tomap');
   await page.waitForTimeout(400);
-  await shot('13_地图');
+  await shot('13_章页');
   st = await page.evaluate(() => ({ mode: window.__game.mode, btn: window.__game.buttons().map((b) => b.id) }));
-  ok(st.mode === 'map' && st.btn.includes('play') && st.btn.includes('camp') && st.btn.includes('classic') && !st.btn.includes('siege'), '地图：第一章关卡、营地、经典拼画；守城收起来了');
+  ok(st.mode === 'map' && st.btn.includes('play') && st.btn.includes('camp') && st.btn.includes('classic') && !st.btn.includes('siege') && st.btn.filter((x) => x.startsWith('cell')).length === 10, '章页：一章 9 个关卡格 + 头目卡、开打、营地、经典拼画；守城收起来了');
   // 设置：声音开关、重新开始（点两下才清空）
   await click('settings');
   await page.waitForTimeout(200);
@@ -240,7 +245,8 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   // 机器人接着玩，用真拖拽
   let moves = 0, sawGhost = false;
   for (; moves < 40; moves++) {
-    const m = await page.evaluate(() => { const G = window.__game; if (G.g.over) return null; const b = G.core.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c }; });
+    // 亮到 8 宫就停：再亮一宫画就拼成了，后面「时间到」那一项就测不到（以前偶尔因此不过）
+    const m = await page.evaluate(() => { const G = window.__game; if (G.g.over || G.g.litCount() >= 8) return null; const b = G.core.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c }; });
     if (!m) break;
     if (moves === 6) {
       // 截一张拖到一半的图：看落点高亮

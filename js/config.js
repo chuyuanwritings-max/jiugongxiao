@@ -81,6 +81,15 @@ module.exports = {
     red: '#d2463a',
     jade: '#6fd0a8',
     text: '#f3ead6',
-    dim: '#8d93b5',
+    dim: '#a3a9c9', // 0.8 照 Fable UI 对照调亮一点，13 号字才看得清
+  },
+  // 0.8 主题「靛蓝黄铜」（照 ../九宫消_关卡页专属关与UI对照_20261124.md 第四节）：所有页面只从这里取。
+  // 以后出第二套就再加一个对象，整套一起换；不给玩家单独挑颜色。
+  theme: {
+    card: '#19224a', cardOn: '#222d5e', line: '#2a3768', faint: '#5d658f',
+    brass: '#d1a650', brassEdge: '#7f602c', onBrass: '#1e1a16',
+    red: '#d2463a', jade: '#6fd0a8', violet: '#8a62bf',
+    sizes: [11, 13, 16, 20, 28], // 字号只留 5 档（棋盘上的飘字、过场里的大字不算）
+    rCard: 20, rBtn: 16, rCell: 14,
   },
 };

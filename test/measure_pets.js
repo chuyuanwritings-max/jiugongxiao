@@ -16,12 +16,13 @@ function run(stage, team, skill) {
 const out = [];
 LV.forEach((st, i) => {
   if (i < 3) { const a = run(st, [], 0.5); const line = `第${i + 1}关 ${Object.entries(st.goal).map(([k, v]) => k + v).join(' ').padEnd(16)}| 手生 赢${a.won}% ${a.moves}步`; console.log(line); out.push(line); return; }
-  const bestId = st.best || 'tongque';
+  // 0.8 专属关：only 点名的那只（借的取高的）；其余照 best
+  const bestId = st.only || st.best || 'tongque';
   const id = bestId === 'tongque' && lvAt(i) >= 5 ? 'jinchique' : bestId;
-  const team = st.team || [{ id, lv: lvAt(i) }];
+  const team = [{ id, lv: Math.max(lvAt(i), st.lend || 0) }];
   const other = [{ id: bestId === 'baozhu' ? 'tongque' : 'baozhu', lv: lvAt(i) }];
   const a = run(st, team, 0.5), b = run(Object.assign({}, st, { team: null, fastCharge: false }), other, 0.5), c = run(Object.assign({}, st, { team: null, fastCharge: false }), [], 0.5);
-  const line = `第${i + 1}关 ${Object.entries(st.goal).map(([k, v]) => k + v).join(' ').padEnd(16)}| 手生带${PG.PETS[team[0].id].name}${team[0].lv}级 赢${a.won}% ${a.moves}步 出手${a.acts}次 | 带${PG.PETS[other[0].id].name} 赢${b.won}% ${b.moves}步 | 不带 赢${c.won}%${st.hard ? '  [' + (st.hard === 2 ? '超难' : '难') + ']' : ''}`;
+  const line = `第${i + 1}关${st.only ? '（专属）' : ''} ${Object.entries(st.goal).map(([k, v]) => k + v).join(' ').padEnd(16)}| 手生带${PG.PETS[team[0].id].name}${team[0].lv}级 赢${a.won}% ${a.moves}步 出手${a.acts}次 | 带${PG.PETS[other[0].id].name} 赢${b.won}% ${b.moves}步 | 不带 赢${c.won}%${st.hard ? '  [' + (st.hard === 2 ? '超难' : '难') + ']' : ''}`;
   console.log(line); out.push(line);
 });
 module.exports = out;

@@ -4,7 +4,8 @@ const { chromium } = require('/Users/chuyuannc/Downloads/Cursor/Kira/06_游戏�
 const SHOTS = path.join(__dirname, 'shots');
 const url = 'file://' + path.join(__dirname, '..', 'preview.html');
 let pass = 0, fail = 0;
-const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++; console.log('✗ ' + m); } };
+const T0 = Date.now();
+const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; if (c) { pass++; console.log('✓ ' + m + '  [' + t + ']'); } else { fail++; console.log('✗ ' + m + '  [' + t + ']'); } };
 
 (async () => {
   const browser = await chromium.launch();
@@ -53,111 +54,93 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     return page.evaluate(() => ({ won: window.__game.g.won, over: window.__game.g.over, moves: window.__game.g.moves, mode: window.__game.mode }));
   }
 
-  // ---------- 旅程 ----------
-  let st = await page.evaluate(() => ({ stage: window.__game.stageIdx, mode: window.__game.mode }));
-  ok(st.stage === 0 && st.mode === 'play', '第一次打开直接进旅程第 1 关（不先看地图）');
-  // 第一块：3×3 进中宫，一下消掉一宫
+  // ---------- 0.5 九宫消 + 宠物 ----------
+  const petPlay = async (max, until) => {
+    for (let k = 0; k < max; k++) {
+      const m = await page.evaluate(() => { const G = window.__game; if (G.g.over || G.mode !== 'play') return null; const b = G.PG.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c }; });
+      if (!m) break;
+      await dragTo(m.i, m.r, m.c);
+      await page.waitForTimeout(50);
+      if (until && (await page.evaluate(until))) return true;
+    }
+    return false;
+  };
+  const closeIntro = () => page.evaluate(() => { const b = window.__game.buttons().find((x) => x.id === 'introOk'); if (b) b.fn(); });
+  let st = await page.evaluate(() => ({ pets: !!window.__game.g.pets, idx: window.__game.petIdx, mode: window.__game.mode }));
+  ok(st.pets && st.idx === 0 && st.mode === 'play', '第一次打开直接进宠物章节第 1 关（不先看地图）');
   await dragTo(0, 3, 3);
   await page.waitForTimeout(140);
   await shot('02_第1关_第一下消一宫');
-  st = await page.evaluate(() => ({ score: window.__game.g.score, empty: window.__game.core.UNITS[22].every((k) => !window.__game.g.board[k]) }));
-  ok(st.empty && st.score >= 18, '第一块 3×3 放进中宫：一下消掉一宫（' + st.score + ' 分）');
-  await page.waitForTimeout(500);
-  st = await playStage(40);
-  await page.waitForTimeout(400);
-  await shot('03_第1关_过关字');
-  await page.waitForTimeout(1100);
-  await shot('04_第1关完成卡');
-  ok(st.won, '真鼠标拖 ' + st.moves + ' 块过第 1 关（冲 75 分）');
-  await click('next');
-  await page.waitForTimeout(400);
-  await shot('05_第2关_说明卡');
-  st = await page.evaluate(() => ({ stage: window.__game.stageIdx, mode: window.__game.mode }));
-  ok(st.stage === 1 && st.mode === 'intro', '点「下一关」进第 2 关，先弹「收集宝石」说明卡');
-  await click('introOk');
+  await petPlay(40);
+  await page.waitForTimeout(1300);
+  await shot('03_第1关完成');
+  st = await page.evaluate(() => ({ won: window.__game.g.won, stage: window.__game.save.petStage }));
+  ok(st.won && st.stage === 1, '真鼠标拖块过第 1 关');
+  // 第 3 关：小墨怪，过关送铜雀
+  await page.evaluate(() => window.__game.newPetLevel(2));
+  await page.waitForTimeout(300);
+  await shot('04_第3关_小墨怪说明卡');
+  st = await page.evaluate(() => window.__game.mode);
+  await closeIntro();
+  await petPlay(30);
+  await page.waitForTimeout(1300);
+  await shot('05_第3关_送铜雀');
+  st = await page.evaluate(() => ({ won: window.__game.g.won, caught: window.__game.g.caught, pets: window.__game.save.petOrder.slice(), gourd: window.__game.save.gourd }));
+  ok(st.won && st.caught >= 2 && st.pets.includes('tongque') && st.gourd >= 2, '第 3 关抓到 2 只小墨怪收进葫芦，过关得到铜雀');
+  // 第 4 关：铜雀出战，自己出手
+  await page.evaluate(() => window.__game.newPetLevel(3));
+  await page.waitForTimeout(300);
+  await closeIntro();
+  const acted = await petPlay(40, () => Object.keys(window.__game.g.petActsTotal).length > 0);
+  await page.waitForTimeout(380);
+  await shot('06_第4关_铜雀出手');
+  ok(acted, '第 4 关铜雀能量满了自己出手（射掉最满的一排）');
+  await petPlay(40);
+  await page.waitForTimeout(1300);
+  // 营地：炼丹、喂到 5 级
+  await page.evaluate(() => { const G = window.__game; G.setSave({ gourd: 6 }); G.openCamp(); });
   await page.waitForTimeout(200);
-  let sawFly = false;
-  for (let k = 0; k < 40; k++) {
-    const m = await page.evaluate(() => { const G = window.__game; if (G.g.over) return null; const b = G.core.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c }; });
-    if (!m) break;
-    await dragTo(m.i, m.r, m.c);
-    await page.waitForTimeout(60);
-    if (!sawFly && (await page.evaluate(() => Object.values(window.__game.g.got).some((v) => v > 0)))) {
-      sawFly = true; await page.waitForTimeout(120); await shot('06_第2关_宝石飞向计数');
-    }
-  }
-  st = await page.evaluate(() => ({ won: window.__game.g.won, moves: window.__game.g.moves }));
-  ok(st.won && sawFly, '第 2 关收满 3 颗青金过关（' + st.moves + ' 块），收到时宝石飞向顶上');
-  // 失败 → 「再试一次」量重开
-  const rs = [];
-  for (let k = 0; k < 3; k++) {
-    await page.evaluate(() => { const G = window.__game; G.newStage(9); G.g.over = true; G.g.reason = 'stuck'; G.endGame(); });
-    const tOver = await page.evaluate(async () => { const G = window.__game; while (!G.buttons().some((b) => b.id === 'again')) await new Promise((r) => setTimeout(r, 16)); return G.stats.overs[G.stats.overs.length - 1]; });
-    if (k === 0) await shot('07_旅程_堵住了');
-    await click('again');
-    const tStart = await page.evaluate(() => window.__game.stats.starts[window.__game.stats.starts.length - 1]);
-    rs.push((tStart - tOver) / 1000);
-  }
-  ok(rs.every((x) => x <= 3), '旅程输了点「再试一次」重开：平均 ' + (rs.reduce((a, b) => a + b, 0) / rs.length).toFixed(2) + ' 秒');
-  // 地图
-  await click('map');
-  await page.waitForTimeout(400);
-  await shot('08_旅程地图');
-  st = await page.evaluate(() => ({ mode: window.__game.mode, btn: window.__game.buttons().map((b) => b.id) }));
-  ok(st.mode === 'map' && st.btn.includes('play') && st.btn.includes('node1') && st.btn.includes('classic'), '左上「‹」回地图：有「第 N 关」、能点过的关、有「经典拼画」');
-
-  // ---------- 守城（肉鸽试玩版） ----------
-  await click('siege');
-  await page.waitForTimeout(400);
-  st = await page.evaluate(() => ({ siege: !!window.__game.g.siege, phase: window.__game.g.phase, first: window.__game.g.firstRun }));
-  ok(st.siege && st.phase === 'play' && st.first, '地图点「守城」进肉鸽试玩：第一局不先选，直接打第一辆车');
-  await dragTo(0, 3, 3);
-  await page.waitForTimeout(1900);
-  await shot('09_守城_三选一');
-  st = await page.evaluate(() => ({ phase: window.__game.g.phase, offer: window.__game.g.offer, btn: window.__game.buttons().map((b) => b.id) }));
-  ok(st.phase === 'choose' && st.offer.join() === 'crossbow' && st.btn.includes('pick0'), '第一局：第 1 波空手，第一下 3×3 打掉小车，只送一件连弩（循序渐进）');
-  await click('pick0');
+  await click('brew');
+  await page.waitForTimeout(3300);
+  await shot('07_营地_炼好丹');
+  for (let k = 0; k < 8; k++) { await page.evaluate(() => { const G = window.__game; if (G.save.pets.tongque && G.save.pets.tongque.lv < 5) G.feedPet('tongque'); }); }
   await page.waitForTimeout(300);
-  let sawRelic = false;
-  for (let k = 0; k < 60; k++) {
-    const m = await page.evaluate(() => { const G = window.__game; if (G.g.over) return 'over'; if (G.g.phase === 'choose') return 'choose'; if (G.siegeBusy()) return 'busy'; const b = G.SG.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c }; });
-    if (m === 'over') break;
-    if (m === 'busy') { await page.waitForTimeout(150); continue; }
-    if (m === 'choose') { await page.waitForTimeout(700); await click('pick0'); await page.waitForTimeout(250); continue; }
-    if (!m) break;
-    await dragTo(m.i, m.r, m.c);
-    await page.waitForTimeout(160);
-    if (!sawRelic && (await page.evaluate(() => Object.keys(window.__game.g.triggers).length > 0))) { sawRelic = true; await page.waitForTimeout(80); await shot('10_守城_机关发动'); }
-  }
-  await page.waitForTimeout(1500);
-  st = await page.evaluate(() => ({ waves: window.__game.g.wavesWon, trig: window.__game.g.triggers, mode: window.__game.mode, won: window.__game.g.won, reason: window.__game.g.reason }));
-  await shot('11_守城_结算');
-  ok(st.waves >= 2 && sawRelic && st.mode === 'over', '真鼠标守了 ' + st.waves + ' 波（' + (st.won ? '守住' : st.reason) + '），机关发动 ' + JSON.stringify(st.trig));
-  await click('tomap');
+  await shot('08_营地_可以进化');
+  st = await page.evaluate(() => ({ lv: window.__game.save.pets.tongque.lv, btn: window.__game.buttons().map((b) => b.id) }));
+  ok(st.lv >= 5 && st.btn.includes('evolve0'), '营地：葫芦里的墨怪炼成丹，喂铜雀到 5 级，出现「进化」');
+  // 进化关
+  await click('evolve0');
+  await page.waitForTimeout(400);
+  await shot('09_进化关');
+  await petPlay(60);
+  await page.waitForTimeout(1400);
+  await shot('10_进化成功');
+  st = await page.evaluate(() => ({ won: window.__game.g.won, pets: window.__game.save.petOrder.slice() }));
+  ok(st.won && st.pets.includes('jinchique') && !st.pets.includes('tongque'), '进化关：金色方块把正中间 9 格点亮，铜雀进化成金翅雀');
+  // 第 10 关：大墨怪
+  await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 9 }); G.newPetLevel(9); });
   await page.waitForTimeout(300);
-
-  // ---------- 每日一城 ----------
-  st = await page.evaluate(() => {
-    const G = window.__game;
-    const a = G.SG.createSiege({ daily: 20261121 }), b = G.SG.createSiege({ daily: 20261121 });
-    return { same: a.offer.join() === b.offer.join() && a.hand.map((p) => p.id).join() === b.hand.map((p) => p.id).join(), left: G.dailyLeft() };
-  });
-  ok(st.same && st.left === 3, '每日一城：同一天两局开局的三选一和第一手一样；今天 3 次');
-  await page.evaluate(() => window.__game.setSave({ siegeRuns: 3 })); // 守城玩满 3 局才开放
-  await page.waitForTimeout(100);
-  await click('daily');
-  await page.waitForTimeout(500);
-  await page.evaluate(() => { const G = window.__game; G.g.pick(G.g.offer[0]); G.g.wavesWon = 3; G.g.bestHit = 120; G.g.over = true; G.g.reason = 'gate'; G.endGame(); });
+  await closeIntro();
+  await shot('11_第10关_大墨怪');
+  await petPlay(60);
+  await page.waitForTimeout(1400);
+  st = await page.evaluate(() => ({ won: window.__game.g.won, pets: window.__game.save.petOrder.slice() }));
+  ok(st.won && st.pets.includes('baozhu'), '第 10 关打倒大墨怪（消 3 次），得到爆竹鼠');
+  // 加场：火麒麟送火块
+  await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 10 }); G.newPetLevel(10); });
+  await page.waitForTimeout(300);
+  await closeIntro();
+  const gotFire = await petPlay(60, () => window.__game.g.hand.some((p) => p && p.special === 'fire'));
+  await page.waitForTimeout(400);
+  await shot('12_加场_火块');
+  ok(gotFire, '试玩加场：三只宠物一起上，火麒麟往托盘里送火块');
+  await page.evaluate(() => { const G = window.__game; G.g.over = true; G.g.reason = 'stuck'; G.endGame(); });
   await page.waitForTimeout(700);
-  await click('share');
-  await page.waitForTimeout(300);
-  await shot('11b_每日一城_晒成绩');
-  st = await page.evaluate(() => ({ mode: window.__game.mode, best: window.__game.save.daily.best, left: window.__game.dailyLeft() }));
-  ok(st.mode === 'share' && st.best === 3 && st.left === 2, '每日一城守住 3 波：记今天最好 3 波、剩 2 次、能出晒成绩卡');
-  await click('shareClose');
-  await page.waitForTimeout(200);
   await click('tomap');
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(400);
+  await shot('13_地图');
+  st = await page.evaluate(() => ({ mode: window.__game.mode, btn: window.__game.buttons().map((b) => b.id) }));
+  ok(st.mode === 'map' && st.btn.includes('play') && st.btn.includes('camp') && st.btn.includes('classic') && !st.btn.includes('siege'), '地图：第一章关卡、营地、经典拼画；守城收起来了');
 
   // ---------- 经典拼画（0.1 / 0.2 的玩法） ----------
   await click('classic');

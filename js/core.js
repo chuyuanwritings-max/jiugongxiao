@@ -40,7 +40,7 @@ SHAPES.forEach(([id, cat, rows]) => {
 const IDS = Object.keys(PIECES);
 const HARD = ['sq3', '5h', '5v', 'L5a', 'L5d'];
 
-// ---------- 棋盘：81 格，0 空 1 有块 2 机关匣（旅程里的固定格：占地方、算满，但消不掉） ----------
+// ---------- 棋盘：81 格，0 空 1 有块 2 机关匣（固定格：占地方、算满，但消不掉）3 小墨怪 4 大墨怪 ----------
 const boxOf = (r, c) => Math.floor(r / 3) * 3 + Math.floor(c / 3);
 const UNITS = []; // 27 个：0–8 行，9–17 列，18–26 宫
 for (let r = 0; r < 9; r++) UNITS.push(Array.from({ length: 9 }, (_, c) => r * 9 + c));
@@ -79,8 +79,9 @@ function placeAndClear(board, p, r, c) {
   const units = fullUnits(b);
   const cells = new Set();
   units.forEach((u) => UNITS[u].forEach((i) => cells.add(i)));
-  cells.forEach((i) => b[i] !== 2 && (b[i] = 0));
-  return { board: b, units, cells: [...cells].filter((i) => b[i] !== 2) };
+  // 2 机关匣、4 大墨怪：占地方、算满，但消不掉；3 小墨怪：算满，消掉就抓到
+  cells.forEach((i) => b[i] !== 2 && b[i] !== 4 && (b[i] = 0));
+  return { board: b, units, cells: [...cells].filter((i) => b[i] !== 2 && b[i] !== 4) };
 }
 // 有没有一种顺序和摆法，能把这几块全放下（中间会消除）
 function solvable(board, pieces) {

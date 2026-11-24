@@ -96,8 +96,8 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await petPlay(30);
   await page.waitForTimeout(1300);
   await shot('05_第3关_送铜雀');
-  st = await page.evaluate(() => ({ won: window.__game.g.won, caught: window.__game.g.caught, pets: window.__game.save.petOrder.slice(), gourd: window.__game.save.gourd }));
-  ok(st.won && st.caught >= 2 && st.pets.includes('tongque') && st.gourd >= 2, '第 3 关抓到 2 只小墨怪收进葫芦，过关得到铜雀');
+  st = await page.evaluate(() => ({ won: window.__game.g.won, caught: window.__game.g.caught, pets: window.__game.save.petOrder.slice(), dan: window.__game.save.dan, auto: window.__game.result && window.__game.result.danAuto }));
+  ok(st.won && st.caught >= 2 && st.pets.includes('tongque') && st.auto >= 1 && st.dan >= st.auto, '第 3 关抓到 ' + st.caught + ' 只墨怪，过关自动炼成 ' + st.auto + ' 颗丹（不用再去点炼丹），得到铜雀');
   // 过关只给「回营地」，没有「下一关」
   await page.evaluate(() => window.__game.skipCuts());
   await page.waitForTimeout(1300);
@@ -130,17 +130,15 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(1600);
   st = await page.evaluate(() => ({ won: window.__game.g.won, rock: window.__game.g.got.rock }));
   ok(st.won && st.rock >= 4, '第 9 关铁石关：普通消除消不掉，铜雀出手打碎 4 块铁石过关');
-  // 营地：炼丹、喂到 5 级（门槛提高了：先把铜雀放到 4 级快满）
-  await page.evaluate(() => { const G = window.__game; G.save.pets.tongque = { lv: 4, exp: 22 }; G.setSave({ gourd: 6 }); G.openCamp(); });
+  // 营地：一下升一级（「升级 · N 颗」），升到 5 级出现「进化」
+  await page.evaluate(() => { const G = window.__game; G.save.pets.tongque = { lv: 4, exp: 10 }; G.setSave({ dan: 20 }); G.openCamp(); });
   await page.waitForTimeout(200);
-  await click('brew');
-  await page.waitForTimeout(3300);
-  await shot('07_营地_炼好丹');
-  for (let k = 0; k < 8; k++) { await page.evaluate(() => { const G = window.__game; if (G.save.pets.tongque && G.save.pets.tongque.lv < 5) G.feedPet('tongque'); }); }
+  await shot('07_营地_升级按钮');
+  await click('feed0');
   await page.waitForTimeout(300);
   await shot('08_营地_可以进化');
   st = await page.evaluate(() => ({ lv: window.__game.save.pets.tongque.lv, btn: window.__game.buttons().map((b) => b.id) }));
-  ok(st.lv >= 5 && st.btn.includes('evolve0'), '营地：葫芦里的墨怪炼成丹，喂铜雀到 5 级，出现「进化」');
+  ok(st.lv >= 5 && st.btn.includes('evolve0'), '营地：点「升级 · N 颗」一下升一级，铜雀到 5 级，出现「进化」');
   // 进化关
   await click('evolve0');
   await page.waitForTimeout(400);
@@ -179,15 +177,19 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(1600);
   st = await page.evaluate(() => ({ won: window.__game.g.won, cracks: window.__game.g.monStats.cracks, got: window.__game.g.got.monster }));
   ok(cracked && st.cracks >= 1 && st.got >= 1, '第 12 关：不带宠物，消一次甲壳怪掉一层甲（掉了 ' + st.cracks + ' 层），再消抓走（抓到 ' + st.got + ' 只）');
-  // 第 24 关：墨苔怪 + 馋嘴怪（一边长墨、一边啃块）
-  await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 24, activePet: 'jinchique', cutSeen: Object.assign({ chapter1: 1, chapter2: 1 }, G.save.cutSeen) }); G.newPetLevel(23); G.g.team = []; });
-  await page.waitForTimeout(300);
-  await closeIntro();
-  await petPlay(40, () => { const s = window.__game.g.monStats; return s.eats > 0 && s.moss > 0; });
-  await page.waitForTimeout(200);
-  await shot('12d_第24关_墨苔馋嘴');
-  st = await page.evaluate(() => window.__game.g.monStats);
-  ok(st.eats > 0 && st.moss > 0, '第 24 关：馋嘴怪啃掉 ' + st.eats + ' 块、墨苔怪长出 ' + st.moss + ' 块墨');
+  // 墨苔怪 + 馋嘴怪：固定一块测试盘（两只都蹲在空排上，不会一开局就被抓走），规则层跑 30 手，看它们真的啃块、长墨
+  st = await page.evaluate(() => {
+    const G = window.__game;
+    const stage = { goal: { monster: 9 }, d: 0.1, colors: [0, 3, 2], board: ['.........', '.........', '..E......', '.##......', '.........', '......##.', '......G..', '.........', '.........'] };
+    const tot = { eats: 0, moss: 0 };
+    for (let seed = 1; seed <= 3; seed++) {
+      const g = G.PG.createPetGame({ stage, team: [], seed });
+      for (let k = 0; k < 30 && !g.over; k++) { const m = G.PG.bestMove(g, 0.3); if (!m) break; g.place(m.i, m.r, m.c); }
+      tot.eats += g.monStats.eats; tot.moss += g.monStats.moss;
+    }
+    return tot;
+  });
+  ok(st.eats > 0 && st.moss > 0, '馋嘴怪啃掉 ' + st.eats + ' 块、墨苔怪长出 ' + st.moss + ' 块墨（固定测试盘，3 局）');
   // 第 27 关：分身怪——打一下裂成两只小墨怪，目标「抓光」
   await page.evaluate(() => { const G = window.__game; G.newPetLevel(26); G.g.team = []; });
   await page.waitForTimeout(300);

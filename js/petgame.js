@@ -22,14 +22,19 @@ const PETS = {
   modou: { name: '墨斗蚕', color: 2, charge: 'place', act: 'fill', energy: (lv) => Math.max(5, 9 - (lv - 1)), power: (lv) => Math.min(3, lv) }, // power = 能补差几格的一排
   qilin: { name: '火麒麟', color: 5, charge: 'place', act: 'gift', energy: (lv) => Math.max(6, 10 - (lv - 1)), power: (lv) => (lv >= 3 ? 9 : 5) }, // 火块：5 = 炸十字 5 格；9 = 炸整个大格
 };
-// 每只宠物这一级能干什么（一行大白话）
+// 每只宠物这一级的本事：只写它干什么，动词照它是什么东西来（Cc 11-24：「不是都是啃啊？鼠是啃，那金翅雀也是啃吗？」）
+//   铜雀 = 鸟：啄；金翅雀：俯冲扫；爆竹鼠 = 鼠：啃；墨斗蚕 = 蚕：吐丝补；火麒麟：吐火球
 function petDesc(id, lv) {
   const d = PETS[id], pw = d.power(lv || 1);
-  if (d.act === 'row') return d.lines > 1 ? '跳出来，啃掉最满的两排' : pw >= 9 ? '跳出来，啃掉最满的一整排' : '跳出来，啃掉最满那排里的 ' + pw + ' 格';
-  if (d.act === 'box') return pw >= 9 ? '跳出来，啃空最挤的一个大格' : '跳出来，啃掉最挤大格里的 ' + pw + ' 格';
-  if (d.act === 'fill') return '把只差 ' + pw + ' 格的一排补满';
-  return pw >= 9 ? '送你火块：放哪儿炸空哪个大格' : '送你火块：放哪儿炸掉一个十字';
+  if (id === 'tongque') return pw >= 9 ? '啄掉最满的一整排' : '啄掉最满那排的 ' + pw + ' 格';
+  if (id === 'jinchique') return '俯冲扫掉最满的两排';
+  if (id === 'baozhu') return pw >= 9 ? '啃空最挤的大格' : '啃掉最挤大格的 ' + pw + ' 格';
+  if (id === 'modou') return '吐丝补满只差 ' + pw + ' 格的一排';
+  if (id === 'qilin') return pw >= 9 ? '吐火球给你：放哪炸空哪个大格' : '吐火球给你：放哪炸哪（十字）';
+  return '';
 }
+// 攒法的小标签（卡片角上）
+const CHARGE_TAG = { clear: '消一排 +1', place: '放一块 +1' };
 const CHARGE_TEXT = { clear: '每消掉一排，攒一格能量', place: '每放一块，攒一格能量' };
 const FIRE = { id: 'fire', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'fire', power: 9 };
 const fireOf = (pw) => (pw >= 9 ? FIRE : Object.assign({}, FIRE, { power: 5 }));
@@ -354,4 +359,4 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { petDesc, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, createPetGame, bestMove, simulate, energyMax };
+module.exports = { petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, createPetGame, bestMove, simulate, energyMax };

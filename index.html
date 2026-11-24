@@ -2274,7 +2274,7 @@ const INTRO = {
   color: { title: '金色能让它攒得更快', lines: ['消掉金色的方块，金光飞到铜雀身上，', '每 3 块多攒一格能量'], pet: 'tongque', glow: true },
   rock: { title: '铁石', lines: ['你消不掉它：只有宠物出手', '射到、炸到，才打得碎'], rockPic: true },
   boss: { title: '大墨怪', lines: ['它占四格，消不掉；', '它在的那一排每消一次，打它一下'], pet: null, bossPic: true },
-  team: { title: '试玩加场', lines: ['借你一只火麒麟：它攒满了会送你一块火块，', '你自己拖，放哪儿炸哪儿'], pet: 'qilin' },
+  team: { title: '试玩加场', lines: ['借你一只火麒麟：它会吐一颗火球给你，', '你自己拖，放哪儿炸哪儿'], pet: 'qilin' },
 };
 function drawIntro() {
   const it = INTRO[introKind];
@@ -2541,7 +2541,7 @@ function drawPetBar() {
       ctx.fillStyle = COL.ink; rr(p.x - bw / 2 + k * (seg + 3) - 1, by - 1, seg + 2, 9, 3); ctx.fill();
       ctx.fillStyle = k < pt.energy ? C.blockColors[d.color][1] : COL.woodDark; rr(p.x - bw / 2 + k * (seg + 3), by, seg, 7, 3); ctx.fill();
     }
-    buttons.push({ id: 'pet' + n, x: p.x - 28, y: p.y - 28, w: 56, h: 56, fn: () => { petFx.caption = { text: d.name + ' ' + pt.lv + ' 级：' + PG.CHARGE_TEXT[d.charge] + '，攒满了' + PG.petDesc(pt.id, pt.lv), t: clock }; } });
+    buttons.push({ id: 'pet' + n, x: p.x - 28, y: p.y - 28, w: 56, h: 56, fn: () => { petFx.caption = { text: d.name + ' ' + pt.lv + ' 级：' + PG.petDesc(pt.id, pt.lv), t: clock }; } });
   });
 }
 // 进化关：正中间铺一层宠物颜色、一亮一暗；亮了的格子金边
@@ -2643,15 +2643,22 @@ function juicePets(ev, colorsBefore) {
       pts = [slotCenter(Math.max(0, slot))];
     }
     if (!pts.length) pts = [{ x: L.bx + L.board / 2, y: L.by + L.board / 2 }];
-    const jump = 0.3, per = cells.length ? Math.min(0.07, 0.6 / cells.length) : 0.2, ret = 0.28;
-    const run = { id: act.id, from, pts, t0: t, jump, per, ret, end: t + jump + Math.max(1, pts.length) * per + ret, gift: act.kind === 'gift' };
+    // 动作照它是什么东西：鸟飞过去一路啄（fly）、鼠跑过去一路啃（gnaw）、蚕爬过去一路吐丝补满再一起消（spin）、麒麟原地吐一颗火球进托盘（spit）
+    const style = act.kind === 'row' ? 'fly' : act.kind === 'fill' ? 'spin' : act.kind === 'gift' ? 'spit' : 'gnaw';
+    if (style === 'spin') { cells = act.cells.slice().sort((x, y) => x - y); pts = cells.map((k) => ({ x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2 })); }
+    if (!pts.length) pts = [{ x: L.bx + L.board / 2, y: L.by + L.board / 2 }]; // 没找到能下手的地方：跳到棋盘中间转一圈就回来
+    const jump = style === 'spit' ? 0 : 0.3, per = cells.length ? Math.min(style === 'spin' ? 0.08 : 0.07, 0.65 / cells.length) : 0.45, ret = style === 'spit' ? 0 : 0.28;
+    const run = { id: act.id, from, pts, t0: t, jump, per, ret, style, end: t + jump + Math.max(1, pts.length) * per + ret + (style === 'spin' ? 0.2 : 0), gift: act.kind === 'gift' };
     petRuns.push(run);
+    const spinEnd = t + jump + cells.length * per + 0.15;
     cells.forEach((k, j) => {
-      const bite = t + jump + j * per;
-      ghosts.push({ k, t: bite, ci: colorsBefore[k] === undefined ? 0 : colorsBefore[k], ink: inkCells.has(k), rock: g.board[k] === 0 && (ev.rocks || []).includes(k) });
-      if (j % 2 === 0) timeline.push({ t: bite, fn: () => { P.sound('pick', 0.5); const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let c2 = 0; c2 < 4; c2++) { const a2 = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 90; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 60, t: clock, life: 0.45, s: 3 + Math.random() * 3 }); } } });
+      const reach = t + jump + j * per;
+      const bite = style === 'spin' ? spinEnd : reach; // 蚕：一路补满，补完整排一起消
+      ghosts.push({ k, t: bite, appear: inkCells.has(k) ? reach : 0, ci: colorsBefore[k] === undefined ? 0 : colorsBefore[k], ink: inkCells.has(k), rock: g.board[k] === 0 && (ev.rocks || []).includes(k) });
+      if (j % 2 === 0 && style !== 'spin') timeline.push({ t: bite, fn: () => { P.sound(style === 'fly' ? 'tap' : 'pick', 0.5); const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let c2 = 0; c2 < 4; c2++) { const a2 = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 90; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 60, t: clock, life: 0.45, s: 3 + Math.random() * 3 }); } } });
     });
-    timeline.push({ t, fn: () => { P.sound('select', 0.6); if (act.rescue) flash = 0.3; } });
+    timeline.push({ t, fn: () => { P.sound(style === 'spit' ? 'combo2' : 'select', 0.6); if (act.rescue) flash = 0.3; } });
+    if (style === 'spin') timeline.push({ t: spinEnd, fn: () => { P.sound('line', 0.7); flash = 0.12; } });
     timeline.push({ t: t + jump + cells.length * per, fn: () => { P.vibrate(true); if (act.kind === 'box') { shake = Math.max(shake, 6); P.sound('combo3', 0.6); } } });
     t = run.end - 0.1;
   });
@@ -2676,18 +2683,44 @@ function drawPetRuns() {
   petRuns = petRuns.filter((r) => clock < r.end + 0.05);
   petRuns.forEach((r) => {
     if (clock < r.t0) return;
+    if (r.style === 'spit') {
+      // 麒麟原地张嘴，一颗火球划个弧线落进托盘
+      const a = Math.min(1, (clock - r.t0) / Math.max(0.3, r.end - r.t0)), to = r.pts[0];
+      const x = r.from.x + (to.x - r.from.x) * a, y = r.from.y + (to.y - r.from.y) * a - Math.sin(a * Math.PI) * 120;
+      for (let n = 0; n < 5; n++) { ctx.globalAlpha = 0.5 - n * 0.09; ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.arc(x - (to.x - r.from.x) * 0.03 * n, y + 8 * n, 12 - n * 2, 0, Math.PI * 2); ctx.fill(); }
+      ctx.globalAlpha = 1; ctx.fillStyle = '#ffd36a'; ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
     const p = petRunPos(r);
-    // 影子
+    if (r.style === 'fly') {
+      // 鸟：飞在格子上方，一下一下往下啄，翅膀扇
+      const dip = p.chomp * 14, y = p.y - 20 + dip, flap = Math.sin(clock * 30) * 10;
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(p.x, p.y + 20, 14, 4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = r.id === 'jinchique' ? COL.brassLight : C.blockColors[0][1];
+      for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(p.x + sx * 14, y); ctx.lineTo(p.x + sx * 40, y - 12 - flap); ctx.lineTo(p.x + sx * 30, y + 8); ctx.fill(); }
+      petIcon(r.id, p.x, y, 44, 0, 0);
+      // 尖嘴往下
+      ctx.fillStyle = COL.brassDark; ctx.beginPath(); ctx.moveTo(p.x - 6, y + 18); ctx.lineTo(p.x + 6, y + 18); ctx.lineTo(p.x, y + 28 + dip * 0.4); ctx.fill();
+      return;
+    }
+    if (r.style === 'spin') {
+      // 蚕：贴着格子爬，身后拖一根白丝
+      const start = r.pts[0];
+      ctx.strokeStyle = 'rgba(239,232,216,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(p.x, p.y + 20, 16, 5, 0, 0, Math.PI * 2); ctx.fill();
+      petIcon(r.id, p.x, p.y + Math.sin(clock * 20) * 2, 44, 0, 0);
+      return;
+    }
+    // 鼠：落地跑，嘴一张一合地啃
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(p.x, p.y + 24, 18, 6, 0, 0, Math.PI * 2); ctx.fill();
     petIcon(r.id, p.x, p.y, 50, 0, p.chomp * 0.25);
-    // 张嘴啃：一道黑色的嘴缝 + 两颗白牙
     if (p.chomp > 0.2) {
       ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.ellipse(p.x, p.y + 14, 10, 3 + p.chomp * 6, 0, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.fillRect(p.x - 6, p.y + 9, 4, 4); ctx.fillRect(p.x + 2, p.y + 9, 4, 4);
     }
   });
 }
-const petOut = (id) => petRuns.some((r) => r.id === id && clock >= r.t0 && clock < r.end);
+const petOut = (id) => petRuns.some((r) => r.id === id && r.style !== 'spit' && clock >= r.t0 && clock < r.end);
 
 // 局里画面：被宠物打掉、还没轮到它碎的格子先照原样画着；竖射的箭；宠物连到棋盘的光（借用守城的那一套）
 const _drawPetBoard = drawPetBoard;
@@ -2696,8 +2729,9 @@ drawPetBoard = function () {
   ghosts = ghosts.filter((gh) => {
     if (clock >= gh.t) { clearing.push({ k: gh.k, t: clock }); return false; }
     const x = cellX(gh.k % 9), y = cellY(Math.floor(gh.k / 9));
+    if (gh.appear && clock < gh.appear) return true; // 蚕还没爬到：这格还空着
     if (gh.rock) ironRock(x, y, L.cell);
-    else if (gh.ink) { ctx.fillStyle = COL.ink; ctx.fillRect(x + 3, y + 3, L.cell - 6, L.cell - 6); }
+    else if (gh.ink) { ctx.fillStyle = '#efe8d8'; ctx.fillRect(x + 4, y + 4, L.cell - 8, L.cell - 8); ctx.strokeStyle = COL.ink; ctx.lineWidth = 1.5; for (let q = 1; q < 4; q++) { ctx.beginPath(); ctx.moveTo(x + 4, y + 4 + q * (L.cell - 8) / 4); ctx.lineTo(x + L.cell - 4, y + 4 + q * (L.cell - 8) / 4); ctx.stroke(); } }
     else block(x, y, L.cell, 1, gh.ci);
     return true;
   });
@@ -2878,13 +2912,17 @@ function drawCamp() {
     ctx.fillStyle = COL.ink; rr(cx, cy + 4, cw, 92, 12); ctx.fill();
     ctx.fillStyle = COL.wood; rr(cx, cy, cw, 92, 12); ctx.fill();
     if (active) { ctx.strokeStyle = COL.jade; ctx.lineWidth = 3; rr(cx + 2, cy + 2, cw - 4, 88, 11); ctx.stroke(); }
-    petIcon(id, cx + 42, cy + 41, 54, 0, petFx.pop[id] ? Math.max(0, 0.3 - (clock - petFx.pop[id])) / 0.3 : 0);
+    petIcon(id, cx + 42, cy + 36, 50, 0, petFx.pop[id] ? Math.max(0, 0.3 - (clock - petFx.pop[id])) / 0.3 : 0);
     text(d.name + '  ' + rec.lv + ' 级', cx + 80, cy + 22, 18, COL.text, 'left');
-    // 一行说清：靠什么攒能量 + 攒满了干什么（太长就把字缩小，别压到按钮）
-    const line2 = (d.charge === 'place' ? '每放一块' : '每消一排') + '攒能量 · 攒满' + PG.petDesc(id, rec.lv);
-    let fs = 12; ctx.font = 'normal ' + fs + 'px "PingFang SC", sans-serif';
-    while (fs > 8 && ctx.measureText(line2).width > cw - 196) { fs--; ctx.font = 'normal ' + fs + 'px "PingFang SC", sans-serif'; }
-    text(line2, cx + 80, cy + 44, fs, COL.dim, 'left', 'normal');
+    // 只写本事；攒法缩成名字旁边一个小标签
+    const line2 = PG.petDesc(id, rec.lv);
+    let fs = 14; ctx.font = 'bold ' + fs + 'px "PingFang SC", sans-serif';
+    while (fs > 10 && ctx.measureText(line2).width > cw - 196) { fs--; ctx.font = 'bold ' + fs + 'px "PingFang SC", sans-serif'; }
+    text(line2, cx + 80, cy + 44, fs, COL.brassLight, 'left');
+    // 攒法小标签放在头像底下
+    const tag = PG.CHARGE_TAG[d.charge];
+    ctx.fillStyle = COL.woodDark; rr(cx + 8, cy + 72, 68, 16, 8); ctx.fill();
+    text('⚡' + tag, cx + 42, cy + 80, 10, COL.dim, 'center', 'normal');
     // 经验条：写着现在几点、要几点升级；能进化的写「可以进化了」
     const need = EXP_NEED[rec.lv] || 999, bw = cw - 200;
     ctx.fillStyle = COL.ink; rr(cx + 80, cy + 58, bw, 12, 6); ctx.fill();
@@ -2927,7 +2965,7 @@ function feedPet(id) {
   if (!up) petMsg = { text: PG.PETS[id].name + ' 经验 +' + DAN_EXP + '（' + rec.exp + ' / ' + EXP_NEED[rec.lv] + '）', t: clock };
   if (up) {
     const d = PG.PETS[id];
-    petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (d.evo && rec.lv >= d.evoLv ? '可以进化了！' : '现在' + PG.petDesc(id, rec.lv).replace('跳出来，', '')), t: clock };
+    petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (d.evo && rec.lv >= d.evoLv ? '可以进化了！' : '现在能' + PG.petDesc(id, rec.lv)), t: clock };
     P.sound('lit', 0.7);
   }
   persist();
@@ -3511,14 +3549,19 @@ const PETS = {
   modou: { name: '墨斗蚕', color: 2, charge: 'place', act: 'fill', energy: (lv) => Math.max(5, 9 - (lv - 1)), power: (lv) => Math.min(3, lv) }, // power = 能补差几格的一排
   qilin: { name: '火麒麟', color: 5, charge: 'place', act: 'gift', energy: (lv) => Math.max(6, 10 - (lv - 1)), power: (lv) => (lv >= 3 ? 9 : 5) }, // 火块：5 = 炸十字 5 格；9 = 炸整个大格
 };
-// 每只宠物这一级能干什么（一行大白话）
+// 每只宠物这一级的本事：只写它干什么，动词照它是什么东西来（Cc 11-24：「不是都是啃啊？鼠是啃，那金翅雀也是啃吗？」）
+//   铜雀 = 鸟：啄；金翅雀：俯冲扫；爆竹鼠 = 鼠：啃；墨斗蚕 = 蚕：吐丝补；火麒麟：吐火球
 function petDesc(id, lv) {
   const d = PETS[id], pw = d.power(lv || 1);
-  if (d.act === 'row') return d.lines > 1 ? '跳出来，啃掉最满的两排' : pw >= 9 ? '跳出来，啃掉最满的一整排' : '跳出来，啃掉最满那排里的 ' + pw + ' 格';
-  if (d.act === 'box') return pw >= 9 ? '跳出来，啃空最挤的一个大格' : '跳出来，啃掉最挤大格里的 ' + pw + ' 格';
-  if (d.act === 'fill') return '把只差 ' + pw + ' 格的一排补满';
-  return pw >= 9 ? '送你火块：放哪儿炸空哪个大格' : '送你火块：放哪儿炸掉一个十字';
+  if (id === 'tongque') return pw >= 9 ? '啄掉最满的一整排' : '啄掉最满那排的 ' + pw + ' 格';
+  if (id === 'jinchique') return '俯冲扫掉最满的两排';
+  if (id === 'baozhu') return pw >= 9 ? '啃空最挤的大格' : '啃掉最挤大格的 ' + pw + ' 格';
+  if (id === 'modou') return '吐丝补满只差 ' + pw + ' 格的一排';
+  if (id === 'qilin') return pw >= 9 ? '吐火球给你：放哪炸空哪个大格' : '吐火球给你：放哪炸哪（十字）';
+  return '';
 }
+// 攒法的小标签（卡片角上）
+const CHARGE_TAG = { clear: '消一排 +1', place: '放一块 +1' };
 const CHARGE_TEXT = { clear: '每消掉一排，攒一格能量', place: '每放一块，攒一格能量' };
 const FIRE = { id: 'fire', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'fire', power: 9 };
 const fireOf = (pw) => (pw >= 9 ? FIRE : Object.assign({}, FIRE, { power: 5 }));
@@ -3843,7 +3886,7 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { petDesc, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, createPetGame, bestMove, simulate, energyMax };
+module.exports = { petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, createPetGame, bestMove, simulate, energyMax };
 
 });
 __def("js/petlevels.js", function (module, exports, require) {

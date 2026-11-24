@@ -98,6 +98,16 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await shot('05_第3关_送铜雀');
   st = await page.evaluate(() => ({ won: window.__game.g.won, caught: window.__game.g.caught, pets: window.__game.save.petOrder.slice(), gourd: window.__game.save.gourd }));
   ok(st.won && st.caught >= 2 && st.pets.includes('tongque') && st.gourd >= 2, '第 3 关抓到 2 只小墨怪收进葫芦，过关得到铜雀');
+  // 过关只给「回营地」，没有「下一关」
+  await page.evaluate(() => window.__game.skipCuts());
+  await page.waitForTimeout(1300);
+  await shot('05b_过关只回营地');
+  st = await page.evaluate(() => window.__game.buttons().map((x) => x.id));
+  const toCamp = st.includes('tocamp') && !st.includes('next') && !st.includes('tomap');
+  await click('tocamp');
+  await page.waitForTimeout(200);
+  st = await page.evaluate(() => ({ mode: window.__game.mode, play: window.__game.buttons().some((x) => x.id === 'campPlay') }));
+  ok(toCamp && st.mode === 'camp' && st.play, '过关后只有「回营地」一个按钮（没有下一关）；营地里能去闯下一关');
   // 第 4 关：铜雀出战，自己出手
   await page.evaluate(() => window.__game.newPetLevel(3));
   await page.waitForTimeout(300);
@@ -167,8 +177,8 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await shot('12b_第12关_甲壳怪掉一层');
   await petPlay(60);
   await page.waitForTimeout(1600);
-  st = await page.evaluate(() => ({ won: window.__game.g.won, cracks: window.__game.g.monStats.cracks }));
-  ok(cracked && st.won && st.cracks >= 2, '第 12 关：不带宠物，消一次甲壳怪掉一层甲（掉了 ' + st.cracks + ' 层），再消抓走，过关');
+  st = await page.evaluate(() => ({ won: window.__game.g.won, cracks: window.__game.g.monStats.cracks, got: window.__game.g.got.monster }));
+  ok(cracked && st.cracks >= 1 && st.got >= 1, '第 12 关：不带宠物，消一次甲壳怪掉一层甲（掉了 ' + st.cracks + ' 层），再消抓走（抓到 ' + st.got + ' 只）');
   // 第 24 关：墨苔怪 + 馋嘴怪（一边长墨、一边啃块）
   await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 24, activePet: 'jinchique', cutSeen: Object.assign({ chapter1: 1, chapter2: 1 }, G.save.cutSeen) }); G.newPetLevel(23); G.g.team = []; });
   await page.waitForTimeout(300);

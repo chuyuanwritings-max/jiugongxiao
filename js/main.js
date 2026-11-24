@@ -776,7 +776,7 @@ function drawBg() {
 // 旅程的顶栏：返回、第几关、目标计数（还差几个；够了打勾）
 function drawStageHud() {
   const y = L.top;
-  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); timeline = []; mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账
+  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); timeline = []; if (g.won && g.pets) { CUT.clear(); openCamp(); } else mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账；过了关一律回营地
   text(g.pets ? petLevelName() : '第 ' + (stageIdx + 1) + ' 关', W / 2, y + 10, 15, COL.dim, 'center', 'normal');
   const left = g.goalLeft();
   const keys = Object.keys(g.stage.goal);
@@ -809,7 +809,7 @@ function drawHud() {
   if (g.pets) { drawStageHud(); return drawPetBar(); }
   if (g.stage) return drawStageHud();
   const y = L.top;
-  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); timeline = []; mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账
+  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); timeline = []; if (g.won && g.pets) { CUT.clear(); openCamp(); } else mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账；过了关一律回营地
   // 分数
   text(String(Math.round(displayScore)), 80, y + 18, 30, COL.text, 'left');
   text('最高 ' + (g.endless ? save.bestEndless : save.best), 80, y + 46, 13, COL.dim, 'left', 'normal');
@@ -1594,7 +1594,7 @@ function drawHome() {
   y += 64;
   button('homeClassic', bx, y, hw, 52, '经典拼画', { size: 17, bg: COL.copper, fn: () => newGame(false) });
   button('homeSettings', bx + hw + 12, y, hw, 52, '设置', { size: 19, bg: COL.woodDark, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } });
-  text('试玩版 0.7', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
+  text('试玩版 0.7.1', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -2091,16 +2091,8 @@ function drawPetOver() {
   const bw = pw - 48, bx = px + 24, by = py + ph - 128;
   const canFeed = save.petOrder.length && (save.gourd > 0 || save.dan > 0);
   if (r.won) {
-    const next = petIdx + 1 < PLV.length;
-    const nextNeedsLv = next && PLV[petIdx + 1].evolveLevel && (!save.pets[PLV[petIdx + 1].evolveLevel] || save.pets[PLV[petIdx + 1].evolveLevel].lv < PG.PETS[PLV[petIdx + 1].evolveLevel].evoLv) && !save.pets[PG.PETS[PLV[petIdx + 1].evolveLevel].evo];
-    if (canFeed && (nextNeedsLv || petIdx === 4)) {
-      button('tocamp', bx, by, bw, 58, '去营地炼丹、喂宠物', { size: 21, bg: '#3f9a7c', fn: () => openCamp() });
-      button('next', bx, by + 70, bw * 0.6 - 6, 44, next ? '下一关' : '地图', { size: 17, bg: COL.copper, fn: () => (next ? newPetLevel(petIdx + 1) : (mode = 'map')) });
-    } else {
-      button('next', bx, by, bw, 58, next ? '下一关' : '回地图', { size: 24, fn: () => (next ? newPetLevel(petIdx + 1) : (mode = 'map')) });
-      button('tocamp', bx, by + 70, bw * 0.6 - 6, 44, '营地', { size: 17, bg: '#3f9a7c', fn: () => openCamp() });
-    }
-    button('tomap', bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+    // 过关一律回营地（Cc 11-24：「别给我直接进入下一关的选项，每一关过完了之后必定回营地」）：炼丹、喂宠物、换出战，再从营地去闯下一关
+    button('tocamp', bx, by + 20, bw, 68, '回营地', { size: 28, bg: '#3f9a7c', fn: () => openCamp() });
   } else {
     button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => (g.stage.evolve ? newEvolution(g.stage.evolve.pet, petIdx) : newPetLevel(petIdx)) });
     if (g.adsUsed < C.adMax) {

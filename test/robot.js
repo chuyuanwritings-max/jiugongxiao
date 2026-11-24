@@ -65,9 +65,20 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
     }
     return false;
   };
-  const closeIntro = () => page.evaluate(() => { const b = window.__game.buttons().find((x) => x.id === 'introOk'); if (b) b.fn(); });
-  let st = await page.evaluate(() => ({ pets: !!window.__game.g.pets, idx: window.__game.petIdx, mode: window.__game.mode }));
-  ok(st.pets && st.idx === 0 && st.mode === 'play', '第一次打开直接进宠物章节第 1 关（不先看地图）');
+  // 先跳过过场，等一帧（按钮表每帧重画）再点说明卡的「继续」
+  const closeIntro = async () => {
+    await page.evaluate(() => window.__game.skipCuts());
+    await page.waitForTimeout(60);
+    await page.evaluate(() => { const b = window.__game.buttons().find((x) => x.id === 'introOk'); if (b) b.fn(); });
+  };
+  // 0.6.1：第一次打开先放第一章开场（镜头摇过工坊后院、硬切推到大墨怪），真鼠标点一下跳过
+  const cut0 = await page.evaluate(() => window.__game.mode);
+  await page.mouse.click(off.x + 200, off.y + 400);
+  await page.waitForTimeout(150);
+  await shot('01b_跳过开场_教学手势');
+  let st = await page.evaluate(() => ({ pets: !!window.__game.g.pets, idx: window.__game.petIdx, mode: window.__game.mode, seen: !!window.__game.save.cutSeen.chapter0 }));
+  ok(cut0 === 'cut' && st.seen, '第一次打开先放第一章开场过场（运镜大图）');
+  ok(st.pets && st.idx === 0 && st.mode === 'play', '点一下跳过过场，直接进第 1 关（不先看地图）');
   await dragTo(0, 3, 3);
   await page.waitForTimeout(140);
   await shot('02_第1关_第一下消一宫');
@@ -145,7 +156,7 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await shot('12_第11关_爆竹鼠铁石');
   await petPlay(80);
   await page.waitForTimeout(1600);
-  st = await page.evaluate(() => ({ won: window.__game.g.won, team: window.__game.g.team.map((t) => t.id), rock: window.__game.g.got.rock }));
+  st = await page.evaluate(() => ({ won: window.__game.g.won, team: window.__game.g.team.map((t) => t.id), rock: window.__game.g.got.rock}));
   ok(st.won && st.team[0] === 'baozhu' && st.rock >= 3, '第 11 关：借来的爆竹鼠啃碎 3 块铁石过关');
   // 第 12 关：铁甲怪——先不带宠物打 25 手：你消掉那排只弹一下锅，一只都抓不走
   await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 11, activePet: 'jinchique' }); G.newPetLevel(11); G.g.team = []; });

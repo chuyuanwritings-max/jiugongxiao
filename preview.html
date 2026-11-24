@@ -782,6 +782,863 @@ function simulate(opts) {
 module.exports = { GEMS, GEM_OF, goalLeft, rng, PIECES, IDS, UNITS, CENTER_UNIT, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, bestMove, randomMove, simulate, evalBoard };
 
 });
+__def("js/cuts.js", function (module, exports, require) {
+// 过场（0.6.1）：照 ../../../00_过场动画制作_技能_1.0.md，用共用播放器 cutscene.js。
+// 总指挥定的九宫消用法（想法/过场动画_各游戏用法_20261121.md）：
+//   F 运镜大图：每章开场，镜头摇过这一章的机关城全景，硬切推到这章的大墨怪，出章名；
+//   B 角色登场：每只新宠物第一次到手；
+//   C 短版：宠物进化、过章。
+// 关里宠物出手不放过场。第二次起播短版，点一下就跳过；奖励在过场开始前就已经入账。
+// 图全部代码画（8 比特像素，和 art.js 的插画一个味道）；Midjourney 的横幅全景到了以后只换 panorama()。
+const { createCutscene } = require('./cutscene.js');
+
+const DARK = { cy: 0.45, inner: 0.22, outer: 0.62, strength: 0.8 };
+const SKY = ['#0b1030', '#101640', '#152050', '#1b2a5e'];
+const BRASS = '#c9a050', BRASS_L = '#f3d27a', INK = '#120e18', RED = '#e2553b', STEAM = '#c8d0e0';
+const WOOD = '#5a3a22', WOOD_D = '#3a2416', STONE = '#2a3150';
+
+// 每章：全景、字、大墨怪蹲在全景的哪一点（0～1）
+const CHAPTERS = [
+  { name: '第一章 · 工坊后院', line: '大墨怪躲在后院！', boss: [0.88, 0.62] },
+  { name: '第二章 · 水车坊', line: '大墨怪占了水车坊！', boss: [0.86, 0.6] },
+];
+
+module.exports = function (api) {
+  // api: { P, W, H, dpr, withCtx, petIcon, inkMonster, text, PG, sound, save, persist }
+  const { P, W, H } = api;
+
+  // ---------- 像素小工具（画在 320×160 的小画布上，放大时不抹平，颗粒保留） ----------
+  const PW = 320, PH = 160;
+  function seeded(s) { return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+  function px(g, x, y, w, h, c) { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+  function disk(g, cx, cy, r, c) { for (let y = -r; y <= r; y++) { const w = Math.round(Math.sqrt(r * r - y * y)); px(g, cx - w, cy + y, w * 2 + 1, 1, c); } }
+  function gear(g, cx, cy, r, c, hole, rot) {
+    disk(g, cx, cy, r, c);
+    for (let k = 0; k < 8; k++) { const a = rot + (k / 8) * Math.PI * 2; px(g, cx + Math.cos(a) * (r + 1) - 2, cy + Math.sin(a) * (r + 1) - 2, 4, 4, c); }
+    disk(g, cx, cy, Math.max(1, Math.round(r * 0.35)), hole);
+  }
+  function shed(g, x, base, w, h, roof) {
+    px(g, x, base - h, w, h, WOOD); // 墙
+    for (let yy = base - h + 3; yy < base; yy += 4) px(g, x, yy, w, 1, WOOD_D); // 木板缝
+    for (let k = 0; k < w / 2 + 3; k++) px(g, x - 3 + k, base - h - k * 0.6, w + 6 - k * 2, 1, roof); // 斜顶
+    px(g, x + w / 2 - 4, base - 10, 8, 10, INK); // 门
+    px(g, x + 4, base - h + 5, 6, 5, BRASS_L); // 亮着的窗
+  }
+  function lantern(g, x, y) { px(g, x, y - 6, 1, 6, WOOD_D); px(g, x - 3, y, 7, 8, RED); px(g, x - 2, y + 2, 5, 3, '#ffb070'); }
+  function smallInk(g, x, y) { disk(g, x, y, 4, INK); px(g, x - 2, y - 1, 1, 2, '#fff'); px(g, x + 1, y - 1, 1, 2, '#fff'); }
+  function bigBoss(g, x, y, r) {
+    // 头上两只朱砂角 + 白眼睛（和关卡里的大墨怪一个样）
+    for (let k = 0; k < 7; k++) { px(g, x - r * 0.6 - k * 0.6, y - r - k, 3, 1, RED); px(g, x + r * 0.6 + k * 0.6 - 3, y - r - k, 3, 1, RED); }
+    disk(g, x, y, r, INK);
+    // 眼睛：像素图里方块眼比小圆干净
+    const e = Math.round(r * 0.32), ey = Math.round(y - r * 0.3);
+    px(g, x - r * 0.55, ey, e, e + 1, '#fff'); px(g, x + r * 0.55 - e, ey, e, e + 1, '#fff');
+    px(g, x - r * 0.55 + e - 2, ey + 1, 2, 3, INK); px(g, x + r * 0.55 - e, ey + 1, 2, 3, INK);
+    for (let k = 0; k < 5; k++) disk(g, x - r + k * r * 0.5, y + r * 0.85, Math.round(r * 0.28), INK); // 墨滴下摆
+  }
+  function skyAndCity(g, rnd) {
+    SKY.forEach((c, i) => px(g, 0, i * 25, PW, 26, c));
+    for (let k = 0; k < 60; k++) px(g, rnd() * PW, rnd() * 60, 1, 1, rnd() < 0.3 ? BRASS_L : '#8090c0');
+    disk(g, 42, 24, 9, '#efe6d2'); disk(g, 46, 21, 8, SKY[0]); // 月牙
+    // 远处的墨家机关城：一排塔，塔顶是齿轮，窗口点黄铜
+    for (let x = 0; x < PW; x += 14 + Math.floor(rnd() * 10)) {
+      const h = 18 + Math.floor(rnd() * 26), w = 8 + Math.floor(rnd() * 6);
+      px(g, x, 100 - h, w, h, '#1a2148');
+      if (rnd() < 0.5) gear(g, x + w / 2, 100 - h - 3, 3, '#232c5a', '#1a2148', 0);
+      for (let yy = 100 - h + 4; yy < 98; yy += 6) if (rnd() < 0.5) px(g, x + 2, yy, 1, 2, BRASS);
+    }
+  }
+  function panorama(ch) {
+    const c = P.makeCanvas(PW, PH), g = c.getContext('2d'), rnd = seeded(11 + ch * 97);
+    skyAndCity(g, rnd);
+    if (ch === 0) {
+      // 工坊后院：草棚 → 墙上大齿轮 + 烟囱冒汽 → 木箱、工作台、灯笼 → 最右边的棚子后面探出大墨怪
+      px(g, 0, 128, PW, 32, STONE); for (let x = 0; x < PW; x += 10) px(g, x, 128 + ((x / 10) % 2) * 6, 9, 1, '#384068');
+      shed(g, 16, 128, 56, 34, '#7a4a2a');
+      px(g, 100, 70, 80, 58, '#3c3a52'); gear(g, 140, 98, 20, BRASS, '#3c3a52', 0.2); gear(g, 166, 80, 9, '#a07838', '#3c3a52', 0.5);
+      px(g, 112, 40, 10, 30, '#4a4660'); for (let k = 0; k < 5; k++) disk(g, 118 + k * 4, 34 - k * 6, 4 + k, STEAM);
+      px(g, 196, 112, 18, 16, WOOD); px(g, 214, 118, 14, 10, WOOD_D); px(g, 232, 116, 22, 3, WOOD); px(g, 234, 119, 2, 9, WOOD_D); px(g, 250, 119, 2, 9, WOOD_D);
+      lantern(g, 204, 84); lantern(g, 236, 80);
+      smallInk(g, 88, 124); smallInk(g, 186, 125); smallInk(g, 226, 112);
+      bigBoss(g, CHAPTERS[0].boss[0] * PW, CHAPTERS[0].boss[1] * PH + 6, 16);
+      shed(g, 292, 128, 30, 26, '#7a4a2a');
+    } else {
+      // 水车坊：远山 → 河 → 两座水车磨坊 → 拱桥 → 最右边大墨怪蹲在河里，墨晕开
+      for (let x = 0; x < PW; x++) { const h = 14 + Math.round(Math.sin(x * 0.05) * 6 + Math.sin(x * 0.13) * 3); px(g, x, 100 - h, 1, h, '#18204a'); }
+      px(g, 0, 100, PW, 22, '#2b3a3a'); // 河岸
+      px(g, 0, 122, PW, 38, '#1e4a7a'); for (let k = 0; k < 40; k++) px(g, rnd() * PW, 124 + rnd() * 34, 6 + rnd() * 8, 1, '#4a7ab0');
+      for (const [x, r] of [[60, 20], [160, 16]]) {
+        shed(g, x - 46, 122, 40, 32, '#6a4a2a');
+        gear(g, x, 118, r, '#7a5a34', '#1e4a7a', 0.3);
+        for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; for (let t = 0; t < r; t += 2) px(g, x + Math.cos(a) * t, 118 + Math.sin(a) * t, 2, 2, WOOD_D); }
+      }
+      for (let x = 196; x < 250; x++) { const y = 112 - Math.round(Math.sin(((x - 196) / 54) * Math.PI) * 12); px(g, x, y, 1, 3, BRASS); }
+      lantern(g, 210, 92); lantern(g, 236, 92);
+      smallInk(g, 110, 128); smallInk(g, 186, 130);
+      disk(g, CHAPTERS[1].boss[0] * PW, 140, 22, '#14182e'); // 墨在河里晕开
+      bigBoss(g, CHAPTERS[1].boss[0] * PW, CHAPTERS[1].boss[1] * PH + 14, 16);
+    }
+    return c;
+  }
+  // 暗底（深靛蓝 + 中间亮一点）
+  function darkBg() {
+    const c = P.makeCanvas(64, 112), g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 46, 4, 32, 46, 70); gr.addColorStop(0, '#26306a'); gr.addColorStop(1, '#070a1c');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 112);
+    return c;
+  }
+  // 放射光底（进化、过章用）
+  function raysBg(col) {
+    const s = 256, c = P.makeCanvas(s, s), g = c.getContext('2d');
+    g.fillStyle = '#141a40'; g.fillRect(0, 0, s, s); g.fillStyle = col;
+    for (let i = 0; i < 16; i += 2) {
+      const a0 = (i / 16) * Math.PI * 2, a1 = ((i + 1) / 16) * Math.PI * 2;
+      g.beginPath(); g.moveTo(s / 2, s / 2); g.lineTo(s / 2 + Math.cos(a0) * s, s / 2 + Math.sin(a0) * s); g.lineTo(s / 2 + Math.cos(a1) * s, s / 2 + Math.sin(a1) * s); g.closePath(); g.fill();
+    }
+    return c;
+  }
+  // 宠物大头像（借 main.js 的 petIcon 画在离屏画布上）；sil = 涂黑成剪影
+  function petImg(id, sil) {
+    const d = api.dpr, s = 300, c = P.makeCanvas(s * d, s * d), g = c.getContext('2d');
+    g.setTransform(d, 0, 0, d, 0, 0);
+    api.withCtx(g, () => api.petIcon(id, s / 2, s / 2, s * (id === 'jinchique' ? 0.5 : 0.62), 0, 0));
+    if (sil) { g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = '#05060f'; g.fillRect(0, 0, c.width, c.height); }
+    return c;
+  }
+  function bossImg() {
+    const d = api.dpr, s = 300, c = P.makeCanvas(s * d, s * d), g = c.getContext('2d');
+    g.setTransform(d, 0, 0, d, 0, 0);
+    api.withCtx(g, () => api.inkMonster(s / 2, s / 2 + 20, 100, true));
+    return c;
+  }
+  // 被打扁的大墨怪：一摊墨 + ✕ 眼 + 两只角耷拉下来
+  function bossBeatenImg() {
+    const d = api.dpr, s = 300, c = P.makeCanvas(s * d, s * d), g = c.getContext('2d');
+    g.setTransform(d, 0, 0, d, 0, 0);
+    g.fillStyle = '#2a2236'; g.beginPath(); g.ellipse(150, 210, 130, 42, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = INK; g.beginPath(); g.ellipse(150, 196, 96, 52, 0, Math.PI, 0); g.fill(); g.beginPath(); g.ellipse(150, 196, 96, 22, 0, 0, Math.PI); g.fill();
+    g.strokeStyle = RED; g.lineWidth = 10; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(92, 160); g.lineTo(62, 176); g.moveTo(208, 160); g.lineTo(238, 176); g.stroke();
+    g.strokeStyle = '#fff'; g.lineWidth = 7;
+    for (const x of [118, 182]) { g.beginPath(); g.moveTo(x - 12, 172); g.lineTo(x + 12, 194); g.moveTo(x + 12, 172); g.lineTo(x - 12, 194); g.stroke(); }
+    return c;
+  }
+
+  // ---------- 时间线 ----------
+  // F：每章开场。pan 按这台手机的宽高比现算，硬切正好停在大墨怪上
+  function chapterTl(ch, img) {
+    const info = CHAPTERS[ch];
+    const s = Math.max(W / img.width, H / img.height), dw = img.width * s, dh = img.height * s;
+    const ox = (fx, zoom) => { const lim = (dw / 2 - W / 2 / zoom) / W; return Math.max(-lim, Math.min(lim, ((fx - 0.5) * dw) / W)); };
+    const oy = (fy, zoom) => { const lim = (dh / 2 - H / 2 / zoom) / H; return Math.max(-lim, Math.min(lim, ((fy - 0.5) * dh) / H)); };
+    const [bx, by] = info.boss;
+    return {
+      id: 'chapter' + ch, fps: 60, bg: '#000000', short: { from: 'punch' },
+      layers: [{ id: 'pano', img: 'pano', fit: 'cover', z: 0 }],
+      beats: [
+        { id: 'black', type: 'darkIn', dur: 24,
+          fx: [{ at: 0, fx: 'camera', pan: [ox(0.08, 1.1), 0], panDur: 0, to: 1.1 },
+               { at: 0, fx: 'fade', from: 1, to: 0, dur: 24 }] },
+        { id: 'sweep', type: 'hold', dur: 100,
+          fx: [{ at: 0, fx: 'camera', pan: [ox(0.66, 1.1), 0], panDur: 100, panEase: 'inOut' },
+               { at: 20, fx: 'text', str: info.name, in: 'fade', inDur: 16, pos: [0.5, 0.16], size: 24, strokeWidth: 5, dur: 70 },
+               { at: 0, sfx: 'whoosh' }] },
+        { id: 'still', type: 'hold', dur: 24 },
+        { id: 'punch', type: 'strike', dur: 4,
+          fx: [{ at: 0, fx: 'camera', pan: [ox(bx, 1.8), oy(by, 1.8)], panDur: 0, steps: [1.4, 1.6, 1.8], stepDur: 1 },
+               { at: 0, fx: 'flash', alpha: 0.8, hold: 1, decay: 10 },
+               { at: 0, fx: 'shake', amp: 7, dur: 10 },
+               { at: 0, sfx: 'impact' }] },
+        { id: 'pose', type: 'pose', dur: 70,
+          fx: [{ at: 0, fx: 'camera', to: 1.9, dur: 70, ease: 'linear' },
+               { at: 4, fx: 'text', str: info.line, in: 'pop', inDur: 10, pos: [0.5, 0.8], size: 30, strokeWidth: 6, color: '#f3d27a', dur: 66 }] },
+        { id: 'out', type: 'out', dur: 14, fx: [{ at: 0, fx: 'fade', from: 0, to: 1, dur: 14 }] },
+      ],
+    };
+  }
+  // B：新宠物到手。剪影 6 帧 → 上色亮相（集中线、光柱、推镜、名字 + 一行本事）
+  function petIntroTl(id) {
+    const d = api.PG.PETS[id];
+    return {
+      id: 'pet_' + id, fps: 60, bg: '#070a1c', vignette: DARK, short: { from: 'reveal', dur: { hold: 20 } },
+      layers: [
+        { id: 'bg', img: 'bg', fit: 'cover', z: 0 },
+        { id: 'hero', img: 'sil', z: 1, pos: [0.5, 0.44], anchor: [0.5, 0.5], h: 0.42, alpha: 0 },
+      ],
+      beats: [
+        { id: 'black', type: 'darkIn', dur: 6, fx: [{ at: 0, fx: 'fade', from: 1, to: 1, dur: 6 }] },
+        { id: 'flash', type: 'impact', dur: 12, frames: [{ f: 0, layer: 'hero', alpha: 1 }],
+          fx: [{ at: 0, fx: 'flash', alpha: 1, hold: 2, decay: 12 }, { at: 0, sfx: 'whoosh' }] },
+        { id: 'silhouette', type: 'hold', dur: 6 },
+        { id: 'reveal', type: 'pose', dur: 50, frames: [{ f: 0, layer: 'hero', img: 'pose', alpha: 1 }],
+          fx: [{ at: 0, fx: 'flash', alpha: 0.5, decay: 8 },
+               { at: 0, fx: 'speedlines', origin: [0.5, 0.44], dur: 12, z: 0.6 },
+               { at: 0, fx: 'rays', origin: [0.5, 0.44], z: 0.5, fadeIn: 8, alpha: 0.22, color: '#FFE6A0', dur: 110 },
+               { at: 0, fx: 'camera', to: 1.08, dur: 50, ease: 'out', focus: [0.5, 0.44] },
+               { at: 8, fx: 'text', str: '新伙伴 · ' + d.name, in: 'pop', pos: [0.5, 0.74], size: 32, color: '#f3d27a', dur: 102 },
+               { at: 16, fx: 'text', str: api.PG.petDesc(id, 1), in: 'fade', pos: [0.5, 0.8], size: 16, color: '#e8e2d0', strokeWidth: 4, dur: 94 },
+               { at: 0, sfx: 'sting' }] },
+        { id: 'hold', type: 'hold', dur: 60, tracks: [{ layer: 'hero', prop: 'scale', from: 1, to: 1.03, ease: 'breathe' }] },
+        { id: 'out', type: 'out', dur: 16, fx: [{ at: 0, fx: 'fade', from: 0, to: 1, dur: 16 }] },
+      ],
+    };
+  }
+  // C 短版：主角停一下 → 硬切 + 闪 → 换成放射光底、粒子、大字 → 淡黑。约 1.5 秒
+  //   进化：旧头像 → 硬切成新头像；过章：大墨怪 → 硬切成被打扁的一摊墨（加命中星）
+  function shortTl(id, word, sub, hit) {
+    return {
+      id, fps: 60, bg: '#070a1c', vignette: DARK,
+      layers: [
+        { id: 'bg', img: 'bg', fit: 'cover', z: 0 },
+        { id: 'meta', img: 'rays', fit: 'cover', z: 0.5, alpha: 0 },
+        { id: 'hero', img: 'before', z: 1, pos: [0.5, 0.44], anchor: [0.5, 0.5], h: 0.42 },
+      ],
+      beats: [
+        { id: 'hold', type: 'hold', dur: 22, tracks: [{ layer: 'hero', prop: 'scale', from: 1, to: 1.04, ease: 'breathe' }] },
+        { id: 'trigger', type: 'impact', dur: 2,
+          frames: [{ f: 0, layer: 'hero', img: 'after' }],
+          fx: [{ at: 0, fx: 'flash', alpha: 0.8, decay: 10 },
+               { at: 0, fx: 'shake', amp: 6, dur: 8 },
+               { at: 0, fx: 'speedlines', origin: [0.5, 0.44], dur: 12, z: 2 },
+               { at: 0, fx: 'particles', preset: 'spark', n: 28, origin: [0.5, 0.44], z: 3 },
+               { at: 0, fx: 'camera', steps: [1.08, 1.18], stepDur: 3, focus: [0.5, 0.44] },
+               hit ? { at: 0, fx: 'star', origin: [0.5, 0.36], size: 0.14, z: 3 } : { at: 0, fx: 'rays', origin: [0.5, 0.44], z: 0.8, alpha: 0.25, fadeIn: 4, color: '#FFE6A0', dur: 56 },
+               { at: 0, sfx: 'impact' }] },
+        { id: 'meta', type: 'metaphor', dur: 54, frames: [{ f: 0, layer: 'meta', alpha: 0.55 }],
+          tracks: [{ layer: 'meta', prop: 'scale', from: 1, to: 1.08, ease: 'linear' }],
+          fx: [{ at: 0, fx: 'particles', preset: 'bokeh', n: 20, z: 0.7, dur: 54 },
+               { at: 4, fx: 'text', str: word, in: 'pop', pos: [0.5, 0.16], size: 44, color: '#f3d27a', strokeWidth: 7, dur: 50 },
+               { at: 12, fx: 'text', str: sub, in: 'fade', pos: [0.5, 0.76], size: 20, color: '#e8e2d0', strokeWidth: 5, dur: 42 },
+               { at: 4, sfx: 'sting' }] },
+        { id: 'out', type: 'out', dur: 12, fx: [{ at: 0, fx: 'fade', from: 0, to: 1, dur: 12 }] },
+      ],
+    };
+  }
+
+  // ---------- 排队、播放 ----------
+  const SFX = { whoosh: ['select', 0.5], impact: ['combo4', 0.7], sting: ['win', 0.6] };
+  const queue = [];
+  let cs = null, pixel = false;
+  function enqueue(key, make) { queue.push({ key, make }); }
+  function startNext() {
+    const it = queue.shift();
+    if (!it) { cs = null; return false; }
+    const seen = !!api.save.cutSeen[it.key];
+    const { timeline, images } = it.make();
+    pixel = !!images.pano;
+    api.save.cutSeen[it.key] = true; api.persist();
+    cs = createCutscene({
+      ctx: api.getCtx(), width: W, height: H, images, timeline, short: seen,
+      onSfx: (n) => { const s = SFX[n]; if (s) api.sound(s[0], s[1]); },
+      onEnd: () => {},
+    });
+    return true;
+  }
+  return {
+    get playing() { return !!cs; },
+    get pending() { return queue.length > 0; },
+    // 每章第一关开打前：F 运镜大图
+    chapter(ch) {
+      if (!CHAPTERS[ch]) return;
+      enqueue('chapter' + ch, () => { const img = panorama(ch); return { timeline: chapterTl(ch, img), images: { pano: img } }; });
+    },
+    // 新宠物到手：B 角色登场
+    petIntro(id) { enqueue('pet_' + id, () => ({ timeline: petIntroTl(id), images: { bg: darkBg(), sil: petImg(id, true), pose: petImg(id, false) } })); },
+    // 进化：C 短版
+    evolve(from, to) {
+      const PG = api.PG;
+      enqueue('evo_' + to, () => ({ timeline: shortTl('evo_' + to, '进化！', PG.PETS[from].name + ' → ' + PG.PETS[to].name, false),
+        images: { bg: darkBg(), rays: raysBg('#2a3670'), before: petImg(from, false), after: petImg(to, false) } }));
+    },
+    // 过章（打倒这章的大墨怪）：C 短版
+    chapterClear(ch) {
+      enqueue('clear' + ch, () => ({ timeline: shortTl('clear' + ch, CHAPTERS[ch].name.split(' · ')[0] + ' 过关！', '大墨怪被打扁了', true),
+        images: { bg: darkBg(), rays: raysBg('#3a2a5a'), before: bossImg(), after: bossBeatenImg() } }));
+    },
+    start() { return cs || startNext(); },
+    update(dtMs) { if (!cs) return; cs.update(dtMs); if (cs.done) startNext(); },
+    draw() {
+      if (!cs) return;
+      const ctx = api.getCtx();
+      ctx.save(); if (pixel) ctx.imageSmoothingEnabled = false; // 像素全景放大不抹平（头像、光底照常平滑）
+      cs.draw();
+      ctx.restore();
+      if (!cs.done) api.text('点一下跳过', W - 14, H - 22, 12, 'rgba(232,226,208,0.55)', 'right', 'normal');
+    },
+    skip() { if (cs) { cs.skip(); startNext(); } },
+    clear() { queue.length = 0; cs = null; },
+    CHAPTERS,
+  };
+};
+
+});
+__def("js/cutscene.js", function (module, exports, require) {
+// 从 06_游戏设计/00_过场动画技能/cutscene.js 拷来（2026-11-24 带运镜 pan 的版本），改共用版时这里一起换
+// 通用过场播放器 1.0（2026-11-21，拆《潜水员戴夫》过场后写）
+// 只用 canvas 2D，不碰 DOM：微信小游戏 require 进来就能用，浏览器 <script> 也能用。
+// 时间单位是「帧」（60fps 基准）；真机掉帧时按毫秒补帧，不拖慢。坐标全部 0～1 归一化，横竖屏通用。
+// 用法：
+//   const { createCutscene } = require('./cutscene.js');
+//   const cs = createCutscene({ ctx, width: 375, height: 667, images, timeline, short: false,
+//                               onEnd() {}, onSfx(name) {} });
+//   每帧：cs.update(dtMs); cs.draw();   点屏幕：cs.skip();
+// 时间线格式见 00_过场动画制作_技能_1.0.md 第 5 节。
+(function (root) {
+  'use strict';
+
+  // ---------- 缓动 ----------
+  const EASE = {
+    linear: t => t,
+    in: t => t * t,
+    out: t => 1 - (1 - t) * (1 - t),
+    inOut: t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
+    sine: t => 0.5 - 0.5 * Math.cos(Math.PI * t),
+    step: t => (t < 1 ? 0 : 1),
+    pop: t => { const c = 2.2; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }, // 弹过头再回来
+  };
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  // 一些随机数要可重复（同一段过场每次播一样），用固定种子
+  function rng(seed) {
+    let s = seed >>> 0 || 1;
+    return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  }
+
+  // ---------- 粒子预设 ----------
+  const PARTICLE = {
+    spark:  { colors: ['#FFE07A', '#FFB030', '#FF7A1A'], speed: [3, 9], gravity: 0.25, life: [18, 36], size: [2, 3.5], shape: 'line' },
+    debris: { colors: ['#9A9A9A', '#6E6E6E', '#C8C0B0'], speed: [3, 8], gravity: 0.35, life: [40, 70], size: [3, 6], shape: 'rect' },
+    hearts: { colors: ['#FF5A7A', '#FFFFFF', '#E8204A'], speed: [0.4, 1.2], gravity: -0.02, life: [90, 150], size: [8, 16], shape: 'heart', area: true },
+    bokeh:  { colors: ['#FFFFFF', '#FFE0F0', '#FFF4C0'], speed: [0.2, 0.6], gravity: -0.01, life: [80, 140], size: [6, 18], shape: 'dot', area: true, alpha: 0.5 },
+    dust:   { colors: ['#FFFFFF'], speed: [0.2, 0.8], gravity: 0, life: [60, 120], size: [1.5, 3], shape: 'dot', area: true, alpha: 0.6 },
+  };
+
+  function createCutscene(opts) {
+    const ctx = opts.ctx;
+    const W = opts.width, H = opts.height;
+    const tl = opts.timeline;
+    const fps = tl.fps || 60;
+    const images = opts.images || {};
+    const onEnd = opts.onEnd || (() => {});
+    const onSfx = opts.onSfx || (() => {});
+    const rand = rng(tl.seed || 7);
+
+    // 短版（第二次起播）：从 short.from 开始，去掉 short.drop 里的节拍，short.dur 里的节拍改时长
+    const S = opts.short ? (tl.short || (tl.shortFrom ? { from: tl.shortFrom } : null)) : null;
+    let defs = tl.beats, pre = [];
+    if (S) {
+      const i0 = Math.max(0, tl.beats.findIndex(b => b.id === S.from));
+      pre = tl.beats.slice(0, i0);
+      defs = tl.beats.slice(i0).filter(b => !(S.drop || []).includes(b.id))
+        .map(b => (S.dur && S.dur[b.id] ? Object.assign({}, b, { dur: S.dur[b.id], repeat: 1 }) : b));
+    }
+
+    // 把 repeat 展开成平铺的节拍表，记下每个节拍的起始帧
+    const beats = [];
+    let total = 0;
+    for (const b of defs) {
+      const n = b.repeat || 1;
+      for (let k = 0; k < n; k++) {
+        beats.push({ def: b, start: total, k });
+        total += b.dur;
+      }
+    }
+
+    // 图层状态
+    const layers = {};
+    const base = {};
+    for (const L of tl.layers) {
+      const s = {
+        id: L.id, img: L.img, z: L.z || 0, anchor: L.anchor || [0.5, 0.5], fit: L.fit || null,
+        x: (L.pos || [0.5, 0.5])[0], y: (L.pos || [0.5, 0.5])[1], h: L.h || 0.5,
+        scale: 1, sx: 1, sy: 1, alpha: L.alpha == null ? 1 : L.alpha, rot: 0,
+        visible: L.visible !== false, flipX: false, smear: null,
+      };
+      layers[L.id] = s;
+      base[L.id] = Object.assign({}, s);
+    }
+
+    let frame = 0;          // 当前帧
+    let acc = 0;            // 毫秒累计
+    let done = false;
+    let beatIdx = -1;
+    const active = [];      // 正在播的特效
+    const tracks = [];      // 正在走的补间
+    let cycle = null;       // 连打
+    // ox/oy：镜头在大图上平移（单位＝屏宽/屏高），pan：正在走的平移
+    const cam = { scale: 1, fx: 0.5, fy: 0.5, anim: null, ox: 0, oy: 0, pan: null };
+
+    // ---------- 节拍进入：起补间、换图、开特效 ----------
+    function enterBeat(i, silent) {
+      const { def, start } = typeof i === 'number' ? beats[i] : i;
+      if (def.reset) resetToBase(def.reset);
+      for (const t of def.tracks || []) {
+        const L = layers[t.layer];
+        if (!L) continue;
+        const from = t.from == null ? L[t.prop] : t.from;
+        tracks.push({ L, prop: t.prop, from, to: t.to, start: start + (t.at || 0), dur: t.dur || def.dur,
+                      ease: t.ease || 'linear', yoyo: t.ease === 'breathe' });
+      }
+      cycle = def.cycle ? Object.assign({ start, last: -1, order: [] }, def.cycle) : null;
+      if (silent) {
+        // 短版快进：只落最终状态，不放特效
+        for (const f of def.frames || []) applyFrame(f);
+        for (const t of tracks) if (t.prop !== 'scale' || !t.yoyo) t.L[t.prop] = t.yoyo ? t.from : t.to;
+        tracks.length = 0;
+        if (def.camera) cam.scale = def.camera.to || 1;
+        return;
+      }
+    }
+
+    function resetToBase(mode) {
+      // 反差回落：所有特效同帧清零，回到第一张图
+      active.length = 0;
+      tracks.length = 0;
+      cycle = null;
+      cam.scale = 1; cam.anim = null; cam.fx = 0.5; cam.fy = 0.5; cam.ox = 0; cam.oy = 0; cam.pan = null;
+      if (mode === 'all' || mode === true) {
+        for (const id in layers) Object.assign(layers[id], base[id]);
+      }
+    }
+
+    function applyFrame(f) {
+      const L = layers[f.layer];
+      if (!L) return;
+      if (f.img) L.img = f.img;
+      if (f.visible != null) L.visible = f.visible;
+      if (f.flipX != null) L.flipX = f.flipX;
+      if (f.pos) { L.x = f.pos[0]; L.y = f.pos[1]; }
+      if (f.alpha != null) L.alpha = f.alpha;
+      if (f.scale != null) L.scale = f.scale;
+      L.smear = f.smear || null;
+    }
+
+    function startFx(spec, beatStart) {
+      const fx = Object.assign({}, spec, { t0: beatStart + (spec.at || 0) });
+      switch (fx.fx) {
+        case 'particles': {
+          const P = PARTICLE[fx.preset] || PARTICLE.spark;
+          fx.parts = [];
+          const n = fx.n || 20;
+          const ox = (fx.origin || [0.5, 0.5])[0] * W, oy = (fx.origin || [0.5, 0.5])[1] * H;
+          for (let k = 0; k < n; k++) {
+            const a = fx.angle != null ? fx.angle + (rand() - 0.5) * (fx.spread || Math.PI * 2)
+                                       : rand() * Math.PI * 2;
+            const sp = lerp(P.speed[0], P.speed[1], rand());
+            fx.parts.push({
+              x: P.area ? rand() * W : ox, y: P.area ? rand() * H : oy,
+              vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (P.area ? 0 : 1.5),
+              life: Math.round(lerp(P.life[0], P.life[1], rand())), size: lerp(P.size[0], P.size[1], rand()),
+              color: P.colors[(rand() * P.colors.length) | 0], rot: rand() * 6.28, vr: (rand() - 0.5) * 0.4,
+            });
+          }
+          fx.P = P;
+          fx.dur = fx.dur || Math.max(...fx.parts.map(p => p.life));
+          break;
+        }
+        case 'camera':
+          if (fx.steps || fx.to != null)
+            cam.anim = { t0: fx.t0, steps: fx.steps, stepDur: fx.stepDur || 3, from: cam.scale, to: fx.to,
+                         dur: fx.dur || 0, ease: fx.ease || (fx.steps ? 'step' : 'out') };
+          if (fx.focus) { cam.fx = fx.focus[0]; cam.fy = fx.focus[1]; }
+          // 运镜：镜头框在大图上移动。pan:[x,y] 是镜头中心偏离屏幕中心多少（屏宽/屏高为单位）；
+          // panDur 为 0 就是硬切到那一块（Flash 式「啪」地切过去）
+          if (fx.pan) {
+            const pd = fx.panDur != null ? fx.panDur : (fx.dur || 0);
+            if (pd > 0) cam.pan = { t0: fx.t0, from: [cam.ox, cam.oy], to: fx.pan, dur: pd, ease: fx.panEase || 'inOut' };
+            else { cam.ox = fx.pan[0]; cam.oy = fx.pan[1]; cam.pan = null; }
+          }
+          return; // 不进 active
+        case 'sfx':
+          onSfx(fx.name);
+          return;
+      }
+      if (fx.fx === 'speedlines' || fx.fx === 'rays') fx.seed = (rand() * 1e9) | 0;
+      active.push(fx);
+    }
+
+    // ---------- 每帧推进 ----------
+    function stepFrame() {
+      // 进入新节拍
+      while (beatIdx + 1 < beats.length && frame >= beats[beatIdx + 1].start) {
+        beatIdx++;
+        enterBeat(beatIdx, false);
+      }
+      const b = beats[beatIdx];
+      if (b) {
+        const local = frame - b.start;
+        for (const f of b.def.frames || []) if (f.f === local) applyFrame(f);
+        for (const s of b.def.fx || []) {
+          if ((s.at || 0) === local) {
+            if (s.sfx) onSfx(s.sfx);
+            if (s.fx) startFx(s, b.start);
+          }
+        }
+        if (cycle) stepCycle(local);
+      }
+      // 补间
+      for (let i = tracks.length - 1; i >= 0; i--) {
+        const t = tracks[i];
+        const p = (frame - t.start) / t.dur;
+        if (p < 0) continue;
+        if (t.yoyo) { t.L[t.prop] = lerp(t.from, t.to, 0.5 - 0.5 * Math.cos(Math.PI * 2 * p)); if (p >= 1) t.L[t.prop] = t.from; }
+        else t.L[t.prop] = lerp(t.from, t.to, (EASE[t.ease] || EASE.linear)(clamp(p, 0, 1)));
+        if (p >= 1) tracks.splice(i, 1);
+      }
+      // 镜头
+      if (cam.anim) {
+        const a = cam.anim, lt = frame - a.t0;
+        if (a.steps) {
+          const k = Math.min(Math.floor(lt / a.stepDur), a.steps.length - 1);
+          if (lt >= 0) cam.scale = a.steps[k];
+          if (lt >= a.steps.length * a.stepDur) cam.anim = null;
+        } else if (a.dur) {
+          cam.scale = lerp(a.from, a.to, (EASE[a.ease] || EASE.out)(clamp(lt / a.dur, 0, 1)));
+          if (lt >= a.dur) cam.anim = null;
+        } else { cam.scale = a.to; cam.anim = null; }
+      }
+      if (cam.pan) {
+        const a = cam.pan, p = clamp((frame - a.t0) / a.dur, 0, 1), e = (EASE[a.ease] || EASE.inOut)(p);
+        cam.ox = lerp(a.from[0], a.to[0], e); cam.oy = lerp(a.from[1], a.to[1], e);
+        if (p >= 1) cam.pan = null;
+      }
+      // 粒子物理、过期特效
+      for (let i = active.length - 1; i >= 0; i--) {
+        const fx = active[i];
+        const lt = frame - fx.t0;
+        if (fx.parts) for (const p of fx.parts) { p.x += p.vx; p.y += p.vy; p.vy += fx.P.gravity; p.rot += p.vr; p.vx *= 0.985; }
+        const life = fxLife(fx);
+        if (life != null && lt > life) active.splice(i, 1);
+      }
+      frame++;
+      if (frame >= total && !done) finish();
+    }
+
+    function fxLife(fx) {
+      switch (fx.fx) {
+        case 'flash': return (fx.hold || 0) + (fx.decay || 15);
+        case 'shake': return fx.dur || 8;
+        case 'star': return fx.dur || 14;
+        case 'sweat': return fx.dur || 50;
+        default: return fx.dur == null ? null : fx.dur;   // null = 一直到节拍被 reset 或过场结束
+      }
+    }
+
+    function stepCycle(local) {
+      const c = cycle;
+      const slot = Math.floor(local / (c.every || 3));
+      if (slot === c.last) return;
+      c.last = slot;
+      const L = layers[c.layer];
+      if (!L) return;
+      // 乱序但不连着两次同一张；镜像和小位移冒充更多张
+      let k;
+      do { k = (rand() * c.imgs.length) | 0; } while (c.imgs.length > 1 && c.imgs[k] === L.img);
+      L.img = c.imgs[k];
+      L.flipX = c.mirror ? rand() < 0.4 : false;
+      const j = c.jitter || 0;
+      L.x = (c.pos || base[c.layer].pos || [base[c.layer].x, base[c.layer].y])[0] + (rand() - 0.5) * j * 2;
+      L.y = (c.pos || [base[c.layer].x, base[c.layer].y])[1] + (rand() - 0.5) * j;
+    }
+
+    function finish() {
+      done = true;
+      onEnd();
+    }
+
+    // ---------- 绘制 ----------
+    function drawLayer(L) {
+      if (!L.visible || L.alpha <= 0) return;
+      const img = images[L.img];
+      if (!img) return;
+      ctx.save();
+      ctx.globalAlpha = clamp(L.alpha, 0, 1);
+      let dw, dh;
+      if (L.fit === 'cover') {
+        const s = Math.max(W / img.width, H / img.height) * L.scale;
+        dw = img.width * s; dh = img.height * s;
+      } else {
+        dh = L.h * H * L.scale; dw = dh * img.width / img.height;
+      }
+      const px = L.x * W, py = L.y * H;
+      ctx.translate(px, py);
+      if (L.rot) ctx.rotate(L.rot);
+      let sx = L.sx * (L.flipX ? -1 : 1), sy = L.sy;
+      if (L.smear) {
+        // 抹帧：拉伸 + 速度线，不用另外出图
+        sx *= L.smear.sx || 2.4; sy *= L.smear.sy || 0.8;
+        drawSmearLines(L, dw, dh);
+      }
+      ctx.scale(sx, sy);
+      ctx.drawImage(img, -dw * L.anchor[0], -dh * L.anchor[1], dw, dh);
+      ctx.restore();
+    }
+
+    function drawSmearLines(L, dw, dh) {
+      const n = L.smear.lines || 8;
+      const dir = L.smear.dir || 1;          // 1 = 从左往右冲，速度线留在左边
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = L.smear.color || '#FFFFFF';
+      ctx.lineWidth = 2;
+      const r = rng(frame * 31 + 5);
+      for (let k = 0; k < n; k++) {
+        const y = (r() - 0.5) * dh * 0.9 - dh * (L.anchor[1] - 0.5);
+        const len = dw * (0.8 + r() * 1.4);
+        ctx.beginPath();
+        ctx.moveTo(-dir * dw * 0.4, y);
+        ctx.lineTo(-dir * (dw * 0.4 + len), y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 世界里的特效（跟镜头一起缩放），按 z 插进图层之间
+    function drawWorldFx(fx) {
+      const lt = frame - fx.t0;
+      const o = fx.origin || [0.5, 0.5];
+      const ox = o[0] * W, oy = o[1] * H;
+      ctx.save();
+      switch (fx.fx) {
+        case 'glow': {     // 聚能：光点由小变大
+          const p = clamp(lt / (fx.grow || fx.dur || 40), 0, 1);
+          const r = lerp(fx.r0 || 4, fx.r1 || 60, EASE.in(p)) * (1 + 0.08 * Math.sin(lt * 0.9));
+          const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, r);
+          g.addColorStop(0, '#FFFFFF'); g.addColorStop(0.3, fx.color || '#9FF4FF'); g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ox, oy, r, 0, 6.29); ctx.fill();
+          break;
+        }
+        case 'rays': {     // 放射光柱，慢转
+          const n = fx.n || 12, len = Math.max(W, H) * 1.2;
+          const a0 = lt * (fx.spin == null ? 0.004 : fx.spin);
+          const fade = fx.fadeIn ? clamp(lt / fx.fadeIn, 0, 1) : 1;
+          ctx.globalAlpha = (fx.alpha || 0.35) * fade;
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = fx.color || '#FFD27A';
+          for (let k = 0; k < n; k++) {
+            const a = a0 + k * Math.PI * 2 / n, w = (fx.width || 0.09);
+            ctx.beginPath(); ctx.moveTo(ox, oy);
+            ctx.lineTo(ox + Math.cos(a - w) * len, oy + Math.sin(a - w) * len);
+            ctx.lineTo(ox + Math.cos(a + w) * len, oy + Math.sin(a + w) * len);
+            ctx.closePath(); ctx.fill();
+          }
+          break;
+        }
+        case 'speedlines': {   // 集中线：从四周指向中心，每 2 帧换一次
+          const r = rng(fx.seed + Math.floor(lt / 2));
+          const n = fx.n || 40, R = Math.hypot(W, H) * 0.6;
+          ctx.strokeStyle = fx.color || '#FFFFFF';
+          ctx.globalAlpha = fx.alpha || 0.8;
+          for (let k = 0; k < n; k++) {
+            const a = r() * Math.PI * 2, inner = R * (fx.inner || 0.45) * (0.8 + r() * 0.4);
+            ctx.lineWidth = 1 + r() * 2.5;
+            ctx.beginPath();
+            ctx.moveTo(ox + Math.cos(a) * inner, oy + Math.sin(a) * inner);
+            ctx.lineTo(ox + Math.cos(a) * R * 1.4, oy + Math.sin(a) * R * 1.4);
+            ctx.stroke();
+          }
+          break;
+        }
+        case 'ring': {     // 光环：绕物体扫一圈；expand = 最后一圈扩出画面
+          const dur = fx.dur || 30, p = clamp(lt / dur, 0, 1);
+          let rx = (fx.rx || 0.42) * W, ry = (fx.ry || 0.09) * H;
+          if (fx.expand) { const e = 1 + EASE.in(p) * 3.5; rx *= e; ry *= e; }
+          const head = -Math.PI / 2 + p * Math.PI * 2 * (fx.expand ? 0.6 : 1);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.lineCap = 'round';
+          for (let k = 0; k < 14; k++) {     // 一条带尾巴的弧
+            const a1 = head - k * 0.12, a2 = head - (k + 1) * 0.12;
+            ctx.globalAlpha = (1 - k / 14) * (fx.expand ? 1 - p * 0.6 : 1);
+            ctx.strokeStyle = k < 2 ? '#FFFFFF' : (fx.color || '#5FD0FF');
+            ctx.lineWidth = (fx.width || 6) * (1 - k / 20);
+            ctx.beginPath(); ctx.ellipse(ox, oy, rx, ry, 0, a2, a1); ctx.stroke();
+          }
+          if (fx.expand) { ctx.globalAlpha = 0.5 * (1 - p); ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.ellipse(ox, oy, rx, ry, 0, 0, 6.29); ctx.stroke(); }
+          break;
+        }
+        case 'star': {     // 命中星形：黄色尖角，0.6 → 1.1 后消失
+          const dur = fx.dur || 14, p = clamp(lt / dur, 0, 1);
+          const R = (fx.size || 0.08) * W * lerp(0.6, 1.1, EASE.out(p));
+          ctx.globalAlpha = p > 0.7 ? (1 - p) / 0.3 : 1;
+          ctx.fillStyle = fx.color || '#FFE24A'; ctx.strokeStyle = '#3A2A00'; ctx.lineWidth = 2;
+          ctx.beginPath();
+          const n = fx.points || 9;
+          for (let k = 0; k < n * 2; k++) {
+            const a = k * Math.PI / n + lt * 0.02, rr = k % 2 ? R * 0.42 : R * (0.85 + 0.3 * ((k * 37) % 5) / 5);
+            ctx.lineTo(ox + Math.cos(a) * rr, oy + Math.sin(a) * rr);
+          }
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+          break;
+        }
+        case 'sweat': {    // 汗滴：冒出来、往下滑一点、淡掉
+          const dur = fx.dur || 50, p = clamp(lt / dur, 0, 1);
+          const s = (fx.size || 0.025) * W;
+          ctx.globalAlpha = p < 0.15 ? p / 0.15 : p > 0.75 ? (1 - p) / 0.25 : 1;
+          const y = oy + p * s * 1.5;
+          ctx.fillStyle = '#BFE8FF'; ctx.strokeStyle = '#2A4A66'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(ox, y - s * 1.3);
+          ctx.quadraticCurveTo(ox + s, y, ox, y + s * 0.6); ctx.quadraticCurveTo(ox - s, y, ox, y - s * 1.3);
+          ctx.fill(); ctx.stroke();
+          break;
+        }
+        case 'particles': {
+          const P = fx.P;
+          for (const p of fx.parts) {
+            if (lt > p.life) continue;
+            ctx.globalAlpha = (P.alpha || 1) * (1 - lt / p.life);
+            ctx.fillStyle = ctx.strokeStyle = p.color;
+            if (P.shape === 'line') { ctx.lineWidth = p.size * 0.6; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 2, p.y - p.vy * 2); ctx.stroke(); }
+            else if (P.shape === 'rect') { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6); ctx.restore(); }
+            else if (P.shape === 'heart') drawHeart(p.x, p.y, p.size);
+            else { ctx.beginPath(); ctx.arc(p.x, p.y, p.size / 2, 0, 6.29); ctx.fill(); }
+          }
+          break;
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawHeart(x, y, s) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + s * 0.35);
+      ctx.bezierCurveTo(x - s * 0.6, y - s * 0.1, x - s * 0.3, y - s * 0.6, x, y - s * 0.25);
+      ctx.bezierCurveTo(x + s * 0.3, y - s * 0.6, x + s * 0.6, y - s * 0.1, x, y + s * 0.35);
+      ctx.fill();
+    }
+
+    // 屏幕特效（不跟镜头缩放）：渐晕、闪、频闪、文字
+    function drawScreenFx(fx) {
+      const lt = frame - fx.t0;
+      ctx.save();
+      switch (fx.fx) {
+        case 'flash': {
+          const hold = fx.hold || 0, decay = fx.decay || 15;
+          const a = lt < hold ? 1 : 1 - (lt - hold) / decay;
+          ctx.globalAlpha = clamp((fx.alpha == null ? 0.6 : fx.alpha) * a, 0, 1);
+          ctx.fillStyle = fx.color || '#FFFFFF';
+          ctx.fillRect(0, 0, W, H);
+          break;
+        }
+        case 'strobe': {   // pattern = 每次亮/暗各停几帧；local = 只闪局部光点（防光敏）
+          const pat = fx.pattern || [2, 6];
+          const cyc = pat.reduce((s, v) => s + v, 0);
+          let m = lt % cyc, k = 0;
+          while (m >= pat[k]) { m -= pat[k]; k++; }
+          const a = k % 2 === 0 ? (fx.max || 0.5) : (fx.min || 0.05);
+          ctx.globalAlpha = a;
+          if (fx.local) {
+            const [lx, ly, lr] = fx.local;
+            const g = ctx.createRadialGradient(lx * W, ly * H, 0, lx * W, ly * H, lr * W);
+            g.addColorStop(0, fx.color || '#E8FFFF'); g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+          } else { ctx.fillStyle = fx.color || '#FFFFFF'; ctx.fillRect(0, 0, W, H); }
+          break;
+        }
+        case 'fade': {     // 淡黑 / 淡白：from → to 透明度
+          const p = clamp(lt / (fx.dur || 20), 0, 1);
+          ctx.globalAlpha = lerp(fx.from == null ? 0 : fx.from, fx.to == null ? 1 : fx.to, p);
+          ctx.fillStyle = fx.color || '#000000';
+          ctx.fillRect(0, 0, W, H);
+          break;
+        }
+        case 'text': {
+          const inDur = fx.inDur || 10, p = clamp(lt / inDur, 0, 1);
+          const s = fx.in === 'pop' ? EASE.pop(p) : 1;
+          const pos = fx.pos || [0.5, 0.8];
+          ctx.globalAlpha = fx.in === 'fade' ? p : clamp(p * 3, 0, 1);
+          ctx.translate(pos[0] * W, pos[1] * H); ctx.scale(s, s);
+          ctx.font = `bold ${fx.size || 28}px "PingFang SC","Hiragino Sans GB",sans-serif`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.lineWidth = fx.strokeWidth || 6; ctx.strokeStyle = fx.stroke || '#1A1A1A'; ctx.lineJoin = 'round';
+          ctx.strokeText(fx.str, 0, 0);
+          ctx.fillStyle = fx.color || '#FFFFFF'; ctx.fillText(fx.str, 0, 0);
+          break;
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawVignette() {
+      const v = tl.vignette;
+      if (!v) return;
+      const g = ctx.createRadialGradient(W * 0.5, H * (v.cy || 0.45), Math.min(W, H) * (v.inner || 0.25),
+                                         W * 0.5, H * (v.cy || 0.45), Math.hypot(W, H) * (v.outer || 0.6));
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${v.strength == null ? 0.75 : v.strength})`);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+
+    const SCREEN_FX = { flash: 1, strobe: 1, fade: 1, text: 1 };
+
+    function draw() {
+      const f = frame - 1;   // 画的是刚推进完的那一帧
+      ctx.save();
+      ctx.fillStyle = tl.bg || '#111111';
+      ctx.fillRect(0, 0, W, H);
+      // 镜头 + 震屏
+      let shx = 0, shy = 0;
+      for (const fx of active) if (fx.fx === 'shake') {
+        const lt = f - fx.t0, k = 1 - lt / (fx.dur || 8), r = rng(f * 13 + 1);
+        shx += (r() - 0.5) * 2 * (fx.amp || 6) * k; shy += (r() - 0.5) * 2 * (fx.amp || 6) * k;
+      }
+      const cx = cam.fx * W, cy = cam.fy * H;
+      ctx.translate(cx + shx, cy + shy); ctx.scale(cam.scale, cam.scale); ctx.translate(-cx - cam.ox * W, -cy - cam.oy * H);
+      // 图层和世界特效按 z 排序
+      const items = [];
+      for (const id in layers) items.push({ z: layers[id].z, L: layers[id] });
+      for (const fx of active) if (!SCREEN_FX[fx.fx] && fx.fx !== 'shake') items.push({ z: fx.z == null ? 50 : fx.z, fx });
+      items.sort((a, b) => a.z - b.z);
+      for (const it of items) it.L ? drawLayer(it.L) : drawWorldFx(it.fx);
+      ctx.restore();
+      drawVignette();
+      for (const fx of active) if (SCREEN_FX[fx.fx]) drawScreenFx(fx);
+      ctx.restore();
+    }
+
+    // ---------- 对外 ----------
+    function update(dtMs) {
+      if (done) return;
+      acc += Math.min(dtMs, 250);
+      const step = 1000 / fps;
+      while (acc >= step && !done) { stepFrame(); acc -= step; }
+    }
+
+    function jumpTo(i) {
+      // 静默快进到第 i 个节拍（短版用）
+      while (beatIdx + 1 < i) { beatIdx++; enterBeat(beatIdx, true); }
+      frame = beats[i] ? beats[i].start : total;
+    }
+
+    function skip() {
+      if (done) return;
+      // 落到最终状态：快进全部节拍，清掉特效，立即结束
+      jumpTo(beats.length);
+      active.length = 0; cam.scale = 1; cam.anim = null; cam.ox = 0; cam.oy = 0; cam.pan = null;
+      frame = total;
+      finish();
+    }
+
+    for (const def of pre) enterBeat({ def, start: 0 }, true);   // 短版：前面跳过的节拍只落状态
+    stepFrame();
+
+    return {
+      update, draw, skip,
+      get frame() { return frame; },
+      get totalFrames() { return total; },
+      get done() { return done; },
+      get beatName() { const b = beats[beatIdx]; return b ? (b.def.id || b.def.type) : ''; },
+    };
+  }
+
+  const api = { createCutscene, PARTICLE, EASE };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.Cutscene = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+});
 __def("js/levels.js", function (module, exports, require) {
 // 旅程 15 关。结构照 Woodoku「旅程」第 1–15 关（拆解见 ../关卡拆解_Woodoku旅程_20261120.md）：
 // 目标轮着来（冲分 / 收宝石 / 机关匣 / 泡泡），约每 5 关一个新东西，第 10–11 关最难，12–14 关放松。
@@ -1034,6 +1891,7 @@ function freshSave() {
     daily: null, // 每日一城：{ date, tries, extra, best, bestHit }
     // 0.5 九宫消 + 宠物：宠物章节过到第几关、有哪些宠物（等级、经验）、出战顺序、葫芦里几只怪、几颗丹
     petStage: 0, pets: {}, petOrder: [], gourd: 0, dan: 0, petSeen: {}, petTutDone: false,
+    cutSeen: {}, // 0.6.1 过场：哪些看过（看过的第二次起播短版；「重新开始」也不清）
     siegeRuns: 0, relicSeen: {}, relicGot: {}, // 守城玩过几局；哪些机关见过发动、拿到过（第一次发动打一句说明、卡上标「新」）
   };
 }
@@ -1048,7 +1906,9 @@ const persist = () => P.save(KEY, save);
 
 // ---------- 画布和布局 ----------
 const scr = P.setup(onTouch);
-const { ctx, width: W, height: H, dpr } = scr;
+let ctx = scr.ctx; // let：过场要借现成的画法（petIcon、inkMonster）画到离屏画布上，见 withCtx
+const { width: W, height: H, dpr } = scr;
+function withCtx(c2, fn) { const keep = ctx; ctx = c2; try { fn(); } finally { ctx = keep; } }
 const L = {};
 // 守城要在棋盘上面留一大块「战场」（车从上往下压向城墙），所以棋盘小一点、往下挪
 function setLayout(kind) {
@@ -1100,6 +1960,13 @@ let g = null; // 这一局
 let paintIdx = 0;
 let mode = 'play'; // play / over / album / ad
 let overAt = 0; // 结束的时刻（结算页晚一点出来）
+// ---------- 过场（0.6.1，js/cuts.js）：每章开场 F 运镜大图、新宠物 B 登场、进化 / 过章 C 短版 ----------
+let CUT = null, cutPrev = 'play';
+function playCuts() {
+  if (!CUT.pending || mode === 'cut') return;
+  cutPrev = mode; mode = 'cut'; CUT.start();
+}
+function endCuts() { mode = cutPrev; if (mode === 'over') overAt = clock; } // 回到结算页：「过关！」和经验条从头演
 let result = null; // 结算信息
 let drag = null; // { slot, x, y, id }
 let downBtn = null;
@@ -1429,6 +2296,7 @@ function hitButton(x, y) {
   return null;
 }
 function onTouch(type, id, x, y) {
+  if (mode === 'cut') { if (type === 'down') { CUT.skip(); if (!CUT.playing) endCuts(); } return; }
   if (type === 'down') {
     if (drag) return; // 只认一根手指
     const b = hitButton(x, y);
@@ -2477,7 +3345,7 @@ function drawHome() {
   y += 64;
   button('homeClassic', bx, y, hw, 52, '经典拼画', { size: 17, bg: COL.copper, fn: () => newGame(false) });
   button('homeSettings', bx + hw + 12, y, hw, 52, '设置', { size: 19, bg: COL.woodDark, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } });
-  text('试玩版 0.6', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
+  text('试玩版 0.6.1', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -2499,7 +3367,7 @@ function drawSettings() {
   button('setReset', bx, y, bw, 58, asking ? '真的清空？再点一次' : '重新开始', { size: 22, bg: COL.red, fn: () => {
     if (!asking) { settingsAsk = clock; return; }
     // 清空所有进度（宠物、关卡、葫芦、金币、画册……），从第 1 关重新来
-    save = freshSave(); persist();
+    const keepCuts = save.cutSeen; save = freshSave(); save.cutSeen = keepCuts || {}; persist();
     P.setMuted(false);
     settingsAsk = 0;
     newPetLevel(0);
@@ -2548,7 +3416,7 @@ function petIcon(id, x, y, s, lv, pop) {
   text(PET_GLYPH[id] || '?', x, y + 1, Math.round(s * 0.46 * k), COL.text);
   if (lv) text('Lv' + lv, x + r * 0.9, y + r * 0.85, Math.max(11, Math.round(s * 0.2)), COL.brassLight);
 }
-function newPetLevel(i) {
+function newPetLevel(i, quiet) { // quiet：只把盘面摆好、不放过场（开机时给老玩家垫底用）
   const st0 = PLV[i];
   if (!st0) return;
   if (st0.evolveLevel) {
@@ -2567,6 +3435,8 @@ function newPetLevel(i) {
   const st1 = st0.firstTeamOnly && save.petStage > i && ownedTeam().length ? Object.assign({}, st0, { team: null, fastCharge: false }) : st0;
   g = PG.createPetGame({ stage: st1, team: st1.team ? null : ownedTeam(), seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone });
   startPet(st1);
+  // 这一章第一次开打：先放这章的开场（镜头摇过全景，硬切推到大墨怪）
+  if (!quiet && i % 10 === 0 && !save.cutSeen['chapter' + i / 10]) { CUT.chapter(i / 10); playCuts(); }
 }
 function newEvolution(id, levelIdx) {
   petIdx = levelIdx === undefined ? PLV.findIndex((x) => x.evolveLevel === id) : levelIdx;
@@ -2675,7 +3545,7 @@ function drawBossHints() {
     if (a > 0.9) { petFx.bossHit = clock; }
   }
 }
-// 宠物第一次出手 / 点宠物头像 / 开局那一句：棋盘下沿一条字
+// 点宠物头像 / 进化关开局那一句：棋盘下沿一条字（救场、第一次出手都不打字）
 function drawPetCaption() {
   for (const cp of [petFx.banner, petFx.caption]) {
     if (!cp || clock < cp.t || clock - cp.t > 2.8) continue;
@@ -2890,6 +3760,11 @@ function endPet() {
   result = r;
   mode = 'over';
   if (r.evolved) { P.sound('win', 0.9); flash = 0.7; } else if (!g.won) { P.sound('lose', 0.6); say('堵住了'); }
+  // 过场（东西上面已经入账了，跳过也不丢）：打倒这章的大墨怪 → 过章；进化；新宠物到手
+  if (g.won && st.goal.boss && petIdx % 10 === 9 && !petReplay) CUT.chapterClear(Math.floor(petIdx / 10));
+  if (r.evolved) CUT.evolve(r.evolved.from, r.evolved.to);
+  if (r.gift) CUT.petIntro(r.gift);
+  playCuts();
 }
 function drawPetOver() {
   const age = clock - overAt;
@@ -3574,10 +4449,14 @@ function frame() {
   const now = P.now();
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  update(mode === 'album' && albumFrom === 'play' ? 0 : dt);
+  update((mode === 'album' && albumFrom === 'play') || mode === 'cut' ? 0 : dt);
   buttons = [];
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (mode === 'album') {
+  if (mode !== 'cut' && CUT.playing) CUT.clear(); // 过场中被别的入口切走了（只有测试会这样）
+  if (mode === 'cut') {
+    CUT.update(dt * 1000);
+    if (CUT.playing) CUT.draw(); else { endCuts(); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+  } else if (mode === 'album') {
     drawAlbum();
   } else if (mode === 'home') {
     drawHome();
@@ -3612,8 +4491,12 @@ function frame() {
 }
 
 // 第一次打开：直接进第 1 关（10 秒内爽）；以后先看旅程地图
+CUT = require('./cuts.js')({
+  P, W, H, dpr, withCtx, petIcon, inkMonster, text, PG, sound: (n, v) => P.sound(n, v),
+  get save() { return save; }, persist, getCtx: () => ctx,
+});
 if (!save.petTutDone) newPetLevel(0);
-else { newPetLevel(0); mode = 'home'; } // 以后每次打开先看主菜单
+else { newPetLevel(0, true); mode = 'home'; } // 老玩家先看主菜单 // 以后每次打开先看主菜单
 P.nextFrame(frame);
 
 // 给测试用（只在浏览器里挂到 window 上）
@@ -3624,6 +4507,7 @@ P.exposeForTest('__game', {
   PG, PLV, newPetLevel, newEvolution, openCamp, feedPet, get petIdx() { return petIdx; },
   reset() { save = freshSave(); persist(); newStage(0); },
   setSave(o) { Object.assign(save, o); persist(); },
+  get cutPlaying() { return CUT.playing; }, get CUT() { return CUT; }, playCuts, skipCuts() { while (mode === 'cut') { CUT.skip(); if (!CUT.playing) endCuts(); } },
   newGame, endGame, core,
 });
 

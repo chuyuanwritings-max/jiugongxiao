@@ -25,6 +25,7 @@ function freshSave() {
     daily: null, // 每日一城：{ date, tries, extra, best, bestHit }
     // 0.5 九宫消 + 宠物：宠物章节过到第几关、有哪些宠物（等级、经验）、出战顺序、葫芦里几只怪、几颗丹
     petStage: 0, pets: {}, petOrder: [], gourd: 0, dan: 0, petSeen: {}, petTutDone: false,
+    cutSeen: {}, // 0.6.1 过场：哪些看过（看过的第二次起播短版；「重新开始」也不清）
     siegeRuns: 0, relicSeen: {}, relicGot: {}, // 守城玩过几局；哪些机关见过发动、拿到过（第一次发动打一句说明、卡上标「新」）
   };
 }
@@ -39,7 +40,9 @@ const persist = () => P.save(KEY, save);
 
 // ---------- 画布和布局 ----------
 const scr = P.setup(onTouch);
-const { ctx, width: W, height: H, dpr } = scr;
+let ctx = scr.ctx; // let：过场要借现成的画法（petIcon、inkMonster）画到离屏画布上，见 withCtx
+const { width: W, height: H, dpr } = scr;
+function withCtx(c2, fn) { const keep = ctx; ctx = c2; try { fn(); } finally { ctx = keep; } }
 const L = {};
 // 守城要在棋盘上面留一大块「战场」（车从上往下压向城墙），所以棋盘小一点、往下挪
 function setLayout(kind) {
@@ -91,6 +94,13 @@ let g = null; // 这一局
 let paintIdx = 0;
 let mode = 'play'; // play / over / album / ad
 let overAt = 0; // 结束的时刻（结算页晚一点出来）
+// ---------- 过场（0.6.1，js/cuts.js）：每章开场 F 运镜大图、新宠物 B 登场、进化 / 过章 C 短版 ----------
+let CUT = null, cutPrev = 'play';
+function playCuts() {
+  if (!CUT.pending || mode === 'cut') return;
+  cutPrev = mode; mode = 'cut'; CUT.start();
+}
+function endCuts() { mode = cutPrev; if (mode === 'over') overAt = clock; } // 回到结算页：「过关！」和经验条从头演
 let result = null; // 结算信息
 let drag = null; // { slot, x, y, id }
 let downBtn = null;
@@ -420,6 +430,7 @@ function hitButton(x, y) {
   return null;
 }
 function onTouch(type, id, x, y) {
+  if (mode === 'cut') { if (type === 'down') { CUT.skip(); if (!CUT.playing) endCuts(); } return; }
   if (type === 'down') {
     if (drag) return; // 只认一根手指
     const b = hitButton(x, y);
@@ -1468,7 +1479,7 @@ function drawHome() {
   y += 64;
   button('homeClassic', bx, y, hw, 52, '经典拼画', { size: 17, bg: COL.copper, fn: () => newGame(false) });
   button('homeSettings', bx + hw + 12, y, hw, 52, '设置', { size: 19, bg: COL.woodDark, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } });
-  text('试玩版 0.6', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
+  text('试玩版 0.6.1', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -1490,7 +1501,7 @@ function drawSettings() {
   button('setReset', bx, y, bw, 58, asking ? '真的清空？再点一次' : '重新开始', { size: 22, bg: COL.red, fn: () => {
     if (!asking) { settingsAsk = clock; return; }
     // 清空所有进度（宠物、关卡、葫芦、金币、画册……），从第 1 关重新来
-    save = freshSave(); persist();
+    const keepCuts = save.cutSeen; save = freshSave(); save.cutSeen = keepCuts || {}; persist();
     P.setMuted(false);
     settingsAsk = 0;
     newPetLevel(0);
@@ -1539,7 +1550,7 @@ function petIcon(id, x, y, s, lv, pop) {
   text(PET_GLYPH[id] || '?', x, y + 1, Math.round(s * 0.46 * k), COL.text);
   if (lv) text('Lv' + lv, x + r * 0.9, y + r * 0.85, Math.max(11, Math.round(s * 0.2)), COL.brassLight);
 }
-function newPetLevel(i) {
+function newPetLevel(i, quiet) { // quiet：只把盘面摆好、不放过场（开机时给老玩家垫底用）
   const st0 = PLV[i];
   if (!st0) return;
   if (st0.evolveLevel) {
@@ -1558,6 +1569,8 @@ function newPetLevel(i) {
   const st1 = st0.firstTeamOnly && save.petStage > i && ownedTeam().length ? Object.assign({}, st0, { team: null, fastCharge: false }) : st0;
   g = PG.createPetGame({ stage: st1, team: st1.team ? null : ownedTeam(), seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone });
   startPet(st1);
+  // 这一章第一次开打：先放这章的开场（镜头摇过全景，硬切推到大墨怪）
+  if (!quiet && i % 10 === 0 && !save.cutSeen['chapter' + i / 10]) { CUT.chapter(i / 10); playCuts(); }
 }
 function newEvolution(id, levelIdx) {
   petIdx = levelIdx === undefined ? PLV.findIndex((x) => x.evolveLevel === id) : levelIdx;
@@ -1881,6 +1894,11 @@ function endPet() {
   result = r;
   mode = 'over';
   if (r.evolved) { P.sound('win', 0.9); flash = 0.7; } else if (!g.won) { P.sound('lose', 0.6); say('堵住了'); }
+  // 过场（东西上面已经入账了，跳过也不丢）：打倒这章的大墨怪 → 过章；进化；新宠物到手
+  if (g.won && st.goal.boss && petIdx % 10 === 9 && !petReplay) CUT.chapterClear(Math.floor(petIdx / 10));
+  if (r.evolved) CUT.evolve(r.evolved.from, r.evolved.to);
+  if (r.gift) CUT.petIntro(r.gift);
+  playCuts();
 }
 function drawPetOver() {
   const age = clock - overAt;
@@ -2565,10 +2583,14 @@ function frame() {
   const now = P.now();
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  update(mode === 'album' && albumFrom === 'play' ? 0 : dt);
+  update((mode === 'album' && albumFrom === 'play') || mode === 'cut' ? 0 : dt);
   buttons = [];
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (mode === 'album') {
+  if (mode !== 'cut' && CUT.playing) CUT.clear(); // 过场中被别的入口切走了（只有测试会这样）
+  if (mode === 'cut') {
+    CUT.update(dt * 1000);
+    if (CUT.playing) CUT.draw(); else { endCuts(); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+  } else if (mode === 'album') {
     drawAlbum();
   } else if (mode === 'home') {
     drawHome();
@@ -2603,8 +2625,12 @@ function frame() {
 }
 
 // 第一次打开：直接进第 1 关（10 秒内爽）；以后先看旅程地图
+CUT = require('./cuts.js')({
+  P, W, H, dpr, withCtx, petIcon, inkMonster, text, PG, sound: (n, v) => P.sound(n, v),
+  get save() { return save; }, persist, getCtx: () => ctx,
+});
 if (!save.petTutDone) newPetLevel(0);
-else { newPetLevel(0); mode = 'home'; } // 以后每次打开先看主菜单
+else { newPetLevel(0, true); mode = 'home'; } // 老玩家先看主菜单 // 以后每次打开先看主菜单
 P.nextFrame(frame);
 
 // 给测试用（只在浏览器里挂到 window 上）
@@ -2615,5 +2641,6 @@ P.exposeForTest('__game', {
   PG, PLV, newPetLevel, newEvolution, openCamp, feedPet, get petIdx() { return petIdx; },
   reset() { save = freshSave(); persist(); newStage(0); },
   setSave(o) { Object.assign(save, o); persist(); },
+  get cutPlaying() { return CUT.playing; }, get CUT() { return CUT; }, playCuts, skipCuts() { while (mode === 'cut') { CUT.skip(); if (!CUT.playing) endCuts(); } },
   newGame, endGame, core,
 });

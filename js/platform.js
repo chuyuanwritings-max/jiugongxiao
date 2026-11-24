@@ -10,7 +10,7 @@ function setup(onTouch) {
     const info = (wx.getWindowInfo && wx.getWindowInfo()) || wx.getSystemInfoSync();
     width = info.windowWidth;
     height = info.windowHeight;
-    dpr = info.pixelRatio || 2;
+    dpr = Math.min(2, info.pixelRatio || 2); // 0.8.4：最多按 2 倍画（3 倍屏多画一倍多的像素，手机上看不出差别，却会卡）
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     const send = (type) => (e) => {
@@ -32,7 +32,7 @@ function setup(onTouch) {
     const phone = window.innerWidth > 520;
     width = phone ? 390 : window.innerWidth;
     height = phone ? Math.min(844, window.innerHeight - 20) : window.innerHeight;
-    dpr = window.devicePixelRatio || 2;
+    dpr = Math.min(2, window.devicePixelRatio || 2); // 同上：网页版 3 倍屏也按 2 倍画
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
     canvas.width = Math.round(width * dpr);

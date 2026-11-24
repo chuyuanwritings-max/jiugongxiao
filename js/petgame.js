@@ -11,13 +11,16 @@ const { UNITS, PIECES } = core;
 // 颜色 = C.blockColors 的序号：0 黄铜金 1 朱砂红 2 青铜绿 3 青金蓝 4 紫晶 5 赤铜 6 水银青；-1 = 旧铁灰（预放的块）
 const COLOR_NAME = ['金色', '红色', '绿色', '蓝色', '紫色', '橙色', '青色'];
 // 宠物：每只一行大白话（Cc 规矩：屏幕上只用「一排」「大格」「正中间」）
+// charge：靠什么积蓄能量。clear = 每消掉一排或一个大格攒一格（顺的时候越攒越快）；place = 每放一块攒一格（堵的时候也在攒，能雪中送炭）
+// 不管哪种：消掉它颜色的方块，每 3 块多攒一格；快堵死时，攒到一半以上的宠物会提前出手救你
 const PETS = {
-  tongque: { name: '铜雀', color: 0, energy: 4, act: 'row', n: 1, desc: '帮你射掉最满的一排', first: '铜雀：帮你射掉了最满的一排！', evo: 'jinchique', evoLv: 5 },
-  jinchique: { name: '金翅雀', color: 0, energy: 4, act: 'row', n: 2, desc: '一次射掉最满的两排', first: '金翅雀：一次射掉两排！' },
-  baozhu: { name: '爆竹鼠', color: 1, energy: 5, act: 'box', desc: '炸掉最挤的一个大格', first: '爆竹鼠：把最挤的大格炸空了！' },
-  modou: { name: '墨斗蚕', color: 2, energy: 4, act: 'fill', desc: '把快满的一排补满', first: '墨斗蚕：把快满的一排补满，消掉了！' },
-  qilin: { name: '火麒麟', color: 5, energy: 5, act: 'gift', desc: '送你一块火块，放哪儿炸哪个大格', first: '火麒麟送你一块火块：放到哪个大格，就炸掉那个大格！' },
+  tongque: { name: '铜雀', color: 0, energy: 4, charge: 'clear', act: 'row', n: 1, desc: '射掉最满的一排', first: '铜雀能量攒满了：帮你射掉最满的一排！', evo: 'jinchique', evoLv: 5 },
+  jinchique: { name: '金翅雀', color: 0, energy: 4, charge: 'clear', act: 'row', n: 2, desc: '一次射掉最满的两排', first: '金翅雀能量攒满了：一次射掉两排！' },
+  baozhu: { name: '爆竹鼠', color: 1, energy: 5, charge: 'clear', act: 'box', desc: '炸掉最挤的一个大格', first: '爆竹鼠能量攒满了：把最挤的大格炸空！' },
+  modou: { name: '墨斗蚕', color: 2, energy: 6, charge: 'place', act: 'fill', desc: '把快满的一排补满', first: '墨斗蚕能量攒满了：把快满的一排补满，消掉！' },
+  qilin: { name: '火麒麟', color: 5, energy: 7, charge: 'place', act: 'gift', desc: '送你一块火块，放哪儿炸哪个大格', first: '火麒麟能量攒满了：送你一块火块，放到哪个大格就炸哪个！' },
 };
+const CHARGE_TEXT = { clear: '每消掉一排，攒一格能量', place: '每放一块，攒一格能量' };
 const FIRE = { id: 'fire', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'fire' };
 const ROW = (u) => (u < 9 ? 'row' : u < 18 ? 'col' : 'box');
 function petDef(p) { return PETS[p.id]; }
@@ -45,6 +48,7 @@ function createPetGame(opts) {
     const k = r * 9 + c;
     if (ch === 'm') g.board[k] = 3;
     else if (ch === 'K') { g.board[k] = 4; g.bigCells.push(k); }
+    else if (ch === 'R') g.board[k] = 5;
     if (g.board[k] === 1) g.color[k] = -1;
   }));
   if (g.bigCells.length) g.bigHp = st.bigHp || 3;
@@ -79,7 +83,7 @@ function createPetGame(opts) {
     const got = [];
     for (const k of cells) {
       const v = b[k];
-      if (v === 2 || v === 4) continue;
+      if (v === 2 || v === 4 || v === 5) continue;
       if (v === 3 && 'monster' in g.got) { g.got.monster++; g.caught++; got.push({ k, what: 'monster' }); }
       else if (v === 3) { g.caught++; got.push({ k, what: 'monster' }); }
       if (v && g.gem[k]) { const id = core.GEMS[g.gem[k]].id; if (id in g.got) { g.got[id]++; got.push({ k, what: id }); } g.gem[k] = 0; }
@@ -105,6 +109,12 @@ function createPetGame(opts) {
   }
   const lineCells = (axis, i) => UNITS[axis === 'row' ? i : axis === 'col' ? 9 + i : 18 + i];
   const fillCount = (b, cells) => cells.filter((k) => b[k] === 1 || b[k] === 3).length;
+  // 铁石：普通消除消不掉，宠物出手（射、炸、火块）才打得碎
+  const rockLeft = () => 'rock' in g.got && g.got.rock < st.goal.rock;
+  const lineScore = (b, cells) => fillCount(b, cells) + (rockLeft() ? cells.filter((k) => b[k] === 5).length * 5 : 0);
+  function breakRocks(b, cells, ev) {
+    for (const k of cells) if (b[k] === 5) { b[k] = 0; if ('rock' in g.got) g.got.rock++; ev.collected.push({ k, what: 'rock' }); (ev.rocks = ev.rocks || []).push(k); }
+  }
 
   // 宠物出手（在 b 上改），返回画面要的信息
   function petAct(b, p, ev) {
@@ -112,11 +122,12 @@ function createPetGame(opts) {
     const act = { id: p.id, kind: d.act, lines: [], boxes: [], cells: [] };
     if (d.act === 'row') {
       const cand = [];
-      for (let i = 0; i < 9; i++) { cand.push({ axis: 'row', i, n: fillCount(b, lineCells('row', i)) }); cand.push({ axis: 'col', i, n: fillCount(b, lineCells('col', i)) }); }
+      for (let i = 0; i < 9; i++) { cand.push({ axis: 'row', i, n: lineScore(b, lineCells('row', i)) }); cand.push({ axis: 'col', i, n: lineScore(b, lineCells('col', i)) }); }
       cand.sort((x, y) => y.n - x.n);
       for (const L of cand.slice(0, d.n)) {
         if (!L.n) break;
         const cells = lineCells(L.axis, L.i);
+        breakRocks(b, cells, ev);
         unitTouches(b, cells, ev);
         act.cells.push(...cells.filter((k) => b[k] === 1 || b[k] === 3));
         clearCells(b, cells, ev);
@@ -124,9 +135,10 @@ function createPetGame(opts) {
       }
     } else if (d.act === 'box') {
       let best = -1, bn = 0;
-      for (let bx = 0; bx < 9; bx++) { const n = fillCount(b, lineCells('box', bx)); if (n > bn) { bn = n; best = bx; } }
+      for (let bx = 0; bx < 9; bx++) { const n = lineScore(b, lineCells('box', bx)); if (n > bn) { bn = n; best = bx; } }
       if (best >= 0) {
         const cells = lineCells('box', best);
+        breakRocks(b, cells, ev);
         unitTouches(b, cells, ev);
         act.cells.push(...cells.filter((k) => b[k] === 1 || b[k] === 3));
         clearCells(b, cells, ev);
@@ -187,6 +199,7 @@ function createPetGame(opts) {
     if (p.special === 'fire') {
       const bx = core.boxOf(r, c);
       const cells = UNITS[18 + bx];
+      breakRocks(b, cells, ev);
       unitTouches(b, cells, ev);
       const hit = cells.filter((k) => b[k] === 1 || b[k] === 3);
       clearedCells = clearedCells.concat(hit);
@@ -195,10 +208,10 @@ function createPetGame(opts) {
       units.push(18 + bx);
     }
     ev.units = units; ev.cells = clearedCells;
-    // 2. 充能：消掉几条，每只宠物涨几格；消掉谁颜色的块，每 3 块给谁多涨 1 格
+    // 2. 积蓄能量：消掉东西攒（clear）或每放一块攒（place）；消掉它颜色的块，每 3 块多攒 1 格
     for (const pt of g.team) {
       const mine = clearedCells.filter((k) => colorsBefore[k] === petDef(pt).color);
-      const gain = units.length + Math.floor(mine.length / 3);
+      const gain = (petDef(pt).charge === 'place' ? 1 : units.length) + Math.floor(mine.length / 3);
       if (gain) { pt.energy = Math.min(energyMax(g, pt), pt.energy + gain); ev.energy[pt.id] = gain; }
       if (mine.length) ev.sparks.push({ id: pt.id, cells: mine });
     }
@@ -229,6 +242,30 @@ function createPetGame(opts) {
     }
     if (!g.hand.some(Boolean)) g.deal();
     else giveGift();
+    // 雪中送炭：快堵死了，攒到一半以上的宠物提前出手救你（攒得越满的先上）
+    if (g.stuck()) {
+      const helpers = g.team.filter((pt) => pt.energy * 2 >= energyMax(g, pt)).sort((x, y) => y.energy / energyMax(g, y) - x.energy / energyMax(g, x));
+      for (const pt of helpers) {
+        if (!g.stuck()) break;
+        pt.energy = 0;
+        if (petDef(pt).act === 'gift') {
+          // 手上的块都放不下：换掉一块放不下的，换成火块（火块只要有空格就放得下）
+          const slot = g.hand.findIndex((x, k) => x && !g.fits(k));
+          if (slot >= 0) { g.hand[slot] = FIRE; g.handColor[slot] = 5; if (g.handGem) g.handGem[slot] = null; }
+          ev.petActs.push({ id: pt.id, kind: 'gift', lines: [], boxes: [], cells: [], rescue: true });
+        } else {
+          const b2 = g.board.slice();
+          const act = petAct(b2, pt, ev);
+          g.board = b2;
+          act.rescue = true;
+          ev.petActs.push(act);
+        }
+        g.petActsTotal[pt.id] = (g.petActsTotal[pt.id] || 0) + 1;
+        ev.rescue = pt.id;
+      }
+      const left2 = core.goalLeft(g);
+      if (Object.keys(left2).every((k) => left2[k] === 0)) { ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
+    }
     if (g.stuck()) { g.over = true; g.reason = 'stuck'; ev.stuck = true; }
     return ev;
   };
@@ -260,6 +297,7 @@ function bestMove(g, skill) {
         if (left.monster > 0) v += res.cells.filter((k) => g.board[k] === 3).length * 14;
         if (left.boss > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === 4))) v += 16;
         if (left.box > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === 2))) v += 16;
+        if (left.rock > 0) v += res.units.length * 3; // 铁石关：多消东西给宠物攒能量
         for (const k of res.cells) if (g.gem[k] && left[core.GEMS[g.gem[k]].id] > 0) v += 14;
         if (left.bubble > 0) v += res.cells.filter((k) => g.bubble[k]).length * 8;
         // 宠物颜色的块消掉更好
@@ -300,4 +338,4 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { PETS, FIRE, COLOR_NAME, createPetGame, bestMove, simulate, energyMax };
+module.exports = { CHARGE_TEXT, PETS, FIRE, COLOR_NAME, createPetGame, bestMove, simulate, energyMax };

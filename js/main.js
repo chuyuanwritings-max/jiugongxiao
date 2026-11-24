@@ -318,12 +318,22 @@ function goalIcon(key, cx, cy, s) {
   else if (key === 'box') chest(x, y, s);
   else if (key === 'bubble') bubbleAt(x - s * 0.1, y - s * 0.1, s * 1.2);
   else if (key === 'monster') inkMonster(cx, cy, s * 0.55, false);
+  else if (key === 'rock') ironRock(x, y, s);
   else if (key === 'boss') inkMonster(cx, cy, s * 0.75, true);
   else if (key === 'evolve') {
     // 九格小方阵：亮了几格
     const q = s / 3.2;
     for (let n = 0; n < 9; n++) { ctx.fillStyle = g && g.evLit && n < g.evLit.size ? COL.brassLight : COL.woodLine; ctx.fillRect(x + (n % 3) * q * 1.08, y + Math.floor(n / 3) * q * 1.08, q * 0.9, q * 0.9); }
   }
+}
+// 铁石：黑铁色的方石，几道裂纹，铆钉；只有宠物打得碎
+function ironRock(x, y, s) {
+  ctx.fillStyle = COL.ink; rr(x + 1, y + 1, s - 2, s - 2, s * 0.12); ctx.fill();
+  ctx.fillStyle = '#4a4f5c'; rr(x + s * 0.07, y + s * 0.07, s * 0.86, s * 0.86, s * 0.1); ctx.fill();
+  ctx.fillStyle = '#373b46'; ctx.fillRect(x + s * 0.12, y + s * 0.62, s * 0.76, s * 0.24);
+  ctx.strokeStyle = '#1f222a'; ctx.lineWidth = Math.max(1.5, s * 0.04);
+  ctx.beginPath(); ctx.moveTo(x + s * 0.3, y + s * 0.15); ctx.lineTo(x + s * 0.42, y + s * 0.42); ctx.lineTo(x + s * 0.32, y + s * 0.6); ctx.moveTo(x + s * 0.42, y + s * 0.42); ctx.lineTo(x + s * 0.7, y + s * 0.5); ctx.stroke();
+  ctx.fillStyle = '#8a90a0'; for (const [px, py] of [[0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]]) { ctx.beginPath(); ctx.arc(x + s * px, y + s * py, s * 0.05, 0, Math.PI * 2); ctx.fill(); }
 }
 // 小墨怪：一团墨，两只白眼睛（大墨怪多一对角）
 function inkMonster(cx, cy, r, big) {
@@ -772,6 +782,7 @@ function drawBoard(showGhost) {
     const sc = pop ? 1 + 0.18 * (1 - (clock - pop.t) / 0.15) : 1;
     const s = cell * sc, x = cellX(k % 9) + (cell - s) / 2, y = cellY(Math.floor(k / 9)) + (cell - s) / 2;
     if (g.board[k] === 3) { inkMonster(x + s / 2, y + s / 2, s * 0.4, false); continue; }
+    if (g.board[k] === 5) { ironRock(x, y, s); continue; }
     if (g.board[k] === 4) {
       // 大墨怪：2×2 画成一只，只在左上那格画
       if (g.bigCells && g.bigCells[0] === k) {
@@ -1238,8 +1249,9 @@ const INTRO = {
   bubble: { title: '泡泡', lines: ['先把块放到泡泡上，', '再消掉那一格，泡泡就破'], row: ['b', 'b', '*', 'b', 'b'], key: 'bubble' },
   // 0.5 宠物线
   monster: { title: '小墨怪', lines: ['它蹲在哪一排，', '把那一排消掉，就抓到它'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
-  pet: { title: '铜雀来帮忙', lines: ['你消掉东西，它脚下的条就涨，', '涨满了它自己出手'], pet: 'tongque' },
-  color: { title: '颜色有用了', lines: ['消掉金色的方块，', '金光会飞到铜雀身上，它涨得更快'], pet: 'tongque', glow: true },
+  pet: { title: '铜雀在积蓄能量', lines: ['它脚下那条是能量：你每消掉一排，它攒一格', '攒够了，它就出手帮你'], pet: 'tongque' },
+  color: { title: '金色能让它攒得更快', lines: ['消掉金色的方块，金光飞到铜雀身上，', '每 3 块多攒一格能量'], pet: 'tongque', glow: true },
+  rock: { title: '铁石', lines: ['你消不掉它：只有宠物出手', '射到、炸到，才打得碎'], rockPic: true },
   boss: { title: '大墨怪', lines: ['它占四格，消不掉；', '它在的那一排每消一次，打它一下'], pet: null, bossPic: true },
   team: { title: '试玩加场', lines: ['借你三只宠物一起上：', '火麒麟会送你一块火块，你亲手放'], pet: 'qilin' },
 };
@@ -1255,6 +1267,7 @@ function drawIntro() {
     // 宠物 / 头目：画一个大图，下面两行字
     const cy = py + 118;
     if (it.bossPic) inkMonster(W / 2, cy, 42, true);
+    else if (it.rockPic) ironRock(W / 2 - 40, cy - 40, 80);
     else if (it.pet) {
       petIcon(it.pet, W / 2, cy, 84, 1, Math.sin(clock * 3) * 0.1);
       if (it.glow) for (let n = 0; n < 5; n++) { const a2 = (clock * 1.2 + n / 5) % 1; ctx.globalAlpha = 1 - a2; ctx.fillStyle = C.blockColors[0][1]; ctx.beginPath(); ctx.arc(W / 2 - 90 + a2 * 70, cy + 40 - a2 * 40, 5, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
@@ -1357,7 +1370,10 @@ let petIdx = 0; // 宠物章节第几关（0 起）
 let petFx = { pop: {}, caption: null, banner: null, bossHit: -9, evolveFlash: -9 };
 let petMsg = null; // 地图 / 营地上的一句提示 { text, t }
 const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕', qilin: '麟' };
-const EXP_NEED = [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 99]; // 第 n 级升到 n+1 级要喂几颗丹
+// 第 n 级升到 n+1 级要多少经验。经验从哪来：出战打一关（宠物每出手一次 +1，过关再 +3，没过 +1）、喂一颗丹 +2
+// Cc 11-24：「刚拿到宠物直接就升到 5 级……游戏时长会变得太短」→ 门槛提高，铜雀大约要打十几关才够进化
+const EXP_NEED = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 999];
+const DAN_EXP = 2;
 function petNodeLabel(i) { const st = PLV[i]; return st.bonus ? '加' + (i - 9) : st.evolveLevel ? '进化' : String(i + 1); }
 function petLevelName(i) {
   if (i === undefined) i = petIdx;
@@ -1438,7 +1454,7 @@ function drawPetBar() {
       ctx.fillStyle = COL.ink; rr(p.x - bw / 2 + k * (seg + 3) - 1, by - 1, seg + 2, 9, 3); ctx.fill();
       ctx.fillStyle = k < pt.energy ? C.blockColors[d.color][1] : COL.woodDark; rr(p.x - bw / 2 + k * (seg + 3), by, seg, 7, 3); ctx.fill();
     }
-    buttons.push({ id: 'pet' + n, x: p.x - 28, y: p.y - 28, w: 56, h: 56, fn: () => { petFx.caption = { text: d.name + '：' + d.desc, t: clock }; } });
+    buttons.push({ id: 'pet' + n, x: p.x - 28, y: p.y - 28, w: 56, h: 56, fn: () => { petFx.caption = { text: d.name + '：' + PG.CHARGE_TEXT[d.charge] + '，攒满了' + d.desc, t: clock }; } });
   });
 }
 // 进化关：正中间铺一层宠物颜色、一亮一暗；亮了的格子金边
@@ -1491,7 +1507,9 @@ function juicePets(ev, colorsBefore) {
     timeline.push({ t, fn: () => {
       petFx.pop[act.id] = clock;
       const col = C.blockColors[PG.PETS[act.id].color][1];
-      if (!save.petSeen[act.id]) { save.petSeen[act.id] = true; persist(); petFx.caption = { text: PG.PETS[act.id].first, t: clock }; }
+      if (act.rescue) { petFx.caption = { text: '快堵死了！' + PG.PETS[act.id].name + '攒了一半能量，提前出手救你', t: clock }; flash = 0.25; }
+      else if (!save.petSeen[act.id]) { save.petSeen[act.id] = true; persist(); petFx.caption = { text: PG.PETS[act.id].first, t: clock }; }
+      (ev.rocks || []).forEach((k) => { for (let n2 = 0; n2 < 6; n2++) { const a2 = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 120; fx.push({ kind: 'shard', x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 80, t: clock, life: 0.6, s: 4 + Math.random() * 4 }); } });
       if (act.kind === 'row' || act.kind === 'fill') {
         act.lines.forEach((l) => { if (l.axis === 'row') bolts.push({ row: l.idx + 0.5, t: clock, dir: 1 }); else colBolts.push({ col: l.idx + 0.5, t: clock }); beams.push({ from, to: lineCenter(l), t: clock, col }); });
         P.sound(act.kind === 'row' ? 'bolt' : 'line', 0.7);
@@ -1499,7 +1517,7 @@ function juicePets(ev, colorsBefore) {
         act.boxes.forEach((b) => { const c = boxCenter(b); beams.push({ from, to: c, t: clock, col }); rings.push({ t: clock, big: false, at: c }); });
         P.sound('combo3', 0.7); shake = Math.max(shake, 7);
       } else if (act.kind === 'gift') {
-        texts.push({ s: '送你火块！', x: from.x, y: from.y + 50, t: clock, size: 18, col: COL.brassLight });
+        texts.push({ s: act.rescue ? '换你一块火块！' : '送你火块！', x: from.x, y: from.y + 50, t: clock, size: 18, col: COL.brassLight });
         P.sound('select', 0.6);
       }
       if (act.cells.length) texts.push({ s: '+' + act.cells.length, x: from.x, y: from.y - 34, t: clock, size: 18, col });
@@ -1536,7 +1554,16 @@ drawPetBoard = function () {
 };
 function endPet() {
   const st = g.stage;
-  const r = { won: g.won, reason: g.reason, near: g.nearMiss(), caught: g.caught, gift: null, evolved: null, dan: 0 };
+  const r = { won: g.won, reason: g.reason, near: g.nearMiss(), caught: g.caught, gift: null, evolved: null, dan: 0, exp: [] };
+  // 出战的宠物涨经验：每出手一次 +1，过关 +3（没过 +1）。加场借来的宠物不算
+  if (!st.evolve && !st.bonus) g.team.forEach((pt) => {
+    const rec = save.pets[pt.id];
+    if (!rec) return;
+    const before = { lv: rec.lv, exp: rec.exp };
+    const gain = (g.petActsTotal[pt.id] || 0) + (g.won ? 3 : 1);
+    addExp(rec, gain);
+    r.exp.push({ id: pt.id, before, after: { lv: rec.lv, exp: rec.exp }, gain });
+  });
   save.gourd += g.caught; // 抓到的怪收进葫芦（输了也收）
   if (g.won) {
     if (st.evolve) {
@@ -1568,7 +1595,7 @@ function drawPetOver() {
   ctx.fillStyle = COL.shade + Math.min(r.won ? 0.6 : 0.85, age * 2) + ')'; ctx.fillRect(0, 0, W, H);
   if (r.won && age < wait) { text(r.evolved ? '进化！' : '过关！', W / 2, L.by + L.board * 0.45, Math.round(64 * Math.min(1, 0.6 + age * 3)), COL.brassLight); return; }
   if (age < wait) return;
-  const pw = Math.min(W - 40, 340), ph = 380, px = (W - pw) / 2, py = Math.max(L.top + 20, (H - ph) / 2 - 30);
+  const pw = Math.min(W - 40, 340), ph = 380 + r.exp.length * 42, px = (W - pw) / 2, py = Math.max(L.top + 10, (H - ph) / 2 - 30);
   ctx.fillStyle = COL.ink; rr(px, py + 6, pw, ph, 18); ctx.fill();
   ctx.fillStyle = COL.wood; rr(px, py, pw, ph, 18); ctx.fill();
   ctx.strokeStyle = COL.brass; ctx.lineWidth = 3; rr(px + 6, py + 6, pw - 12, ph - 12, 14); ctx.stroke();
@@ -1599,6 +1626,22 @@ function drawPetOver() {
     });
     y += 70;
   }
+  // 出战宠物涨了多少经验：进度条从原来的位置涨上去（Cc：「进度条必须得看得到，我们才会想要不停地练它」）
+  r.exp.forEach((e) => {
+    const k = Math.min(1, Math.max(0, (age - wait - 0.2) / 0.8));
+    const lvNow = k < 1 ? e.before.lv : e.after.lv;
+    const fracA = e.before.exp / EXP_NEED[e.before.lv], fracB = e.after.lv > e.before.lv ? 1 : e.after.exp / EXP_NEED[e.after.lv];
+    const frac = k < 1 ? fracA + (fracB - fracA) * k : e.after.exp / EXP_NEED[e.after.lv];
+    petIcon(e.id, px + 44, y + 16, 34, 0, 0);
+    text(PG.PETS[e.id].name + ' ' + lvNow + ' 级', px + 70, y + 6, 15, COL.text, 'left');
+    text('+' + e.gain + ' 经验', px + pw - 24, y + 6, 14, COL.jade, 'right');
+    const bw = pw - 110;
+    ctx.fillStyle = COL.ink; rr(px + 70, y + 20, bw, 10, 5); ctx.fill();
+    ctx.fillStyle = COL.jade; rr(px + 70, y + 20, Math.max(6, bw * frac), 10, 5); ctx.fill();
+    if (k >= 1 && e.after.lv > e.before.lv) text('升到 ' + e.after.lv + ' 级！', px + 70 + bw / 2, y + 25, 12, COL.brassLight);
+    else text((k < 1 ? e.before.exp : e.after.exp) + ' / ' + EXP_NEED[lvNow], px + 70 + bw / 2, y + 25, 10, COL.text);
+    y += 42;
+  });
   // 抓到的怪收进葫芦
   if (r.caught) {
     const msg = '收进葫芦 ' + r.caught + ' 只墨怪' + (r.dan ? ' · 送 1 颗丹' : '');
@@ -1669,11 +1712,16 @@ function drawCamp() {
     ctx.fillStyle = COL.wood; rr(cx, cy, cw, 82, 12); ctx.fill();
     petIcon(id, cx + 42, cy + 41, 54, 0, petFx.pop[id] ? Math.max(0, 0.3 - (clock - petFx.pop[id])) / 0.3 : 0);
     text(d.name + '  ' + rec.lv + ' 级', cx + 80, cy + 22, 18, COL.text, 'left');
-    text(d.desc, cx + 80, cy + 48, 13, COL.dim, 'left', 'normal');
-    // 经验条
-    const need = EXP_NEED[rec.lv] || 99, bw = 120;
-    ctx.fillStyle = COL.ink; rr(cx + 80, cy + 62, bw, 8, 4); ctx.fill();
-    ctx.fillStyle = COL.jade; rr(cx + 80, cy + 62, Math.max(4, bw * Math.min(1, rec.exp / need)), 8, 4); ctx.fill();
+    // 一行说清：靠什么攒能量 + 攒满了干什么（太长就把字缩小，别压到按钮）
+    const line2 = (d.charge === 'place' ? '每放一块' : '每消一排') + '攒能量 · 攒满' + d.desc;
+    let fs = 12; ctx.font = 'normal ' + fs + 'px "PingFang SC", sans-serif';
+    while (fs > 9 && ctx.measureText(line2).width > cw - 196) { fs--; ctx.font = 'normal ' + fs + 'px "PingFang SC", sans-serif'; }
+    text(line2, cx + 80, cy + 44, fs, COL.dim, 'left', 'normal');
+    // 经验条：写着现在几点、要几点升级；能进化的写「可以进化了」
+    const need = EXP_NEED[rec.lv] || 999, bw = cw - 200;
+    ctx.fillStyle = COL.ink; rr(cx + 80, cy + 58, bw, 12, 6); ctx.fill();
+    ctx.fillStyle = COL.jade; rr(cx + 80, cy + 58, Math.max(6, bw * Math.min(1, rec.exp / need)), 12, 6); ctx.fill();
+    text(d.evo && rec.lv >= d.evoLv ? '可以进化了！' : '经验 ' + rec.exp + ' / ' + need + (d.evo ? '　' + d.evoLv + ' 级进化' : ''), cx + 80 + bw / 2, cy + 64, 10, COL.text);
     const canEvolve = d.evo && rec.lv >= d.evoLv;
     if (canEvolve) {
       ctx.strokeStyle = 'rgba(243,210,122,' + (0.5 + Math.sin(clock * 6) * 0.4) + ')'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx + 42, cy + 41, 32, 0, Math.PI * 2); ctx.stroke();
@@ -1692,15 +1740,21 @@ function drawCamp() {
   const cur = Math.min(save.petStage, PLV.length - 1);
   button('campPlay', (W - bw) / 2, H - 72, bw, 54, '去闯' + petLevelName(cur).replace(' · 进化', ''), { size: 20, fn: () => newPetLevel(cur) });
 }
+function addExp(rec, n) {
+  rec.exp += n;
+  let up = 0;
+  while (rec.lv < 10 && rec.exp >= EXP_NEED[rec.lv]) { rec.exp -= EXP_NEED[rec.lv]; rec.lv++; up++; }
+  return up;
+}
 function feedPet(id) {
   const rec = save.pets[id];
   if (save.dan <= 0) { petMsg = { text: '没有丹了：打关抓墨怪，回来炼丹', t: clock }; return; }
-  save.dan--; rec.exp++;
+  save.dan--;
   petFx.pop[id] = clock;
   P.sound('coin', 0.6);
-  const need = EXP_NEED[rec.lv] || 99;
-  if (rec.exp >= need && rec.lv < 10) {
-    rec.lv++; rec.exp = 0;
+  const up = addExp(rec, DAN_EXP);
+  if (!up) petMsg = { text: PG.PETS[id].name + ' 经验 +' + DAN_EXP + '（' + rec.exp + ' / ' + EXP_NEED[rec.lv] + '）', t: clock };
+  if (up) {
     const d = PG.PETS[id];
     petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (rec.lv === 3 ? '出手更勤了' : d.evo && rec.lv >= d.evoLv ? '可以进化了！' : ''), t: clock };
     P.sound('lit', 0.7);

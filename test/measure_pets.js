@@ -15,7 +15,7 @@ function run(stage, team, skill) {
   }
   return { won: Math.round((won / N) * 100), secs: Math.round(secs / N), acts: (acts / N).toFixed(1), caught: (caught / N).toFixed(1) };
 }
-const myTeam = [[], [], [], [], [{ id: 'tongque', lv: 2 }], [{ id: 'tongque', lv: 3 }], [{ id: 'tongque', lv: 3 }], [{ id: 'tongque', lv: 4 }], null, [{ id: 'jinchique', lv: 5 }]];
+const myTeam = [[], [], [], [], [{ id: 'tongque', lv: 2 }], [{ id: 'tongque', lv: 3 }], [{ id: 'tongque', lv: 3 }], [{ id: 'tongque', lv: 4 }], [{ id: 'tongque', lv: 4 }], [{ id: 'jinchique', lv: 5 }]];
 LV.forEach((st0, i) => {
   const st = st0.evolveLevel ? LV.evolveStage(st0.evolveLevel, PG.PETS[st0.evolveLevel].color) : st0;
   const team = st0.evolveLevel ? [{ id: st0.evolveLevel, lv: 5 }] : st.team || myTeam[i] || [];

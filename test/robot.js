@@ -96,9 +96,21 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await shot('06_第4关_铜雀出手');
   ok(acted, '第 4 关铜雀能量满了自己出手（射掉最满的一排）');
   await petPlay(40);
-  await page.waitForTimeout(1300);
-  // 营地：炼丹、喂到 5 级
-  await page.evaluate(() => { const G = window.__game; G.setSave({ gourd: 6 }); G.openCamp(); });
+  await page.waitForTimeout(2200);
+  await shot('06b_第4关_经验条');
+  st = await page.evaluate(() => { const r = window.__game.result; return r && r.exp && r.exp[0]; });
+  ok(st && st.id === 'tongque' && st.gain >= 3, '过关后结算页出宠物经验条：铜雀 +' + (st && st.gain) + ' 经验');
+  // 第 9 关：铁石只有宠物打得碎
+  await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 8 }); G.newPetLevel(8); });
+  await page.waitForTimeout(300);
+  await closeIntro();
+  await shot('06c_第9关_铁石');
+  await petPlay(80);
+  await page.waitForTimeout(1600);
+  st = await page.evaluate(() => ({ won: window.__game.g.won, rock: window.__game.g.got.rock }));
+  ok(st.won && st.rock >= 4, '第 9 关铁石关：普通消除消不掉，铜雀出手打碎 4 块铁石过关');
+  // 营地：炼丹、喂到 5 级（门槛提高了：先把铜雀放到 4 级快满）
+  await page.evaluate(() => { const G = window.__game; G.save.pets.tongque = { lv: 4, exp: 22 }; G.setSave({ gourd: 6 }); G.openCamp(); });
   await page.waitForTimeout(200);
   await click('brew');
   await page.waitForTimeout(3300);

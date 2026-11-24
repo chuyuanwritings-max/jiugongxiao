@@ -2041,9 +2041,11 @@ function setLayout(kind) {
   L.board = L.cell * 9;
   L.bx = Math.round((W - L.board) / 2);
   L.by = L.top + head;
-  L.trayH = Math.max(110, Math.min(L.cell * 4, H - (L.by + L.board + 22) - 96));
+  // 底下原来留 96 给墨非小人，现在只留 64（「换一组」按钮 + 手机底部横条）
+  const FOOT = 64;
+  L.trayH = Math.max(110, Math.min(L.cell * 4, H - (L.by + L.board + 22) - FOOT));
   // 屏幕高出来的部分：整体往下挪一点，手指够得着
-  const slack = H - (L.by + L.board + 22 + L.trayH + 96);
+  const slack = H - (L.by + L.board + 22 + L.trayH + FOOT);
   if (slack > 0) { const sh = Math.round(slack * (siege ? 0.3 : 0.45)); L.top += sh; L.by += sh; }
   L.trayY = L.by + L.board + 22;
   L.mini = Math.max(20, Math.round(L.cell * 0.82)); // 底下三块的格子大小
@@ -3100,7 +3102,9 @@ function drawMofei() {
   }
 }
 function drawFoot() {
-  drawMofei();
+  // 0.9.2：左下角的墨非小人去掉了（Cc 11-24：「这小人是干嘛的？占这么大个地方，这么宝贝的地方给他占了」）。
+  // 他冒的字（连上了 / 过关！/ 堵住了）和闪光、震屏、飘分重复，也不要了；以后主角汐娘出场再说
+
   // 假广告：手上有块放不下时，「换一组」
   if (mode === 'play' && !g.over && g.someBlocked() && g.adsUsed < C.adMax) {
     const w = 128, h = 46, x = W - w - 16, y = Math.min(H - h - 16, L.footY + 16);
@@ -3857,7 +3861,7 @@ function drawHomeButtons(cy) {
     { id: 'homeClassic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
     { id: 'homeSettings', label: '设置', icon: ICON.settings, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } },
   ], rBr.y, rBr);
-  text('试玩版 0.9.1', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
+  text('试玩版 0.9.2', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------

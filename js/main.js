@@ -1442,7 +1442,7 @@ function drawMap() {
   button('play', (W - bw) / 2, H - 160, bw, 64, done ? '再玩' + petNodeLabel(PLV.length - 1) : petLevelName(cur), { size: 28, fn: () => newPetLevel(cur) });
   // 底下三个：营地（葫芦、喂宠物）、经典拼画、画册。守城收起来了（Cc 11-24：「这个没意思，就不要加塔防了」）
   const b3w = Math.min(W - 24, 360), b3 = (b3w - 12) / 3, bx3 = (W - b3w) / 2;
-  const campNew = save.gourd > 0 || (save.dan > 0 && save.petOrder.length);
+  const campNew = save.gourd >= 2 || (save.dan > 0 && save.petOrder.length);
   button('camp', bx3, H - 82, b3, 46, '营地', { size: 18, bg: '#3f9a7c', fn: () => openCamp() });
   if (campNew) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.arc(bx3 + b3 - 6, H - 82, 8, 0, Math.PI * 2); ctx.fill(); }
   button('classic', bx3 + b3 + 6, H - 82, b3, 46, '经典拼画', { size: 15, bg: COL.copper, fn: () => newGame(false) });
@@ -1672,7 +1672,7 @@ function drawChapter() {
     button('play', 16, btnY, W - 32, 58, '继续 · 第 ' + (cur + 1) + ' 关' + who, { size: 20, fn: () => newPetLevel(cur) });
   }
   // 底栏
-  const campNew = save.gourd > 0 || (save.dan > 0 && save.petOrder.length);
+  const campNew = save.gourd >= 2 || (save.dan > 0 && save.petOrder.length);
   iconBar([
     { id: 'camp', label: '营地', icon: ICON.camp, dot: campNew, fn: () => openCamp() },
     { id: 'album3', label: '画册', icon: ICON.album, fn: () => openAlbum() },
@@ -1869,12 +1869,12 @@ function drawHomeButtons(cy) {
   button('homePlay', bx, y, bw, 60, save.petStage ? '继续 · ' + petLevelName(cur) : '开始', { size: 20, fn: () => { chapView = null; chapSel = null; mode = 'map'; } });
   // 0.8：只留一个金色大按钮，其余收成底栏图标（学经典数独首页）
   iconBar([
-    { id: 'homeCamp', label: '营地', icon: ICON.camp, dot: save.gourd > 0 || (save.dan > 0 && save.petOrder.length), fn: () => openCamp() },
+    { id: 'homeCamp', label: '营地', icon: ICON.camp, dot: save.gourd >= 2 || (save.dan > 0 && save.petOrder.length), fn: () => openCamp() },
     { id: 'homeAlbum', label: '画册', icon: ICON.album, fn: () => openAlbum() },
     { id: 'homeClassic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
     { id: 'homeSettings', label: '设置', icon: ICON.settings, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } },
   ], H - 92);
-  text('试玩版 0.8.4', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
+  text('试玩版 0.9', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -1984,6 +1984,8 @@ function newPetLevel(i, quiet, lendLv) { // quiet：只把盘面摆好、不放�
   // 专属关：点名的那只自动换上，只管这一关（营地里选的出战宠物不改）；第 4 关的「充得特别快」只有第一次
   const team = levelTeam(st0, i, lendLv);
   const st1 = Object.assign({}, st0, { fastCharge: !!st0.fastCharge && save.petStage <= i });
+  // 保底（0.9，学 Candy Crush 的悄悄降难度）：同一关连输 3 次，下一局发的三块一定都放得下、大块少一点；屏幕上什么都不显示
+  if (save.loss && save.loss[i] >= 3) { st1.luck = 1; st1.d = Math.max(0, (st0.d || 0) - 0.15); }
   g = PG.createPetGame({ stage: st1, team, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone });
   g.onlyPet = st0.only ? team[0].id : null;
   chapView = null; chapSel = null;
@@ -2441,7 +2443,8 @@ function drawCamp() {
     if (clock >= brewing.until) { petMsg = { text: '炼好了！得到 ' + brewing.n + ' 颗丹', t: clock }; P.sound('win', 0.6); brewing = null; }
   } else text('葫芦里 ' + save.gourd + ' 只墨怪', 92, y + 30, 16, COL.text, 'left');
   text(danShown + ' 颗丹', 92, y + 58, 13, COL.brassLight, 'left');
-  if (!brewing && save.gourd > 0) button('brew', W - 16 - 16 - 104, y + 20, 104, 44, '炼丹', { kind: 'sub', hot: true, dot: true, fn: () => { brewing = { until: clock + 3, n: save.gourd }; save.dan += save.gourd; save.gourd = 0; persist(); P.sound('select', 0.6); } }); // 丹当场进存档，3 秒只是演动画（中途退出也不会丢）
+  // 0.9：两只墨怪炼一颗丹（机器人从头打到尾量出来：一只一颗时宠物长得太快，第 10 关就 5 级了）；单出来的一只留在葫芦里
+  if (!brewing && save.gourd >= 2) button('brew', W - 16 - 16 - 104, y + 20, 104, 44, '炼 ' + Math.floor(save.gourd / 2) + ' 颗丹', { kind: 'sub', hot: true, dot: true, fn: () => { const n = Math.floor(save.gourd / 2); brewing = { until: clock + 3, n }; save.dan += n; save.gourd -= n * 2; persist(); P.sound('select', 0.6); } }); // 丹当场进存档，3 秒只是演动画（中途退出也不会丢）
   y += 84 + 12;
   // 底下：出发按钮、下一关卡
   const btnY = H - 24 - 56, nextY = btnY - 12 - 56;

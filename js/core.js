@@ -165,7 +165,8 @@ function createGame(opts) {
       // 第一组：3×3 正好填满一宫；5 + 4 放一行就消
       g.hand = [PIECES.sq3, PIECES['5h'], PIECES['4h']];
     } else {
-      const guarantee = g.endless ? g.rand() < Math.max(0.5, 1 - g.moves / 200) : true;
+      // luck（0.9）：这一关发的三块「保证都放得下」的机会。普通关 1（一定放得下）；难关、超难关、头目关调低，手熟的人也会被逼到（照 0.9 从头打到尾的测量）
+      const guarantee = g.endless ? g.rand() < Math.max(0.5, 1 - g.moves / 200) : st && st.luck !== undefined ? g.rand() < st.luck : true;
       g.hand = dealHand(g.board, g.rand, g.diff(), guarantee);
       if (o.single && g.deals === 1) g.hand[2] = PIECES['1'];
     }

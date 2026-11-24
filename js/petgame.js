@@ -72,6 +72,7 @@ function createPetGame(opts) {
     mon: new Array(81).fill(null), // 墨怪的种类和状态
     spawnQ: [], // 分身怪 / 分身王：这一手打完以后要蹦出来的小墨怪（从哪格旁边）
     monStats: { cracks: 0, eats: 0, moss: 0, bombs: 0, spawns: 0, colorMiss: 0 }, // 这一关墨怪干了几回（测试和以后的统计用）
+    playStats: { clearMoves: 0, dry: 0, maxDry: 0, bossByPlayer: 0, bossByPet: 0, units: 0 }, // 手感统计：几手有消、最长几手没消、头目的心谁打掉的
     evLit: new Set(), evColor: st.evolve ? PETS[st.evolve.pet].color : null,
     caught: 0, petActsTotal: {},
   });
@@ -151,11 +152,13 @@ function createPetGame(opts) {
   // 一次「消掉」（一排 / 一个大格）碰到了机关匣或大墨怪
   function unitTouches(b, cells, ev, byPet) {
     if ('box' in g.got && cells.some((k) => b[k] === 2)) { g.got.box++; ev.collected.push({ k: cells.find((k) => b[k] === 2), what: 'box' }); }
-    if (g.boss && g.bigHp > 0 && cells.some((k) => b[k] === 4)) {
-      const dmg = byPet || ev.stunHit ? 2 : 1; // 宠物咬它、或者它刚吐完墨正晕着：一下掉 2 颗心
+    if (g.boss && g.bigHp > 0 && cells.some((k) => b[k] === 4) && !(byPet && ev.petBossDone)) {
+      if (byPet) ev.petBossDone = true; // 0.9：宠物出手一次最多咬头目一口（金翅雀一次扫两排，原来能咬两口）
+      const dmg = ev.stunHit && !byPet ? 2 : 1; // 0.9：它刚动完手正晕着时你打中它，一下掉 2 颗心；宠物咬只掉 1 颗（量出来宠物替你打掉了大半的心）
       g.bigHp = Math.max(0, g.bigHp - dmg);
       g.boss.hp = g.bigHp;
       ev.bigHits.push({ k: g.bigCells[0], dmg });
+      if (byPet) g.playStats.bossByPet += dmg; else g.playStats.bossByPlayer += dmg;
       if (g.boss.kind === 'split' && g.bigHp > 0) g.spawnQ.push({ k: g.bigCells[0], n: 1, from: 'boss' }); // 分身王：挨一下蹦一只小墨怪
       if (g.bigHp === 0) {
         g.bigCells.forEach((k) => (b[k] = 0));
@@ -219,6 +222,7 @@ function createPetGame(opts) {
     const list = tgList || targets(b, p);
     if (!list.length) return null;
     const act = { id: p.id, kind: d.act, lines: [], boxes: [], cells: [] };
+    ev.petBossDone = false;
     const bite = (cells) => {
       const eat = pw >= 9 ? cells.filter((k) => EATABLE(b[k]) || b[k] === 5) : pickBites(b, cells, pw);
       if (pw >= 9 || cells.some((k) => b[k] === 4)) unitTouches(b, pw >= 9 ? cells : cells.filter((k) => b[k] === 4), ev, true);
@@ -426,6 +430,8 @@ function createPetGame(opts) {
       if (big) units.push(18 + bx);
     }
     ev.units = units; ev.cells = clearedCells;
+    const ps = g.playStats; ps.units += units.length;
+    if (units.length) { ps.clearMoves++; ps.dry = 0; } else { ps.dry++; ps.maxDry = Math.max(ps.maxDry, ps.dry); }
     // 2. 积蓄能量（多出来的留到下一次）
     for (const pt of g.team) {
       const mine = clearedCells.filter((k) => colorsBefore[k] === petDef(pt).color);

@@ -8,6 +8,8 @@
     "ignore": [
       { "type": "folder", "value": "tools" },
       { "type": "folder", "value": "test" },
+      { "type": "folder", "value": "生图" },
+      { "type": "folder", "value": ".claude" },
       { "type": "file", "value": "preview.html" },
       { "type": "file", "value": "index.html" },
       { "type": "file", "value": "README.md" },

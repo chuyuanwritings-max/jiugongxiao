@@ -321,6 +321,7 @@ function goalLeft(g) {
   const out = {};
   for (const key in g.stage.goal) {
     if (key === 'all') { out.all = g.monLeft || 0; continue; } // 抓光盘上的墨怪：还剩几只
+    if (key === 'boss' && g.boss) { out.boss = g.bigHp; continue; } // 头目：还剩几颗心（0.9.4，原来写「还差 1」只）
     const have = key === 'score' ? g.score : g.got[key] || 0;
     out[key] = Math.max(0, g.stage.goal[key] - have);
   }

@@ -500,7 +500,16 @@ function createPetGame(opts) {
   };
   // 宠物下一次要下手的地方（能量差 1 格时画面亮出来）
   g.petTarget = (pt) => { const t = targets(g.board, pt)[0]; return t && t.axis !== 'gift' ? t : null; };
-  g.nearMiss = () => !g.won && (() => { let need = 0, have = 0; for (const k in st.goal) { const n = st.goal[k]; need += n; have += Math.min(n, k === 'score' ? g.score : g.got[k] || 0); } return need && have / need >= 0.7; })();
+  // 「差一点」（0.9.4，检验报告 C10 / E3）：头目按打掉了几颗心算、抓光关按抓了几只算（原来按「打死了没有」算，头目、抓光关永远不说差一点）；门槛从七成收到八成
+  g.nearMiss = () => !g.won && (() => {
+    let need = 0, have = 0;
+    for (const k in st.goal) {
+      if (k === 'boss' && g.boss) { need += g.boss.max; have += g.boss.max - g.bigHp; continue; }
+      if (k === 'all') { const tot = g.caught + (g.monLeft || 0); need += tot; have += g.caught; continue; }
+      const n = st.goal[k]; need += n; have += Math.min(n, k === 'score' ? g.score : g.got[k] || 0);
+    }
+    return need && have / need >= 0.8;
+  })();
   g.goalLeft = () => core.goalLeft(g);
   return g;
 }

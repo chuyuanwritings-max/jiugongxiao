@@ -37,3 +37,24 @@ for (const pt of [[195, 400], [195, 400]]) { touch('down', ...pt); touch('up', .
 run(200);
 console.log('微信环境跑通：' + frames.length + ' 帧排队中，画图调用 ' + calls.size + ' 种');
 if (!handlers.down || !calls.has('fillRect')) throw new Error('没画出东西或没注册触摸');
+// 包体（0.9.4，检验法 A3）：照 project.config.json 的 ignore 算会打进微信包的文件，主包超过 4 MB 直接报错（自己留余量 3.5 MB 时提醒）
+{
+  const fs = require('fs');
+  const root = path.join(__dirname, '..');
+  const ign = (JSON.parse(fs.readFileSync(path.join(root, 'project.config.json'), 'utf8')).packOptions || {}).ignore || [];
+  const skipDir = new Set(ign.filter((x) => x.type === 'folder').map((x) => x.value).concat(['.git', 'node_modules']));
+  const skipFile = new Set(ign.filter((x) => x.type === 'file').map((x) => x.value));
+  let total = 0;
+  const walk = (dir, rel) => {
+    for (const name of fs.readdirSync(dir)) {
+      const r = rel ? rel + '/' + name : name, p = path.join(dir, name), st = fs.statSync(p);
+      if (st.isDirectory()) { if (!skipDir.has(r) && !skipDir.has(name) && !name.startsWith('.')) walk(p, r); }
+      else if (!skipFile.has(r) && !name.startsWith('.') && !/\.md$/.test(name)) total += st.size;
+    }
+  };
+  walk(root, '');
+  const mb = (total / 1048576).toFixed(2);
+  console.log('微信包大小：' + mb + ' MB（上限 4 MB）');
+  if (total > 4 * 1048576) throw new Error('微信主包超过 4 MB：' + mb + ' MB');
+  if (total > 3.5 * 1048576) console.log('提醒：主包超过 3.5 MB，快到上限了');
+}

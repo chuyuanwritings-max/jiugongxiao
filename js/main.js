@@ -612,6 +612,7 @@ function drop() {
     if (!pev) return;
     for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
     if (!save.petTutDone) { save.petTutDone = true; save.tutorialDone = true; persist(); }
+    if (pev.win && !g._settled) settlePet(); // 赢了马上记账，结算页等动画演完再出
     juicePets(pev, colorsBefore);
     return;
   }
@@ -1546,7 +1547,10 @@ function chapterCell(i, x, y, w, h, ctxInfo) {
     if (st.hard) {
       ctx.fillStyle = st.hard > 1 ? TH.violet : TH.red;
       for (const sx of [-1, 1]) { const hx = x + w - 18 + sx * 6; ctx.beginPath(); ctx.moveTo(hx - 3, y + 16); ctx.lineTo(hx + sx * 4, y + 5); ctx.lineTo(hx + 3, y + 16); ctx.fill(); }
-      if (st.hard > 1) skullIcon(x + w - 18, y + 18, 5);
+      if (st.hard > 1) { // 超难：一道紫色小闪电（0.9.4 检验报告 C12：骷髅碰审核红线的边，换掉）
+        const bx = x + w - 18, by = y + 14; ctx.fillStyle = '#c58ae0';
+        ctx.beginPath(); ctx.moveTo(bx + 2, by - 7); ctx.lineTo(bx - 4, by + 1); ctx.lineTo(bx, by + 1); ctx.lineTo(bx - 2, by + 8); ctx.lineTo(bx + 5, by - 1); ctx.lineTo(bx + 1, by - 1); ctx.closePath(); ctx.fill();
+      }
     }
     // 目标：最多两种
     const keys = Object.keys(st.goal).slice(0, 2), gw = w / keys.length;
@@ -1882,7 +1886,7 @@ function drawHomeButtons(cy) {
     { id: 'homeClassic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
     { id: 'homeSettings', label: '设置', icon: ICON.settings, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } },
   ], rBr.y, rBr);
-  text('试玩版 0.9.3', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
+  text('试玩版 0.9.4', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -2293,7 +2297,14 @@ drawPetBoard = function () {
     ctx.globalAlpha = 1;
   });
 };
+// 宠物关结算分两半（0.9.4，检验报告 A10：赢的那一下刷新页面，这关白打了）：
+//   settlePet = 记账（经验、丹、进度、送宠物、存档），赢的那一手马上做；showPet = 换结算页、音效、过场，等宠物动画演完再做
 function endPet() {
+  if (!g._settled) settlePet();
+  showPet();
+}
+function settlePet() {
+  g._settled = true;
   const st = g.stage;
   const r = { won: g.won, reason: g.reason, near: g.nearMiss(), caught: g.caught, gift: null, evolved: null, dan: 0, danAuto: 0, exp: [] };
   const petReplay = !st.evolve && petIdx < save.petStage; // 这关以前过过
@@ -2340,6 +2351,10 @@ function endPet() {
   save.coins += coinsGot;
   persist();
   result = r;
+  g._settleInfo = { petReplay };
+}
+function showPet() {
+  const st = g.stage, r = result, petReplay = g._settleInfo ? g._settleInfo.petReplay : false;
   mode = 'over';
   if (r.evolved) { P.sound('win', 0.9); flash = 0.7; } else if (!g.won) { P.sound('lose', 0.6); say('堵住了'); }
   // 过场（东西上面已经入账了，跳过也不丢）：打倒这章的大墨怪 → 过章；进化；新宠物到手

@@ -5,13 +5,18 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
+// 游戏修改器的布局：原型/layout.json（修改器存的）→ 生成 js/layout_data.js（微信包里游戏读它）
+const layoutSrc = process.env.LAYOUT_JSON || path.join(root, 'layout.json');
+const layoutData = fs.existsSync(layoutSrc) ? JSON.parse(fs.readFileSync(layoutSrc, 'utf8')) : { version: 1, elements: {} };
+const layoutJs = '// 自动生成，别手改：改 原型/layout.json（或用游戏修改器），再跑 node tools/build-preview.js\nmodule.exports = ' + JSON.stringify(layoutData, null, 2) + ';\n';
+if (!process.env.LAYOUT_JSON) fs.writeFileSync(path.join(root, 'js', 'layout_data.js'), layoutJs);
 const files = ['game.js'].concat(
   fs.readdirSync(path.join(root, 'js')).filter((f) => f.endsWith('.js')).map((f) => 'js/' + f)
 );
 
 const defs = files
   .map((f) => {
-    const code = fs.readFileSync(path.join(root, f), 'utf8');
+    const code = f === 'js/layout_data.js' ? layoutJs : fs.readFileSync(path.join(root, f), 'utf8');
     return '__def(' + JSON.stringify(f) + ', function (module, exports, require) {\n' + code + '\n});';
   })
   .join('\n');
@@ -31,6 +36,10 @@ const html = `<!doctype html>
 </head>
 <body>
 <canvas id="game"></canvas>
+<script>
+// 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
+if (/[?&]edit\\b/.test(location.search) && /^(localhost|127\\.0\\.0\\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\\/script>');
+</script>
 <script>
 // 极简 CommonJS：模拟微信小游戏的 require
 var __m = {}, __c = {};

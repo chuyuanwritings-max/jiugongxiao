@@ -10,7 +10,9 @@
       { "type": "folder", "value": "test" },
       { "type": "file", "value": "preview.html" },
       { "type": "file", "value": "index.html" },
-      { "type": "file", "value": "README.md" }
+      { "type": "file", "value": "README.md" },
+      { "type": "file", "value": "layout.json" },
+      { "type": "file", "value": "comments.json" }
     ]
   }
 }

@@ -32,6 +32,9 @@ function setup(onTouch) {
     const phone = window.innerWidth > 520;
     width = phone ? 390 : window.innerWidth;
     height = phone ? Math.min(844, window.innerHeight - 20) : window.innerHeight;
+    // 游戏修改器切机型时，指定装成哪部手机
+    const dev = window.__DEVICE;
+    if (dev) { width = dev.w; height = dev.h; }
     dpr = Math.min(2, window.devicePixelRatio || 2); // 同上：网页版 3 倍屏也按 2 倍画
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';

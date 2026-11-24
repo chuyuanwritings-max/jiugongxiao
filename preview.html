@@ -14,6 +14,10 @@
 <body>
 <canvas id="game"></canvas>
 <script>
+// 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
+if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
+</script>
+<script>
 // 极简 CommonJS：模拟微信小游戏的 require
 var __m = {}, __c = {};
 function __def(name, fn) { __m[name] = fn; }
@@ -1671,6 +1675,86 @@ __def("js/cutscene.js", function (module, exports, require) {
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 });
+__def("js/layout.js", function (module, exports, require) {
+// 界面布局表（0.9.1，给「游戏修改器」= 共用界面编辑器用，见 ../../00_界面编辑器/README.md）。
+// Cc 11-24：「以后我告诉你开游戏修改器，你就打开那个界面，咱们俩一起协同工作」。
+// 每个能拖的界面元素一个 id；位置按设计稿算：宽 390，内容区从 top=34（顶上安全区下）到 bottom=844（屏幕底）——就是 390×844 手机上现在的样子。
+// 锚点：ax 横向 l 贴左 / r 贴右 / c 居中 / s 左右拉满；ay 纵向 t 贴顶 / b 贴底 / m 居中。
+// 换手机：位置按宽、高各自的比例挪，大小按两个比例里小的那个缩。
+// Cc 在修改器里摆好的结果存在 原型/layout.json，打包时生成 js/layout_data.js，盖在默认值上。修改器本身不进微信包。
+const REF = { W: 390, top: 34, bottom: 844 };
+
+const DEFS = {
+  // 主菜单（screen 要等于 main.js 的 sceneName）
+  'home.title': { name: '标题（九宫消 + 小字）', screen: 'home', x: 95, y: 50, w: 200, h: 80, ax: 'c', ay: 't' },
+  'home.main': { name: '继续大按钮', screen: 'home', x: 45, y: 664, w: 300, h: 60, ax: 'c', ay: 'b' },
+  'home.bar': { name: '底栏图标（营地 / 画册 / 经典拼画 / 设置）', screen: 'home', x: 16, y: 752, w: 358, h: 56, ax: 's', ay: 'b' },
+  // 地图（章页）
+  'map.grid': { name: '九个关卡格', screen: 'map', x: 16, y: 104, w: 358, h: 340, ax: 's', ay: 't' },
+  'map.boss': { name: '头目卡 / 关卡预览卡', screen: 'map', x: 16, y: 530, w: 358, h: 120, ax: 's', ay: 'b' },
+  'map.train': { name: '先练谁', screen: 'map', x: 16, y: 660, w: 358, h: 40, ax: 's', ay: 'b' },
+  'map.play': { name: '继续大按钮', screen: 'map', x: 16, y: 710, w: 358, h: 58, ax: 's', ay: 'b' },
+  'map.bar': { name: '底栏图标（营地 / 画册 / 经典拼画）', screen: 'map', x: 16, y: 780, w: 358, h: 56, ax: 's', ay: 'b' },
+  // 营地
+  'camp.gourd': { name: '葫芦卡', screen: 'camp', x: 16, y: 88, w: 358, h: 84, ax: 's', ay: 't' },
+  'camp.pets': { name: '宠物卡（一只一张）', screen: 'camp', x: 16, y: 184, w: 358, h: 500, ax: 's', ay: 't' },
+  'camp.next': { name: '下一关卡', screen: 'camp', x: 16, y: 696, w: 358, h: 56, ax: 's', ay: 'b' },
+  'camp.go': { name: '出发大按钮', screen: 'camp', x: 16, y: 764, w: 358, h: 56, ax: 's', ay: 'b' },
+};
+
+let data = {};
+try { data = (require('./layout_data.js') || {}).elements || {}; } catch (e) { data = {}; }
+
+let M = { W: REF.W, top: REF.top, bottom: REF.bottom };
+const used = {}; // 这一帧画了哪些元素（修改器用来画框）
+
+function setMetrics(W, top, bottom) { M = { W, top, bottom }; }
+function transform() {
+  const sx = M.W / REF.W, sy = (M.bottom - M.top) / (REF.bottom - REF.top);
+  return { sx, sy, s: Math.min(sx, sy), W: M.W, top: M.top, bottom: M.bottom, mid: (M.top + M.bottom) / 2, ref: REF };
+}
+function def(id) {
+  const d = DEFS[id];
+  if (!d) throw new Error('布局表里没有 ' + id);
+  return Object.assign({}, d, data[id] || {});
+}
+// 设计稿坐标 → 这台手机上的坐标（逻辑像素）
+function rect(id) {
+  const d = def(id), T = transform();
+  let x, w;
+  if (d.ax === 's') { x = d.x * T.sx; w = T.W - (REF.W - d.w) * T.sx; }
+  else {
+    w = d.w * T.s;
+    if (d.ax === 'l') x = d.x * T.sx;
+    else if (d.ax === 'r') x = T.W - (REF.W - d.x - d.w) * T.sx - w;
+    else x = T.W / 2 + (d.x + d.w / 2 - REF.W / 2) * T.sx - w / 2;
+  }
+  const h = d.h * T.s;
+  let y;
+  if (d.ay === 't') y = T.top + (d.y - REF.top) * T.sy;
+  else if (d.ay === 'b') y = T.bottom - (REF.bottom - d.y - d.h) * T.sy - h;
+  else y = T.mid + (d.y + d.h / 2 - (REF.top + REF.bottom) / 2) * T.sy - h / 2;
+  const r = { x, y, w, h };
+  used[id] = r;
+  return r;
+}
+// 元素里的字跟着框缩放：框现在的高 ÷ 默认的高
+function k(id, r) { return Math.max(0.6, Math.min(1.6, r.h / DEFS[id].h)); }
+function beginFrame() { for (const key in used) delete used[key]; }
+function setData(elements) { data = elements || {}; }
+function getData() { return data; }
+
+module.exports = { REF, DEFS, rect, def, k, transform, setMetrics, beginFrame, used, setData, getData };
+
+});
+__def("js/layout_data.js", function (module, exports, require) {
+// 自动生成，别手改：改 原型/layout.json（或用游戏修改器），再跑 node tools/build-preview.js
+module.exports = {
+  "version": 1,
+  "elements": {}
+};
+
+});
 __def("js/levels.js", function (module, exports, require) {
 // 旅程 15 关。结构照 Woodoku「旅程」第 1–15 关（拆解见 ../关卡拆解_Woodoku旅程_20261120.md）：
 // 目标轮着来（冲分 / 收宝石 / 机关匣 / 泡泡），约每 5 关一个新东西，第 10–11 关最难，12–14 关放松。
@@ -1905,6 +1989,7 @@ const LV = require('./levels.js');
 const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
+const LY = require('./layout.js'); // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -3388,10 +3473,10 @@ function petToTrain(ch, cur) {
   return null;
 }
 // 底栏：一排图标 + 小字（学经典数独首页那一排），代替并排的彩色大按钮
-function iconBar(items, y) {
-  const w = (W - 32) / items.length;
+function iconBar(items, y, r) { // r：布局表里的框（游戏修改器拖过就跟着走）
+  const x0 = r ? r.x : 16, w = (r ? r.w : W - 32) / items.length;
   items.forEach((it, n) => {
-    const cx = 16 + w * n + w / 2, pressed = downBtn === it.id;
+    const cx = x0 + w * n + w / 2, pressed = downBtn === it.id;
     ctx.save(); if (pressed) { ctx.globalAlpha = 0.6; }
     it.icon(cx, y + 18);
     text(it.label, cx, y + 44, 11, COL.dim, 'center', 'normal');
@@ -3513,19 +3598,19 @@ function drawChapter() {
     ctx.beginPath(); ctx.arc(x, top + 52, r, 0, Math.PI * 2); ctx.fill();
   }
   // 下半屏（拇指区）从下往上排：底栏、开打、先练谁、头目卡
-  const barY = H - 64, btnY = barY - 12 - 58;
+  const rG = LY.rect('map.grid'), rB = LY.rect('map.boss'), rT = LY.rect('map.train'), rP = LY.rect('map.play'), rBar = LY.rect('map.bar');
+  const barY = rBar.y, btnY = rP.y;
   const train = locked ? null : petToTrain(ch, cur);
-  const bossH = H > 760 ? 120 : 100, trainY = btnY - 10 - 40;
-  const bossY = (train ? trainY : btnY) - 10 - bossH;
-  const gy0 = top + 70, gap = 8, cw = (W - 32 - gap * 2) / 3;
-  const chh = Math.max(66, Math.min(108, (bossY - 12 - gy0 - gap * 2) / 3));
-  for (let n = 0; n < 9; n++) { const i = lo + n; if (i < PLV.length) chapterCell(i, 16 + (n % 3) * (cw + gap), gy0 + Math.floor(n / 3) * (chh + gap), cw, chh, info); }
+  const bossH = rB.h, trainY = rT.y, bossY = rB.y;
+  const gy0 = rG.y, gap = 8, cw = (rG.w - gap * 2) / 3;
+  const chh = Math.max(40, (rG.h - gap * 2) / 3);
+  for (let n = 0; n < 9; n++) { const i = lo + n; if (i < PLV.length) chapterCell(i, rG.x + (n % 3) * (cw + gap), gy0 + Math.floor(n / 3) * (chh + gap), cw, chh, info); }
   // 头目卡：名字 + 心、它会（红爪）、怕（转着的星，和关里它晕的时候头上那颗一样）
   const bi = lo + 9, bst = PLV[bi];
   const previewing = !locked && chapSel >= lo && chapSel < bi && chapSel !== cur;
-  if (previewing) drawLevelPreview(chapSel, 16, bossY, W - 32, bossH);
+  if (previewing) drawLevelPreview(chapSel, rB.x, bossY, rB.w, bossH);
   else if (bst) {
-    const bk = BOSS_CARD[bst.bossKind || 'spit'], bx = 16, bw = W - 32, sel = chapSel === bi;
+    const bk = BOSS_CARD[bst.bossKind || 'spit'], bx = rB.x, bw = rB.w, sel = chapSel === bi;
     panel(bx, bossY, bw, bossH, sel);
     const fx = bx + 52, fy = bossY + bossH / 2 + 4;
     if (locked) { ctx.fillStyle = '#05060f'; ctx.beginPath(); ctx.arc(fx, fy, 30, 0, Math.PI * 2); ctx.fill(); text('？？？', bx + 108, bossY + bossH / 2, 20, TH.faint, 'left'); }
@@ -3547,27 +3632,27 @@ function drawChapter() {
   }
   // 先练谁（没话说就不出现）：点它去营地
   if (train) {
-    const tw = W - 32, rec = save.pets[train.id], need = EXP_NEED[rec.lv] || 999;
-    ctx.fillStyle = TH.card; rr(16, trainY, tw, 40, 20); ctx.fill();
-    ctx.strokeStyle = TH.line; ctx.lineWidth = 1; rr(16.5, trainY + 0.5, tw - 1, 39, 20); ctx.stroke();
-    petIcon(train.id, 38, trainY + 20, 24, 0, 0);
-    text('先练' + PG.PETS[train.id].name, 56, trainY + 20, 16, COL.text, 'left');
-    const sx = 56 + 92;
+    const tw = rT.w, th = rT.h, tx0 = rT.x, mid = trainY + th / 2, rec = save.pets[train.id], need = EXP_NEED[rec.lv] || 999;
+    ctx.fillStyle = TH.card; rr(tx0, trainY, tw, th, th / 2); ctx.fill();
+    ctx.strokeStyle = TH.line; ctx.lineWidth = 1; rr(tx0 + 0.5, trainY + 0.5, tw - 1, th - 1, th / 2); ctx.stroke();
+    petIcon(train.id, tx0 + 22, mid, 24, 0, 0);
+    text('先练' + PG.PETS[train.id].name, tx0 + 40, mid, 16, COL.text, 'left');
+    const sx = tx0 + 132;
     if (train.want) {
-      text(rec.lv + ' 级', sx, trainY + 20, 13, COL.dim, 'left', 'normal');
-      ctx.fillStyle = TH.line; rr(sx + 30, trainY + 17, 52, 6, 3); ctx.fill();
-      ctx.fillStyle = TH.jade; rr(sx + 30, trainY + 17, Math.max(4, 52 * Math.min(1, rec.exp / need)), 6, 3); ctx.fill();
-      text(train.want + ' 级', sx + 88, trainY + 20, 13, COL.dim, 'left', 'normal');
-    } else text('后面 ' + train.n + ' 关带它顺', sx, trainY + 20, 13, COL.dim, 'left', 'normal');
-    text('去喂 ›', 16 + tw - 14, trainY + 20, 13, COL.dim, 'right', 'normal');
-    buttons.push({ id: 'train', x: 16, y: trainY, w: tw, h: 40, fn: () => openCamp() });
+      text(rec.lv + ' 级', sx, mid, 13, COL.dim, 'left', 'normal');
+      ctx.fillStyle = TH.line; rr(sx + 30, mid - 3, 52, 6, 3); ctx.fill();
+      ctx.fillStyle = TH.jade; rr(sx + 30, mid - 3, Math.max(4, 52 * Math.min(1, rec.exp / need)), 6, 3); ctx.fill();
+      text(train.want + ' 级', sx + 88, mid, 13, COL.dim, 'left', 'normal');
+    } else text('后面 ' + train.n + ' 关带它顺', sx, mid, 13, COL.dim, 'left', 'normal');
+    text('去喂 ›', tx0 + tw - 14, mid, 13, COL.dim, 'right', 'normal');
+    buttons.push({ id: 'train', x: tx0, y: trainY, w: tw, h: th, fn: () => openCamp() });
   }
   // 底部大按钮永远是「继续 · 第 N 关」（Cc 11-24：「底下的这个选项不应该变……我没法跳关，我当然是打第 14 关了」）。
   // 不管上面选中哪一格、翻到哪一章，点了都开打当前关；点上面的格子只是看预览。打过的关不从这里重打（学 Royal Match）
-  if (done) button('play', 16, btnY, W - 32, 58, '全部过关 · 新关卡在做', { kind: 'sub', size: 16, fn: () => {} });
+  if (done) button('play', rP.x, btnY, rP.w, rP.h, '全部过关 · 新关卡在做', { kind: 'sub', size: 16, fn: () => {} });
   else {
     const cst = PLV[cur], who = cst.only ? ' · ' + PG.PETS[ownedOf(cst.only) || cst.only].name + '上场' : '';
-    button('play', 16, btnY, W - 32, 58, '继续 · 第 ' + (cur + 1) + ' 关' + who, { size: 20, fn: () => newPetLevel(cur) });
+    button('play', rP.x, btnY, rP.w, rP.h, '继续 · 第 ' + (cur + 1) + ' 关' + who, { size: 20, fn: () => newPetLevel(cur) });
   }
   // 底栏
   const campNew = save.gourd >= 2 || (save.dan > 0 && save.petOrder.length);
@@ -3575,7 +3660,7 @@ function drawChapter() {
     { id: 'camp', label: '营地', icon: ICON.camp, dot: campNew, fn: () => openCamp() },
     { id: 'album3', label: '画册', icon: ICON.album, fn: () => openAlbum() },
     { id: 'classic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
-  ], barY);
+  ], barY, rBar);
 }
 
 // ---------- 新东西的说明卡（一张小动画 + 一两行字 +「继续」） ----------
@@ -3737,8 +3822,9 @@ function drawHome() {
       });
     }
     ctx.drawImage(homeArtCache, 0, 0, W, H);
-    text('九宫消', W / 2, L.top + 44, 44, COL.brassLight);
-    text('汐娘的机关工坊', W / 2, L.top + 82, 13, COL.dim, 'center', 'normal');
+    const rTi = LY.rect('home.title'), kt = LY.k('home.title', rTi);
+    text('九宫消', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.35, Math.round(44 * kt), COL.brassLight);
+    text('汐娘的机关工坊', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.82, Math.round(13 * kt), COL.dim, 'center', 'normal');
     drawHomeButtons(cy);
     return;
   }
@@ -3761,18 +3847,17 @@ function drawHome() {
   drawHomeButtons(cy);
 }
 function drawHomeButtons(cy) {
-  const bw = Math.min(W - 60, 300), bx = (W - bw) / 2;
-  let y = Math.max(cy + 196, H - 180); // 主按钮贴着底栏上面，在拇指区
+  const rM = LY.rect('home.main'), rBr = LY.rect('home.bar'); // 主按钮贴着底栏上面，在拇指区（游戏修改器里能拖）
   const cur = Math.min(save.petStage, PLV.length - 1);
-  button('homePlay', bx, y, bw, 60, save.petStage ? '继续 · ' + petLevelName(cur) : '开始', { size: 20, fn: () => { chapView = null; chapSel = null; mode = 'map'; } });
+  button('homePlay', rM.x, rM.y, rM.w, rM.h, save.petStage ? '继续 · ' + petLevelName(cur) : '开始', { size: 20, fn: () => { chapView = null; chapSel = null; mode = 'map'; } });
   // 0.8：只留一个金色大按钮，其余收成底栏图标（学经典数独首页）
   iconBar([
     { id: 'homeCamp', label: '营地', icon: ICON.camp, dot: save.gourd >= 2 || (save.dan > 0 && save.petOrder.length), fn: () => openCamp() },
     { id: 'homeAlbum', label: '画册', icon: ICON.album, fn: () => openAlbum() },
     { id: 'homeClassic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
     { id: 'homeSettings', label: '设置', icon: ICON.settings, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } },
-  ], H - 92);
-  text('试玩版 0.9', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
+  ], rBr.y, rBr);
+  text('试玩版 0.9.1', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -4330,29 +4415,31 @@ function drawCamp() {
   button('campBack', 8, top, 100, 44, campFrom === 'home' ? '‹ 主菜单' : '‹ 地图', { fn: () => { mode = campFrom; } });
   text('营地', W / 2, top + 22, 20, COL.brassLight);
   // 1 葫芦卡
-  let y = top + 54;
-  panel(16, y, W - 32, 84);
+  const rGd = LY.rect('camp.gourd'), rPt = LY.rect('camp.pets'), rNx = LY.rect('camp.next'), rGo = LY.rect('camp.go');
+  let y = rGd.y;
+  const gx0 = rGd.x, gw = rGd.w, gh = rGd.h;
+  panel(gx0, y, gw, gh);
   const shake2 = brewing ? Math.sin(clock * 30) * 3 : 0;
-  gourdIcon(54 + shake2, y + 44, 38);
+  gourdIcon(gx0 + 38 + shake2, y + gh / 2 + 2, 38);
   const danShown = brewing ? save.dan - brewing.n : save.dan;
   if (brewing) {
-    for (let n = 0; n < 4; n++) { const a = (clock * 0.8 + n / 4) % 1; ctx.globalAlpha = 1 - a; ctx.fillStyle = COL.steam; ctx.beginPath(); ctx.arc(54 + Math.sin(n * 2 + clock) * 8, y + 14 - a * 26, 5 + a * 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
-    text('炼丹中… ' + Math.max(0, Math.ceil(brewing.until - clock)), 92, y + 30, 16, COL.text, 'left');
+    for (let n = 0; n < 4; n++) { const a = (clock * 0.8 + n / 4) % 1; ctx.globalAlpha = 1 - a; ctx.fillStyle = COL.steam; ctx.beginPath(); ctx.arc(gx0 + 38 + Math.sin(n * 2 + clock) * 8, y + 14 - a * 26, 5 + a * 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+    text('炼丹中… ' + Math.max(0, Math.ceil(brewing.until - clock)), gx0 + 76, y + gh * 0.36, 16, COL.text, 'left');
     if (clock >= brewing.until) { petMsg = { text: '炼好了！得到 ' + brewing.n + ' 颗丹', t: clock }; P.sound('win', 0.6); brewing = null; }
-  } else text('葫芦里 ' + save.gourd + ' 只墨怪', 92, y + 30, 16, COL.text, 'left');
-  text(danShown + ' 颗丹', 92, y + 58, 13, COL.brassLight, 'left');
+  } else text('葫芦里 ' + save.gourd + ' 只墨怪', gx0 + 76, y + gh * 0.36, 16, COL.text, 'left');
+  text(danShown + ' 颗丹', gx0 + 76, y + gh * 0.69, 13, COL.brassLight, 'left');
   // 0.9：两只墨怪炼一颗丹（机器人从头打到尾量出来：一只一颗时宠物长得太快，第 10 关就 5 级了）；单出来的一只留在葫芦里
-  if (!brewing && save.gourd >= 2) button('brew', W - 16 - 16 - 104, y + 20, 104, 44, '炼 ' + Math.floor(save.gourd / 2) + ' 颗丹', { kind: 'sub', hot: true, dot: true, fn: () => { const n = Math.floor(save.gourd / 2); brewing = { until: clock + 3, n }; save.dan += n; save.gourd -= n * 2; persist(); P.sound('select', 0.6); } }); // 丹当场进存档，3 秒只是演动画（中途退出也不会丢）
-  y += 84 + 12;
+  if (!brewing && save.gourd >= 2) button('brew', gx0 + gw - 16 - 104, y + gh / 2 - 22, 104, 44, '炼 ' + Math.floor(save.gourd / 2) + ' 颗丹', { kind: 'sub', hot: true, dot: true, fn: () => { const n = Math.floor(save.gourd / 2); brewing = { until: clock + 3, n }; save.dan += n; save.gourd -= n * 2; persist(); P.sound('select', 0.6); } }); // 丹当场进存档，3 秒只是演动画（中途退出也不会丢）
+  y = rPt.y;
   // 底下：出发按钮、下一关卡
-  const btnY = H - 24 - 56, nextY = btnY - 12 - 56;
+  const btnY = rGo.y, nextY = rNx.y;
   // 2 宠物卡（只数越多卡越矮）
-  const n = save.petOrder.length, area = nextY - 12 - y;
+  const n = save.petOrder.length, area = rPt.h;
   const cardH = n ? Math.max(64, Math.min(88, (area - (n - 1) * 8) / n)) : 0, f = cardH / 88;
-  if (!n) text('还没有宠物：打过第 3 关就有', W / 2, y + 30, 16, COL.dim, 'center', 'normal');
+  if (!n) text('还没有宠物：打过第 3 关就有', rPt.x + rPt.w / 2, y + 30, 16, COL.dim, 'center', 'normal');
   save.petOrder.forEach((id, k) => {
     const rec = save.pets[id], d = PG.PETS[id];
-    const cy = y + k * (cardH + 8), cx = 16, cw = W - 32;
+    const cy = y + k * (cardH + 8), cx = rPt.x, cw = rPt.w;
     const active = save.activePet === id || (!save.activePet && k === 0);
     panel(cx, cy, cw, cardH, active);
     const isz = Math.min(46, cardH - 30);
@@ -4380,17 +4467,18 @@ function drawCamp() {
   });
   // 3 下一关卡：喂丹、换宠物的时候就看得到要对付什么
   const cur = Math.min(save.petStage, PLV.length - 1), nst = PLV[cur];
-  panel(16, nextY, W - 32, 56);
-  text('第 ' + (cur + 1) + ' 关', 32, nextY + 28, 13, COL.dim, 'left', 'normal');
+  const nx0 = rNx.x, nw = rNx.w, nmid = nextY + rNx.h / 2;
+  panel(nx0, nextY, nw, rNx.h);
+  text('第 ' + (cur + 1) + ' 关', nx0 + 16, nmid, 13, COL.dim, 'left', 'normal');
   Object.keys(nst.goal).slice(0, 2).forEach((key, k) => {
-    const gx = 104 + k * 64, gy = nextY + 28;
+    const gx = nx0 + 88 + k * 64, gy = nmid;
     if (key === 'score') text(nst.goal.score + ' 分', gx + 10, gy, 13, COL.text);
     else { goalIcon(key, gx, gy, 18); text(key === 'all' ? '抓光' : '×' + nst.goal[key], gx + 12, gy, 13, COL.text, 'left'); }
   });
   const np = ownedOf(nst.only || nst.best);
-  if (np) { petIcon(np, W - 16 - 104, nextY + 28, nst.only ? 26 : 20, 0, 0); if (nst.only) text('点名', W - 16 - 104, nextY + 48, 11, C.blockColors[PG.PETS[np].color][1], 'center', 'normal'); }
-  text('这一章 ›', W - 16 - 14, nextY + 28, 13, COL.dim, 'right', 'normal');
-  buttons.push({ id: 'campChapter', x: W - 16 - 84, y: nextY, w: 84, h: 56, fn: () => { chapView = null; chapSel = null; mode = 'map'; } });
+  if (np) { petIcon(np, nx0 + nw - 104, nmid, nst.only ? 26 : 20, 0, 0); if (nst.only) text('点名', nx0 + nw - 104, nmid + 20, 11, C.blockColors[PG.PETS[np].color][1], 'center', 'normal'); }
+  text('这一章 ›', nx0 + nw - 14, nmid, 13, COL.dim, 'right', 'normal');
+  buttons.push({ id: 'campChapter', x: nx0 + nw - 84, y: nextY, w: 84, h: rNx.h, fn: () => { chapView = null; chapSel = null; mode = 'map'; } });
   if (petMsg && clock - petMsg.t < 2.6) {
     ctx.font = 'bold 15px "PingFang SC", sans-serif';
     const tw = Math.min(W - 16, ctx.measureText(petMsg.text).width + 28);
@@ -4398,7 +4486,7 @@ function drawCamp() {
     ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(petMsg.text, W / 2, nextY - 29, W - 36);
   }
   // 出发 → 章页（「开打」在同一个位置，拇指不用挪）
-  button('campPlay', 16, btnY, W - 32, 56, '出发', { size: 20, fn: () => { chapView = null; chapSel = null; mode = 'map'; } });
+  button('campPlay', rGo.x, btnY, rGo.w, rGo.h, '出发', { size: 20, fn: () => { chapView = null; chapSel = null; mode = 'map'; } });
 }
 function addExp(rec, n) {
   rec.exp += n;
@@ -4921,6 +5009,7 @@ function frame() {
   last = now;
   update((mode === 'album' && albumFrom === 'play') || mode === 'cut' ? 0 : dt);
   buttons = [];
+  LY.setMetrics(W, L.top, H); LY.beginFrame();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (mode !== 'cut' && CUT.playing) CUT.clear(); // 过场中被别的入口切走了（只有测试会这样）
   if (mode === 'cut') {
@@ -4970,6 +5059,20 @@ else { newPetLevel(0, true); mode = 'home'; } // 老玩家先看主菜单 // 以
 P.nextFrame(frame);
 
 // 给测试用（只在浏览器里挂到 window 上）
+// 游戏修改器（共用界面编辑器）要的接口：画面名、切画面、画布大小（只在浏览器里挂上）
+const EDITOR_SCENES = [
+  { id: 'home', name: '主菜单', go: () => { CUT.clear(); mode = 'home'; } },
+  { id: 'map', name: '地图（章页）', go: () => { CUT.clear(); chapView = null; chapSel = null; mode = 'map'; } },
+  { id: 'camp', name: '营地', go: () => { CUT.clear(); mode = 'map'; openCamp(); } },
+  { id: 'play', name: '关里', note: '先只能评论', go: () => { newPetLevel(Math.min(save.petStage, PLV.length - 1), true); CUT.clear(); if (mode === 'intro') mode = 'play'; } },
+  { id: 'over', name: '结算', note: '先只能评论', go: () => { newPetLevel(Math.min(save.petStage, PLV.length - 1), true); CUT.clear(); g.over = true; g.won = true; g.reason = 'win'; g._ended = false; endGame(); CUT.clear(); mode = 'over'; overAt = clock - 5; } },
+  { id: 'settings', name: '设置', note: '先只能评论', go: () => { CUT.clear(); settingsFrom = 'home'; mode = 'settings'; } },
+];
+P.exposeForTest('__app', {
+  get sceneName() { return mode === 'cut' ? cutPrev : mode === 'intro' ? 'play' : mode; },
+  overlays: [], W, H, redraw() {}, editorScenes: EDITOR_SCENES,
+});
+P.exposeForTest('__layout', LY);
 P.exposeForTest('__game', {
   get g() { return g; }, get mode() { return mode; }, set mode(v) { mode = v; }, get result() { return result; }, get save() { return save; },
   get paintIdx() { return paintIdx; }, stats, L, fingerFor, slotCenter, buttons: () => buttons.slice(),
@@ -5746,6 +5849,9 @@ function setup(onTouch) {
     const phone = window.innerWidth > 520;
     width = phone ? 390 : window.innerWidth;
     height = phone ? Math.min(844, window.innerHeight - 20) : window.innerHeight;
+    // 游戏修改器切机型时，指定装成哪部手机
+    const dev = window.__DEVICE;
+    if (dev) { width = dev.w; height = dev.h; }
     dpr = Math.min(2, window.devicePixelRatio || 2); // 同上：网页版 3 倍屏也按 2 倍画
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';

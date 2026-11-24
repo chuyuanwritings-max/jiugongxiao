@@ -1792,14 +1792,17 @@ function drawHome() {
   const cy = L.top + 150;
   if (homeArtImg) {
     // 主视觉铺满整屏（上三成留给标题），上下各压一层渐暗，字和按钮看得清
+    // 图整体往下挪一截（图里机关雀飞在上面，标题不压在它身上），顶上空出来的一条用夜空色接上、渐变盖住接缝
     const sc = Math.max(W / homeArtImg.width, H / homeArtImg.height), dw = homeArtImg.width * sc, dh = homeArtImg.height * sc;
-    ctx.drawImage(homeArtImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
-    const gt = ctx.createLinearGradient(0, 0, 0, H * 0.3); gt.addColorStop(0, 'rgba(9,12,32,0.55)'); gt.addColorStop(1, 'rgba(9,12,32,0)');
-    ctx.fillStyle = gt; ctx.fillRect(0, 0, W, H * 0.3);
+    const off = Math.round(H * 0.09) + L.top;
+    ctx.fillStyle = '#0d1430'; ctx.fillRect(0, 0, W, off + 2);
+    ctx.drawImage(homeArtImg, (W - dw) / 2, (H - dh) / 2 + off, dw, dh);
+    const gt = ctx.createLinearGradient(0, off - 4, 0, off + H * 0.16); gt.addColorStop(0, 'rgba(13,20,48,1)'); gt.addColorStop(0.35, 'rgba(13,20,48,0.75)'); gt.addColorStop(1, 'rgba(13,20,48,0)');
+    ctx.fillStyle = gt; ctx.fillRect(0, off - 4, W, H * 0.16 + 4);
     const gb = ctx.createLinearGradient(0, H * 0.7, 0, H); gb.addColorStop(0, 'rgba(9,12,32,0)'); gb.addColorStop(1, 'rgba(9,12,32,0.85)');
     ctx.fillStyle = gb; ctx.fillRect(0, H * 0.7, W, H * 0.3);
-    text('九宫消', W / 2, L.top + 90, 48, COL.brassLight);
-    text('汐娘的机关工坊', W / 2, L.top + 130, 16, COL.text, 'center', 'normal');
+    text('九宫消', W / 2, L.top + 44, 44, COL.brassLight);
+    text('汐娘的机关工坊', W / 2, L.top + 82, 13, COL.dim, 'center', 'normal');
     drawHomeButtons(cy);
     return;
   }
@@ -1833,7 +1836,7 @@ function drawHomeButtons(cy) {
     { id: 'homeClassic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
     { id: 'homeSettings', label: '设置', icon: ICON.settings, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } },
   ], H - 92);
-  text('试玩版 0.8.1', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
+  text('试玩版 0.8.2', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------

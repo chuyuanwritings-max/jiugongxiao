@@ -1631,7 +1631,7 @@ function drawBg() {
 // 旅程的顶栏：返回、第几关、目标计数（还差几个；够了打勾）
 function drawStageHud() {
   const y = L.top;
-  button('map', 12, y + 4, 44, 38, '‹', { size: 28, bg: COL.wood, fn: () => { mode = 'map'; } });
+  button('map', 10, y + 4, 62, 38, '‹ 菜单', { size: 15, bg: COL.wood, fn: () => { mode = 'map'; } });
   text(g.pets ? petLevelName() : '第 ' + (stageIdx + 1) + ' 关', W / 2, y + 10, 15, COL.dim, 'center', 'normal');
   const left = g.goalLeft();
   const keys = Object.keys(g.stage.goal);
@@ -1664,10 +1664,10 @@ function drawHud() {
   if (g.pets) { drawStageHud(); return drawPetBar(); }
   if (g.stage) return drawStageHud();
   const y = L.top;
-  button('map', 12, y + 4, 44, 38, '‹', { size: 28, bg: COL.wood, fn: () => { mode = 'map'; } });
+  button('map', 10, y + 4, 62, 38, '‹ 菜单', { size: 15, bg: COL.wood, fn: () => { mode = 'map'; } });
   // 分数
-  text(String(Math.round(displayScore)), 66, y + 18, 30, COL.text, 'left');
-  text('最高 ' + (g.endless ? save.bestEndless : save.best), 66, y + 46, 13, COL.dim, 'left', 'normal');
+  text(String(Math.round(displayScore)), 80, y + 18, 30, COL.text, 'left');
+  text('最高 ' + (g.endless ? save.bestEndless : save.best), 80, y + 46, 13, COL.dim, 'left', 'normal');
   // 九宫小图：哪几宫亮了
   if (!g.endless) {
     const s = 12, mx = W / 2 - s * 1.5 - 2, my = y + 4;
@@ -2223,7 +2223,10 @@ function drawMap() {
   hg.addColorStop(0, COL.bg); hg.addColorStop(0.75, COL.bg); hg.addColorStop(1, 'rgba(14,19,48,0)');
   ctx.fillStyle = hg; ctx.fillRect(0, 0, W, L.top + 70);
   text(save.petStage >= 10 ? '试玩加场' : '第一章 · 工坊后院', W / 2, L.top + 24, 24, COL.brassLight);
-  text(save.coins + ' 金', W - 20, L.top + 24, 17, COL.brassLight, 'right');
+  text(save.coins + ' 金', W - 68, L.top + 24, 16, COL.brassLight, 'right');
+  // 右上角齿轮：设置（声音、振动、重新开始）
+  button('settings', W - 56, L.top + 4, 44, 40, '', { bg: COL.wood, fn: () => { settingsAsk = 0; mode = 'settings'; } });
+  gearIcon(W - 34, L.top + 24, 9, clock * 0.5, COL.brassLight);
   text(Math.min(save.petStage, PLV.length) + ' / ' + PLV.length, 20, L.top + 24, 17, COL.dim, 'left');
   // 底栏同样压住路
   const fg = ctx.createLinearGradient(0, H - 215, 0, H);
@@ -2371,6 +2374,33 @@ function drawAlbum() {
   button('back', (W - bw) / 2, H - 96, bw, 60, albumFrom === 'over' && !g.stage ? '再来' : '回去', {
     size: 24, fn: () => (albumFrom === 'map' ? (mode = 'map') : albumFrom === 'over' ? (g.stage ? (mode = 'over') : newGame(g.endless && save.wins >= 2)) : (mode = 'play')),
   });
+}
+
+// ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
+let settingsAsk = 0; // 「重新开始」要点两下：第一下变成「真的清空？」，3 秒内再点才清
+P.setMuted(!!save.muted);
+const _vibrate = P.vibrate;
+P.vibrate = (strong) => { if (!save.noVibrate) _vibrate(strong); };
+function drawSettings() {
+  drawBg();
+  text('设置', W / 2, L.top + 30, 28, COL.brassLight);
+  const bw = Math.min(W - 60, 320), bx = (W - bw) / 2;
+  let y = L.top + 90;
+  button('setSound', bx, y, bw, 58, '声音：' + (save.muted ? '关' : '开'), { size: 22, bg: save.muted ? COL.woodDark : COL.copper, fn: () => { save.muted = !save.muted; P.setMuted(save.muted); persist(); } });
+  y += 76;
+  button('setVibe', bx, y, bw, 58, '振动：' + (save.noVibrate ? '关' : '开'), { size: 22, bg: save.noVibrate ? COL.woodDark : COL.copper, fn: () => { save.noVibrate = !save.noVibrate; persist(); if (!save.noVibrate) _vibrate(false); } });
+  y += 96;
+  const asking = settingsAsk && clock - settingsAsk < 3;
+  button('setReset', bx, y, bw, 58, asking ? '真的清空？再点一次' : '重新开始', { size: 22, bg: COL.red, fn: () => {
+    if (!asking) { settingsAsk = clock; return; }
+    // 清空所有进度（宠物、关卡、葫芦、金币、画册……），从第 1 关重新来
+    save = freshSave(); persist();
+    P.setMuted(false);
+    settingsAsk = 0;
+    newPetLevel(0);
+  } });
+  text(asking ? '宠物、关卡、葫芦、金币全部清空，回到第 1 关' : '清空所有进度，从第 1 关重新玩', W / 2, y + 80, 14, asking ? COL.red : COL.dim, 'center', 'normal');
+  button('setBack', bx, H - 100, bw, 60, '回主菜单', { size: 24, fn: () => { mode = 'map'; } });
 }
 
 // ---------- 九宫消 + 宠物（0.5）：画面和局外 ----------
@@ -3275,6 +3305,8 @@ function frame() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (mode === 'album') {
     drawAlbum();
+  } else if (mode === 'settings') {
+    drawSettings();
   } else if (mode === 'camp') {
     drawCamp();
   } else if (mode === 'map') {

@@ -153,6 +153,24 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await shot('13_地图');
   st = await page.evaluate(() => ({ mode: window.__game.mode, btn: window.__game.buttons().map((b) => b.id) }));
   ok(st.mode === 'map' && st.btn.includes('play') && st.btn.includes('camp') && st.btn.includes('classic') && !st.btn.includes('siege'), '地图：第一章关卡、营地、经典拼画；守城收起来了');
+  // 设置：声音开关、重新开始（点两下才清空）
+  await click('settings');
+  await page.waitForTimeout(200);
+  await shot('13b_设置');
+  await click('setSound');
+  await page.waitForTimeout(100);
+  st = await page.evaluate(() => window.__game.save.muted);
+  await click('setSound');
+  await click('setReset');
+  await page.waitForTimeout(100);
+  const half = await page.evaluate(() => window.__game.save.petStage);
+  await click('setReset');
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => ({ stage: window.__game.save.petStage, pets: window.__game.save.petOrder.length, idx: window.__game.petIdx, mode: window.__game.mode }));
+  ok(st === true && half > 0 && after.stage === 0 && after.pets === 0 && after.idx === 0 && after.mode === 'play', '设置：声音能关；「重新开始」点一下要确认、点第二下才清空进度，回到第 1 关');
+  await page.evaluate(() => { const G = window.__game; G.setSave({ petTutDone: true, tutorialDone: true }); });
+  await click('map');
+  await page.waitForTimeout(300);
 
   // ---------- 经典拼画（0.1 / 0.2 的玩法） ----------
   await click('classic');

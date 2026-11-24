@@ -81,6 +81,11 @@ const paintSmooth = [false, false, false]; // 代码画保留像素颗粒；正�
     paintSmooth[i] = true;
   });
 });
+// Midjourney 正式图：主菜单主视觉、宠物头像（读到了就用，读不到就用代码画的）
+let homeArtImg = null;
+const petArtImg = {};
+if (C.homeArt) P.loadImage('images/' + C.homeArt, (img) => { homeArtImg = img; });
+Object.keys(C.petArt || {}).forEach((id) => { if (C.petArt[id]) P.loadImage('images/' + C.petArt[id], (img) => { petArtImg[id] = img; }); });
 // 块的颜色：棋盘上每格记住放下时的颜色
 const colorAt = new Array(81).fill(0);
 function handColor(i) {
@@ -1785,6 +1790,19 @@ function drawAlbum() {
 function drawHome() {
   drawBg();
   const cy = L.top + 150;
+  if (homeArtImg) {
+    // 主视觉铺满整屏（上三成留给标题），上下各压一层渐暗，字和按钮看得清
+    const sc = Math.max(W / homeArtImg.width, H / homeArtImg.height), dw = homeArtImg.width * sc, dh = homeArtImg.height * sc;
+    ctx.drawImage(homeArtImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    const gt = ctx.createLinearGradient(0, 0, 0, H * 0.3); gt.addColorStop(0, 'rgba(9,12,32,0.55)'); gt.addColorStop(1, 'rgba(9,12,32,0)');
+    ctx.fillStyle = gt; ctx.fillRect(0, 0, W, H * 0.3);
+    const gb = ctx.createLinearGradient(0, H * 0.7, 0, H); gb.addColorStop(0, 'rgba(9,12,32,0)'); gb.addColorStop(1, 'rgba(9,12,32,0.85)');
+    ctx.fillStyle = gb; ctx.fillRect(0, H * 0.7, W, H * 0.3);
+    text('九宫消', W / 2, L.top + 90, 48, COL.brassLight);
+    text('汐娘的机关工坊', W / 2, L.top + 130, 16, COL.text, 'center', 'normal');
+    drawHomeButtons(cy);
+    return;
+  }
   // 九宫格徽记：黄铜框，正中间一格亮着
   const s = 34, x0 = W / 2 - s * 1.5 - 4, y0 = cy - s * 1.5 - 4;
   ctx.fillStyle = COL.ink; rr(x0 - 10, y0 - 8, s * 3 + 28, s * 3 + 28, 14); ctx.fill();
@@ -1801,6 +1819,9 @@ function drawHome() {
   });
   text('九宫消', W / 2, cy + 116, 44, COL.brassLight);
   text('汐娘的机关工坊', W / 2, cy + 156, 16, COL.dim, 'center', 'normal');
+  drawHomeButtons(cy);
+}
+function drawHomeButtons(cy) {
   const bw = Math.min(W - 60, 300), bx = (W - bw) / 2;
   let y = Math.max(cy + 196, H - 180); // 主按钮贴着底栏上面，在拇指区
   const cur = Math.min(save.petStage, PLV.length - 1);
@@ -1812,7 +1833,7 @@ function drawHome() {
     { id: 'homeClassic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
     { id: 'homeSettings', label: '设置', icon: ICON.settings, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } },
   ], H - 92);
-  text('试玩版 0.8', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
+  text('试玩版 0.8.1', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -1871,6 +1892,16 @@ function ownedTeam() {
 function petIcon(id, x, y, s, lv, pop) {
   const d = PG.PETS[id];
   const k = 1 + (pop || 0) * 0.3, r = (s / 2) * k;
+  if (petArtImg[id]) {
+    // 正式头像：抠好底的图，外面一圈它颜色的细环（和方块颜色对上）
+    const col = C.blockColors[d.color];
+    ctx.fillStyle = col[2]; ctx.beginPath(); ctx.arc(x, y + 1, r + 1, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = TH.card; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.drawImage(petArtImg[id], x - r * 1.15, y - r * 1.2, r * 2.3, r * 2.3);
+    ctx.strokeStyle = col[0]; ctx.lineWidth = Math.max(1.5, r * 0.08); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+    if (lv) text('Lv' + lv, x + r * 0.9, y + r * 0.85, Math.max(11, Math.round(s * 0.2)), COL.brassLight);
+    return;
+  }
   const col = C.blockColors[d.color];
   if (id === 'jinchique') {
     ctx.fillStyle = COL.brassLight;

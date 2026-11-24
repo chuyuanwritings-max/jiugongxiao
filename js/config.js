@@ -42,6 +42,10 @@ module.exports = {
   // 正式插画（Midjourney）：放进 images/ 后把文件名写在这里，按画的顺序（机关城 / 墨非·沙盘 / 城头日出）。
   // 空着或某张读不到，就用 art.js 里代码画的那张。只读列在这里的，免得找不到文件时控制台报错
   paintImages: [],
+  // 0.8.1 Midjourney 第 1 批（画风 BDL-02-a 无主之地2 简化版，需求单 生图/需求_主视觉与宠物头像_20261124.md）：
+  // 图放进 images/ 后把文件名写在这里就自动换上；空着或读不到，就用代码画的（圆章一个字、九宫格徽记）
+  homeArt: '', // 'home.png'：主菜单主视觉，9:16
+  petArt: {}, // { tongque: 'pet_tongque.png', jinchique: 'pet_jinchique.png', baozhu: 'pet_baozhu.png', modou: 'pet_modou.png', qilin: 'pet_qilin.png' }
 
   // 块的颜色：每发一块换一种宝石色，放下以后保留（黄铜金、朱砂、青铜绿、青金、紫晶、赤铜、水银青）
   blockColors: [

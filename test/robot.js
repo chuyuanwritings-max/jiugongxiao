@@ -138,14 +138,41 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(1400);
   st = await page.evaluate(() => ({ won: window.__game.g.won, pets: window.__game.save.petOrder.slice() }));
   ok(st.won && st.pets.includes('baozhu'), '第 10 关打倒大墨怪（消 3 次），得到爆竹鼠');
-  // 加场：火麒麟送火块
+  // 第 11 关：第一次打借你 2 级爆竹鼠，啃掉挤在一个大格里的铁石
   await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 10 }); G.newPetLevel(10); });
+  await page.waitForTimeout(300);
+  await closeIntro();
+  await shot('12_第11关_爆竹鼠铁石');
+  await petPlay(80);
+  await page.waitForTimeout(1600);
+  st = await page.evaluate(() => ({ won: window.__game.g.won, team: window.__game.g.team.map((t) => t.id), rock: window.__game.g.got.rock }));
+  ok(st.won && st.team[0] === 'baozhu' && st.rock >= 3, '第 11 关：借来的爆竹鼠啃碎 3 块铁石过关');
+  // 第 12 关：铁甲怪——先不带宠物打 25 手：你消掉那排只弹一下锅，一只都抓不走
+  await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 11, activePet: 'jinchique' }); G.newPetLevel(11); G.g.team = []; });
+  await page.waitForTimeout(300);
+  await closeIntro();
+  await petPlay(25);
+  await shot('12b_第12关_铁甲怪_不带宠物');
+  st = await page.evaluate(() => ({ armor: window.__game.g.board.filter((v) => v === 6).length, got: window.__game.g.got.monster || 0 }));
+  ok(st.armor === 2 && st.got === 0, '第 12 关：不带宠物时铁甲怪抓不走（锅只弹一下，2 只都还在）');
+  // 再带金翅雀打：它扫过去，锅碎了，墨怪被抓
+  await page.evaluate(() => { const G = window.__game; G.newPetLevel(11); });
+  await page.waitForTimeout(300);
+  await closeIntro();
+  await petPlay(80);
+  await page.waitForTimeout(1600);
+  st = await page.evaluate(() => ({ won: window.__game.g.won, got: window.__game.g.got.monster || 0 }));
+  ok(st.won && st.got >= 2, '第 12 关：带金翅雀出战，扫碎铁锅、抓走铁甲怪过关');
+  // 火麒麟：放块攒能量，吐一颗火球进托盘
+  await page.evaluate(() => { const G = window.__game; G.save.pets.qilin = { lv: 1, exp: 0 }; if (!G.save.petOrder.includes('qilin')) G.save.petOrder.push('qilin'); G.setSave({ petStage: 20, activePet: 'qilin' }); G.newPetLevel(19); });
   await page.waitForTimeout(300);
   await closeIntro();
   const gotFire = await petPlay(60, () => window.__game.g.hand.some((p) => p && p.special === 'fire'));
   await page.waitForTimeout(400);
-  await shot('12_加场_火块');
-  ok(gotFire, '试玩加场：三只宠物一起上，火麒麟往托盘里送火块');
+  await shot('12c_第20关_火块和吐墨');
+  st = await page.evaluate(() => ({ ink: (window.__game.g.spits || 0) > 0 }));
+  ok(gotFire, '火麒麟出战：攒满往托盘里送一颗火块');
+  ok(st.ink, '第 20 关：大墨怪会往盘上吐墨块');
   await page.evaluate(() => { const G = window.__game; G.g.over = true; G.g.reason = 'stuck'; G.endGame(); });
   await page.waitForTimeout(700);
   await click('tomap');

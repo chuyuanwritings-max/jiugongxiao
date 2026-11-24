@@ -80,8 +80,8 @@ function placeAndClear(board, p, r, c) {
   const cells = new Set();
   units.forEach((u) => UNITS[u].forEach((i) => cells.add(i)));
   // 2 机关匣、4 大墨怪、5 铁石：占地方、算满，但消不掉（铁石只有宠物打得碎）；3 小墨怪：算满，消掉就抓到
-  cells.forEach((i) => b[i] !== 2 && b[i] !== 4 && b[i] !== 5 && (b[i] = 0));
-  return { board: b, units, cells: [...cells].filter((i) => b[i] !== 2 && b[i] !== 4 && b[i] !== 5) };
+  cells.forEach((i) => b[i] !== 2 && b[i] !== 4 && b[i] !== 5 && b[i] !== 6 && (b[i] = 0));
+  return { board: b, units, cells: [...cells].filter((i) => b[i] !== 2 && b[i] !== 4 && b[i] !== 5 && b[i] !== 6) };
 }
 // 有没有一种顺序和摆法，能把这几块全放下（中间会消除）
 function solvable(board, pieces) {

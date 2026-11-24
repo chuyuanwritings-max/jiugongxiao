@@ -221,7 +221,7 @@ function gearIcon(x, y, r, a, col) {
 // 机关块：宝石色铜块。ci = 颜色序号；lit = 要被消掉时发亮
 function block(x, y, s, alpha, ci, lit) {
   // 祝有好收获的黄铜画法：细深褐线 + 平涂 + 一块硬边阴影 + 一道白黄硬高光 + 两颗细线铆钉
-  const k = ci < 0 ? C.prefillColor : C.blockColors[ci || 0];
+  const k = ci === -2 ? ['#2a2236', '#4a3f5c', '#120e18'] : ci < 0 ? C.prefillColor : C.blockColors[ci || 0]; // -2 墨块（大墨怪吐的）
   ctx.globalAlpha = alpha === undefined ? 1 : alpha;
   const rad = Math.max(2, s * 0.12);
   ctx.fillStyle = COL.ink;
@@ -319,11 +319,43 @@ function goalIcon(key, cx, cy, s) {
   else if (key === 'bubble') bubbleAt(x - s * 0.1, y - s * 0.1, s * 1.2);
   else if (key === 'monster') inkMonster(cx, cy, s * 0.55, false);
   else if (key === 'rock') ironRock(x, y, s);
+  else if (key === 'acts') { const id = (g && g.team && g.team[0] && g.team[0].id) || save.activePet || 'tongque'; petIcon(id, cx, cy, s * 1.1, 0, 0); }
   else if (key === 'boss') inkMonster(cx, cy, s * 0.75, true);
   else if (key === 'evolve') {
     // 九格小方阵：亮了几格
     const q = s / 3.2;
     for (let n = 0; n < 9; n++) { ctx.fillStyle = g && g.evLit && n < g.evLit.size ? COL.brassLight : COL.woodLine; ctx.fillRect(x + (n % 3) * q * 1.08, y + Math.floor(n / 3) * q * 1.08, q * 0.9, q * 0.9); }
+  }
+}
+// 小骷髅（超难关）
+function skullIcon(x, y, r) {
+  ctx.fillStyle = '#efe6d2'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(x - r * 0.55, y + r * 0.4, r * 1.1, r * 0.7);
+  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x - r * 0.38, y, r * 0.28, 0, Math.PI * 2); ctx.arc(x + r * 0.38, y, r * 0.28, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(x - 1, y + r * 0.7, 2, r * 0.4);
+}
+// 铁甲怪：小墨怪扣着一口铁锅；锅被弹一下时往上跳
+function armorMonster(cx, cy, r, bounce) {
+  inkMonster(cx, cy + r * 0.15, r * 0.9, false);
+  const by = cy - r * 0.35 - bounce * 40;
+  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.ellipse(cx, by, r * 1.05, r * 0.6, 0, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = '#6a7080'; ctx.beginPath(); ctx.ellipse(cx, by, r * 0.95, r * 0.52, 0, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = '#9aa0b0'; ctx.fillRect(cx - r * 0.5, by - r * 0.4, r * 0.3, r * 0.1);
+  ctx.fillStyle = COL.ink; ctx.fillRect(cx - r * 1.1, by - 2, r * 2.2, 4);
+}
+// 跳跳怪：脚下一根弹簧；下一手要跳的话，朝那边探头（一根小箭头）
+function jumperMonster(cx, cy, r, to, k) {
+  const hop = Math.abs(Math.sin(clock * 6 + k)) * 4;
+  ctx.strokeStyle = '#c9a050'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let n = 0; n <= 4; n++) ctx.lineTo(cx + (n % 2 ? 5 : -5), cy + r * 0.6 + n * 2.5);
+  ctx.stroke();
+  inkMonster(cx, cy - hop, r * 0.85, false);
+  if (to !== null) {
+    const tx = cellX(to % 9) + L.cell / 2, ty = cellY(Math.floor(to / 9)) + L.cell / 2;
+    const a = Math.atan2(ty - cy, tx - cx);
+    ctx.fillStyle = 'rgba(243,210,122,' + (0.6 + Math.sin(clock * 10) * 0.3) + ')';
+    ctx.save(); ctx.translate(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4); ctx.rotate(a);
+    ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-4, -6); ctx.lineTo(-4, 6); ctx.fill(); ctx.restore();
   }
 }
 // 红心（大墨怪还要打几下）；碎了的画成灰的
@@ -627,7 +659,7 @@ function drawBg() {
 // 旅程的顶栏：返回、第几关、目标计数（还差几个；够了打勾）
 function drawStageHud() {
   const y = L.top;
-  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { mode = 'map'; } });
+  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); timeline = []; mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账
   text(g.pets ? petLevelName() : '第 ' + (stageIdx + 1) + ' 关', W / 2, y + 10, 15, COL.dim, 'center', 'normal');
   const left = g.goalLeft();
   const keys = Object.keys(g.stage.goal);
@@ -660,7 +692,7 @@ function drawHud() {
   if (g.pets) { drawStageHud(); return drawPetBar(); }
   if (g.stage) return drawStageHud();
   const y = L.top;
-  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { mode = 'map'; } });
+  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); timeline = []; mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账
   // 分数
   text(String(Math.round(displayScore)), 80, y + 18, 30, COL.text, 'left');
   text('最高 ' + (g.endless ? save.bestEndless : save.best), 80, y + 46, 13, COL.dim, 'left', 'normal');
@@ -787,16 +819,20 @@ function drawBoard(showGhost) {
     const sc = pop ? 1 + 0.18 * (1 - (clock - pop.t) / 0.15) : 1;
     const s = cell * sc, x = cellX(k % 9) + (cell - s) / 2, y = cellY(Math.floor(k / 9)) + (cell - s) / 2;
     if (g.board[k] === 3) { inkMonster(x + s / 2, y + s / 2, s * 0.4, false); continue; }
-    if (g.board[k] === 5) { ironRock(x, y, s); continue; }
+    if (g.board[k] === 6) { armorMonster(x + s / 2, y + s / 2, s * 0.4, petFx.armorBounce && petFx.armorBounce[k] ? Math.max(0, 0.3 - (clock - petFx.armorBounce[k])) : 0); continue; }
+    if (g.board[k] === 7) { jumperMonster(x + s / 2, y + s / 2, s * 0.4, g.jumpPlan && g.jumpPlan[k] !== undefined ? g.jumpPlan[k] : null, k); continue; }
+    if (g.board[k] === 5) { ironRock(x, y, s); if (g.rockHp && g.rockHp[k] > 1) { ctx.strokeStyle = '#8a90a0'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, y + 4, s - 8, s - 8); ctx.strokeRect(x + 8, y + 8, s - 16, s - 16); } continue; }
     if (g.board[k] === 4) {
       // 大墨怪：2×2 画成一只，只在左上那格画
       if (g.bigCells && g.bigCells[0] === k) {
         const hit = petFx.bossHit && clock - petFx.bossHit < 0.3 ? Math.sin(clock * 70) * 5 : 0;
         const scared = petFx.bossScared ? Math.sin(clock * 40) * 2 : 0;
         inkMonster(x + s + hit + scared, y + s, s * 0.85 * (petFx.bossScared ? 0.94 : 1), true);
-        // 头上几颗红心 = 还要打几下；打中一下碎一颗
-        const tot = g.stage.bigHp || 3;
-        for (let n = 0; n < tot; n++) heart(x + s - (tot - 1) * 13 + n * 26, y - 22, 10, n < g.bigHp);
+        // 头上几颗红心 = 还要打几下；打中一下碎一颗（宠物咬、或者它晕着时打中，碎两颗）
+        const tot = g.stage.bigHp || 3, hs = tot > 5 ? 7 : 10, gap = tot > 5 ? 17 : 26;
+        for (let n = 0; n < tot; n++) heart(x + s - (tot - 1) * gap / 2 + n * gap, y - 22, hs, n < g.bigHp);
+        // 刚吐完墨：头上转星星（这时候打它掉 2 颗心）
+        if (g.boss && g.boss.stun) for (let n = 0; n < 3; n++) { const a = clock * 4 + (n * Math.PI * 2) / 3; starShape(x + s + Math.cos(a) * s * 0.7, y + s * 0.25 + Math.sin(a) * 6, 6, COL.brassLight); }
       }
       continue;
     }
@@ -1208,6 +1244,14 @@ function drawMap() {
       ctx.strokeStyle = 'rgba(111,208,168,' + (0.5 + Math.sin(clock * 4) * 0.3) + ')'; ctx.lineWidth = 5;
       ctx.beginPath(); ctx.arc(x, y, rad + 8, 0, Math.PI * 2); ctx.stroke();
     }
+    const hd = PLV[i].hard || 0;
+    if (hd) {
+      // 难关（学 Royal Match）：头上两只红角；超难再多一圈紫、顶上一个小骷髅
+      ctx.fillStyle = hd > 1 ? '#7a3fa0' : COL.red;
+      for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + sx * rad * 0.35, y - rad * 0.8); ctx.lineTo(x + sx * rad * 0.95, y - rad * 1.45); ctx.lineTo(x + sx * rad * 0.8, y - rad * 0.5); ctx.fill(); }
+      ctx.strokeStyle = hd > 1 ? '#7a3fa0' : COL.red; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, rad + 6, 0, Math.PI * 2); ctx.stroke();
+      if (hd > 1 && i % 5 !== 4) skullIcon(x, y - rad - 16, 9);
+    }
     ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x, y + 3, rad + 3, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = passed ? COL.brass : isCur ? COL.red : COL.woodDark; // 当前关用朱砂：全屏唯一一点高饱和
     ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
@@ -1226,7 +1270,7 @@ function drawMap() {
   button('home', 10, L.top + 2, 92, 38, '‹ 主菜单', { size: 15, bg: COL.wood, fn: () => { mode = 'home'; } });
   button('settings', W - 56, L.top + 2, 44, 38, '', { bg: COL.wood, fn: () => { settingsAsk = 0; settingsFrom = 'map'; mode = 'settings'; } });
   gearIcon(W - 34, L.top + 21, 9, clock * 0.5, COL.brassLight);
-  text(save.petStage >= 10 ? '试玩加场' : '第一章 · 工坊后院', W / 2, L.top + 62, 22, COL.brassLight);
+  text(chapterName(Math.min(save.petStage, PLV.length - 1)), W / 2, L.top + 62, 22, COL.brassLight);
   text('已过 ' + Math.min(save.petStage, PLV.length) + ' / ' + PLV.length + ' 关　·　' + save.coins + ' 金', W / 2, L.top + 90, 13, COL.dim, 'center', 'normal');
   // 底栏同样压住路
   const fg = ctx.createLinearGradient(0, H - 215, 0, H);
@@ -1242,6 +1286,15 @@ function drawMap() {
     if (key === 'score') text(st.goal.score + ' 分', cx, gy, 18, COL.text);
     else { goalIcon(key, cx - 12, gy, 20); text('×' + st.goal[key], cx + 14, gy, 16, COL.text); }
   });
+  const bestId = !st.team && st.best ? (save.pets[st.best] ? st.best : save.pets[PG.PETS[st.best].evo] ? PG.PETS[st.best].evo : null) : null;
+  if (bestId) {
+    // 头像 + 右边一行小字，同一行，不压下面的大按钮
+    const bx = Math.min(W - 70, x0 + cw * keys.length + 30), on = save.activePet === bestId;
+    petIcon(bestId, bx, gy, 28, 0, 0);
+    text(on ? '✓ 带着它' : '带它最顺', bx + 19, gy, 12, on ? COL.jade : COL.brassLight, 'left', 'normal');
+    buttons.push({ id: 'bestPet', x: bx - 18, y: gy - 18, w: 86, h: 36, fn: () => openCamp() });
+  }
+  if (st.hard) text(st.hard > 1 ? '超难关' : '难关', W / 2, H - 168, 12, st.hard > 1 ? '#c58ae0' : '#f08a70');
   const bw = Math.min(W - 60, 300);
   button('play', (W - bw) / 2, H - 160, bw, 64, done ? '再玩' + petNodeLabel(PLV.length - 1) : petLevelName(cur), { size: 28, fn: () => newPetLevel(cur) });
   // 底下三个：营地（葫芦、喂宠物）、经典拼画、画册。守城收起来了（Cc 11-24：「这个没意思，就不要加塔防了」）
@@ -1265,7 +1318,11 @@ const INTRO = {
   color: { title: '金色能让它攒得更快', lines: ['消掉金色的方块，金光飞到铜雀身上，', '每 3 块多攒一格能量'], pet: 'tongque', glow: true },
   rock: { title: '铁石', lines: ['你消不掉它：只有宠物出手', '射到、炸到，才打得碎'], rockPic: true },
   boss: { title: '大墨怪', lines: ['它占四格，消不掉；', '它在的那一排每消一次，打它一下'], pet: null, bossPic: true },
-  team: { title: '试玩加场', lines: ['借你一只火麒麟：它会吐一颗火球给你，', '你自己拖，放哪儿炸哪儿'], pet: 'qilin' },
+  baozhu: { title: '爆竹鼠出战', lines: ['它会跳下来，', '把最挤的大格啃掉一大块'], pet: 'baozhu' },
+  modou: { title: '墨斗蚕出战', lines: ['它会爬过去吐丝，', '把快满的一排补满、消掉'], pet: 'modou' },
+  armor: { title: '铁甲怪', lines: ['你消掉它那排，锅只弹一下；', '宠物碰它一下，锅才碎'], armorPic: true },
+  jumper: { title: '跳跳怪', lines: ['每放 3 块它跳一格，', '跳不出它在的那个大格'], jumperPic: true },
+  acts: { title: '让宠物多出手', lines: ['顶上画着几个宠物头像，', '它出手几次才算过关'], pet: 'tongque' },
 };
 function drawIntro() {
   const it = INTRO[introKind];
@@ -1279,6 +1336,8 @@ function drawIntro() {
     // 宠物 / 头目：画一个大图，下面两行字
     const cy = py + 118;
     if (it.bossPic) inkMonster(W / 2, cy, 42, true);
+    else if (it.armorPic) armorMonster(W / 2, cy, 40, Math.max(0, Math.sin(clock * 3)) * 0.3);
+    else if (it.jumperPic) jumperMonster(W / 2, cy, 40, null, 0);
     else if (it.rockPic) ironRock(W / 2 - 40, cy - 40, 80);
     else if (it.pet) {
       petIcon(it.pet, W / 2, cy, 84, 1, Math.sin(clock * 3) * 0.1);
@@ -1409,7 +1468,7 @@ function drawHome() {
   y += 64;
   button('homeClassic', bx, y, hw, 52, '经典拼画', { size: 17, bg: COL.copper, fn: () => newGame(false) });
   button('homeSettings', bx + hw + 12, y, hw, 52, '设置', { size: 19, bg: COL.woodDark, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } });
-  text('试玩版 0.5.3', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
+  text('试玩版 0.6', W / 2, H - 18, 11, COL.dim, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -1450,12 +1509,13 @@ const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕
 // Cc 11-24：「刚拿到宠物直接就升到 5 级……游戏时长会变得太短」→ 门槛提高，铜雀大约要打十几关才够进化
 const EXP_NEED = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 999];
 const DAN_EXP = 2;
-function petNodeLabel(i) { const st = PLV[i]; return st.bonus ? '加' + (i - 9) : st.evolveLevel ? '进化' : String(i + 1); }
+function petNodeLabel(i) { return String(i + 1); }
+const chapterName = (i) => (i < 10 ? '第一章 · 工坊后院' : '第二章 · 水车坊');
 function petLevelName(i) {
   if (i === undefined) i = petIdx;
   const st = PLV[i];
   if (g && g.stage && g.stage.evolve && i === petIdx) return '进化关 · ' + PG.PETS[g.stage.evolve.pet].name;
-  return st.bonus ? '试玩加场 ' + (i - 9) : st.evolveLevel ? '第 ' + (i + 1) + ' 关 · 进化' : '第 ' + (i + 1) + ' 关';
+  return '第 ' + (i + 1) + ' 关';
 }
 // 只带一只出战（Cc 11-24：「宠物应该只能带一个才对……在营地里选好了之后就不变了」）
 function ownedTeam() {
@@ -1494,8 +1554,10 @@ function newPetLevel(i) {
     return newEvolution(id, i);
   }
   petIdx = i; stageIdx = -1;
-  g = PG.createPetGame({ stage: st0, team: st0.team ? null : ownedTeam(), seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone });
-  startPet(st0);
+  // 「第一次打借你一只」的关：过了以后带自己的
+  const st1 = st0.firstTeamOnly && save.petStage > i && ownedTeam().length ? Object.assign({}, st0, { team: null, fastCharge: false }) : st0;
+  g = PG.createPetGame({ stage: st1, team: st1.team ? null : ownedTeam(), seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone });
+  startPet(st1);
 }
 function newEvolution(id, levelIdx) {
   petIdx = levelIdx === undefined ? PLV.findIndex((x) => x.evolveLevel === id) : levelIdx;
@@ -1507,6 +1569,7 @@ function newEvolution(id, levelIdx) {
 }
 function startPet(st) {
   startCommon();
+  timeline = []; ghosts = []; petRuns = []; beams = []; colBolts = []; petInk = []; // 上一关没演完的动画清掉，免得新盘面上闪一下
   for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
   petFx = { pop: {}, caption: null, banner: st.line ? { text: st.line, t: clock + 0.3 } : null, bossHit: -9, evolveFlash: -9 };
   if (st.intro && !save.introSeen[st.intro]) { introKind = st.intro; mode = 'intro'; }
@@ -1538,6 +1601,16 @@ function drawPetBar() {
 // 进化关：正中间铺一层宠物颜色、一亮一暗；亮了的格子金边
 function drawPetBoard() {
   if (g.bigHp > 0) drawBossHints();
+  // 能量只差 1 格时，它下一次要下手的地方淡淡亮起它的颜色：可以顺着它来，也可以不管
+  g.team.forEach((pt) => {
+    if (pt.energy !== PG.energyMax(g, pt) - 1 || !g.petTarget) return;
+    const t = g.petTarget(pt);
+    if (!t) return;
+    const cells = core.UNITS[t.axis === 'row' ? t.i : t.axis === 'col' ? 9 + t.i : 18 + t.i];
+    ctx.fillStyle = C.blockColors[PG.PETS[pt.id].color][1]; ctx.globalAlpha = 0.18 + Math.sin(clock * 5) * 0.08;
+    cells.forEach((k) => ctx.fillRect(cellX(k % 9) + 1, cellY(Math.floor(k / 9)) + 1, L.cell - 2, L.cell - 2));
+    ctx.globalAlpha = 1;
+  });
   if (!g.stage.evolve) return;
   const col = C.blockColors[g.evColor];
   for (const k of core.UNITS[22]) {
@@ -1563,13 +1636,22 @@ function drawBossHints() {
   ctx.fillStyle = 'rgba(226,85,59,' + pulse + ')';
   rows.forEach((r) => { for (let c = 0; c < 9; c++) if (!g.board[r * 9 + c]) ctx.fillRect(cellX(c) + 2, cellY(r) + 2, L.cell - 4, L.cell - 4); });
   cols.forEach((c) => { for (let r = 0; r < 9; r++) if (!g.board[r * 9 + c] && !rows.includes(r)) ctx.fillRect(cellX(c) + 2, cellY(r) + 2, L.cell - 4, L.cell - 4); });
+  // 它所在的大格也发红（凑满那个大格也打得到它）
+  const bx0 = core.boxOf(Math.floor(g.bigCells[0] / 9), g.bigCells[0] % 9);
+  core.UNITS[18 + bx0].forEach((k) => { if (!g.board[k] && !rows.includes(Math.floor(k / 9)) && !cols.includes(k % 9)) ctx.fillRect(cellX(k % 9) + 2, cellY(Math.floor(k / 9)) + 2, L.cell - 4, L.cell - 4); });
+  // 下一手要吐墨的格子：冒黑泡；要跳过去的地方：闪红
+  const bs = g.boss;
+  if (bs && bs.nextSpit !== null) { const k = bs.nextSpit, x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 3; n++) { const a = (clock * 1.5 + n / 3) % 1; ctx.globalAlpha = 1 - a; ctx.fillStyle = '#2a2236'; ctx.beginPath(); ctx.arc(x + (n - 1) * 8, y + 8 - a * 18, 4 + a * 5, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; }
+  if (bs && bs.jumpTo !== null) { const tl = bs.jumpTo; ctx.strokeStyle = 'rgba(226,85,59,' + (0.5 + Math.sin(clock * 12) * 0.4) + ')'; ctx.lineWidth = 4; ctx.strokeRect(cellX(tl % 9) + 2, cellY(Math.floor(tl / 9)) + 2, L.cell * 2 - 4, L.cell * 2 - 4); }
   // 拖块时：这一下能打到它吗
   petFx.bossScared = false;
   if (drag && g.hand[drag.slot]) {
     const p = g.hand[drag.slot], sn = snap(p, drag.x, drag.y);
     if (core.canPlace(g.board, p, sn.r, sn.c)) {
-      const set = previewClear(p, sn.r, sn.c);
-      petFx.bossScared = [...set].some((k) => rows.includes(Math.floor(k / 9)) || cols.includes(k % 9));
+      // 这一下凑满的那一排 / 那个大格，本身含不含大墨怪的格子（原来按「格子落在它那几排上」算，会误报）
+      const b2 = g.board.slice();
+      for (const [dr, dc] of p.cells) b2[(sn.r + dr) * 9 + sn.c + dc] = 1;
+      petFx.bossScared = core.UNITS.some((u) => u.every((k) => b2[k]) && u.some((k) => g.bigCells.includes(k)));
     }
   }
   // 开局演示（前 4 秒，还没放块时）：第一排红光从左到右扫过去，扫到它，它一抖
@@ -1584,7 +1666,7 @@ function drawBossHints() {
     if (a > 0.9) { petFx.bossHit = clock; }
   }
 }
-// 宠物第一次出手 / 点宠物头像 / 开局那一句：棋盘下沿一条字
+// 点宠物头像 / 进化关开局那一句：棋盘下沿一条字（救场、第一次出手都不打字）
 function drawPetCaption() {
   for (const cp of [petFx.banner, petFx.caption]) {
     if (!cp || clock < cp.t || clock - cp.t > 2.8) continue;
@@ -1609,6 +1691,15 @@ function juicePets(ev, colorsBefore) {
     sp.cells.slice(0, 9).forEach((k, j) => flyers.push({ what: 'spark', pet: sp.id, col: C.blockColors[PG.PETS[sp.id].color][1], x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2, t: clock + 0.05 + j * 0.03, to }));
   });
   if (ev.lit) { ev.lit.forEach((k, j) => setTimeout(() => P.sound('chain' + Math.min(12, g.evLit.size - ev.lit.length + j + 1), 0.6), j * 80)); }
+  (ev.armorBounce || []).forEach((k) => { petFx.armorBounce = petFx.armorBounce || {}; petFx.armorBounce[k] = clock; P.sound('tap', 0.7); });
+  (ev.armorBreak || []).forEach((k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 8; n++) { const a2 = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 120; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 100, t: clock + 0.4, life: 0.6, s: 4 + Math.random() * 4 }); } });
+  if (ev.bossSpit !== undefined) {
+    // 大墨怪往那一格吐一团墨（墨团划弧线飞过去）
+    const from = { x: cellX(g.bigCells[0] % 9) + L.cell, y: cellY(Math.floor(g.bigCells[0] / 9)) + L.cell };
+    petInk.push({ from, k: ev.bossSpit, t: clock + 0.1 });
+    timeline.push({ t: clock + 0.1, fn: () => P.sound('combo2', 0.5) });
+  }
+  if (ev.bossJump) { flash = 0.2; shake = Math.max(shake, 9); P.sound('combo4', 0.6); }
   if (ev.bigHits.length) {
     petFx.bossHit = clock; shake = Math.max(shake, 6); P.sound('combo2', 0.7);
     // 碎掉的那颗红心飞出去
@@ -1657,6 +1748,7 @@ function juicePets(ev, colorsBefore) {
 }
 // 宠物跳出来啃格子：起跳（抛物线）→ 沿着要啃的格子一格格走、嘴一张一合 → 跳回头像的位置
 let petRuns = [];
+let petInk = []; // 大墨怪吐的墨团（飞行中）
 function petRunPos(run) {
   const tt = clock - run.t0;
   const arc = (a, b, k, h) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k - Math.sin(k * Math.PI) * h });
@@ -1726,6 +1818,14 @@ drawPetBoard = function () {
     else block(x, y, L.cell, 1, gh.ci);
     return true;
   });
+  // 墨团飞过去
+  petInk = petInk.filter((m) => clock - m.t < 0.45);
+  petInk.forEach((m) => {
+    const a = Math.max(0, (clock - m.t) / 0.45), tx = cellX(m.k % 9) + L.cell / 2, ty = cellY(Math.floor(m.k / 9)) + L.cell / 2;
+    const x = m.from.x + (tx - m.from.x) * a, y = m.from.y + (ty - m.from.y) * a - Math.sin(a * Math.PI) * 50;
+    ctx.fillStyle = '#2a2236'; ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4a3f5c'; ctx.beginPath(); ctx.arc(x - 3, y - 3, 3, 0, Math.PI * 2); ctx.fill();
+  });
   colBolts = colBolts.filter((b) => clock - b.t < 0.5);
   colBolts.forEach((b) => {
     const a = (clock - b.t) / 0.5, x = L.bx + b.col * L.cell;
@@ -1744,12 +1844,15 @@ drawPetBoard = function () {
 function endPet() {
   const st = g.stage;
   const r = { won: g.won, reason: g.reason, near: g.nearMiss(), caught: g.caught, gift: null, evolved: null, dan: 0, exp: [] };
+  const petReplay = !st.evolve && petIdx < save.petStage; // 这关以前过过
   // 出战的宠物涨经验：每出手一次 +1，过关 +3（没过 +1）。加场借来的宠物不算
   if (!st.evolve && !st.bonus) g.team.forEach((pt) => {
     const rec = save.pets[pt.id];
     if (!rec) return;
     const before = { lv: rec.lv, exp: rec.exp };
-    const gain = (g.petActsTotal[pt.id] || 0) + (g.won ? 3 : 1);
+    // 出手经验最多算 5 次；已经过了的关重打，经验减半（免得刷最容易的关练级）
+    let gain = Math.min(5, g.petActsTotal[pt.id] || 0) + (g.won ? 3 : 1);
+    if (petReplay) gain = Math.max(1, Math.floor(gain / 2));
     addExp(rec, gain);
     r.exp.push({ id: pt.id, before, after: { lv: rec.lv, exp: rec.exp }, gain });
   });
@@ -1769,7 +1872,8 @@ function endPet() {
       save.petStage = Math.max(save.petStage, petIdx + 1);
       if (st.gift && !save.pets[st.gift]) { save.pets[st.gift] = { lv: 1, exp: 0 }; save.petOrder.push(st.gift); r.gift = st.gift; if (!save.activePet) save.activePet = st.gift; }
     }
-    save.dan += 1; r.dan = 1; // 过关送一颗丹
+    // 过关送一颗丹：拿到宠物以后、第一次过这关才送
+    if (save.petOrder.length && !petReplay) { save.dan += 1; r.dan = 1; }
   }
   coinsGot = Math.floor(g.score * C.coinPerScore) + (g.won ? C.coinStageWin : 0);
   save.coins += coinsGot;
@@ -1880,7 +1984,7 @@ function drawCamp() {
   ctx.fillStyle = '#5a4630'; ctx.fillRect(W / 2 - 130, L.top + 120, 10, 70); ctx.fillRect(W / 2 + 120, L.top + 120, 10, 70);
   text('营地', W / 2, L.top + 22, 26, COL.brassLight);
   button('campBack', 10, L.top + 4, 92, 36, campFrom === 'home' ? '‹ 主菜单' : '‹ 地图', { size: 15, bg: COL.wood, fn: () => { mode = campFrom; } });
-  text(save.dan + ' 颗丹', W - 16, L.top + 22, 17, COL.brassLight, 'right');
+  text((brewing ? save.dan - brewing.n : save.dan) + ' 颗丹', W - 16, L.top + 22, 17, COL.brassLight, 'right');
   // 葫芦 + 炼丹
   const gx = W / 2, gy = L.top + 160;
   const shake2 = brewing ? Math.sin(clock * 30) * 3 : 0;
@@ -1888,10 +1992,10 @@ function drawCamp() {
   if (brewing) {
     for (let n = 0; n < 4; n++) { const a = (clock * 0.8 + n / 4) % 1; ctx.globalAlpha = 1 - a; ctx.fillStyle = COL.steam; ctx.beginPath(); ctx.arc(gx + Math.sin(n * 2 + clock) * 10, gy - 50 - a * 40, 8 + a * 10, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
     text('炼丹中… ' + Math.max(0, Math.ceil(brewing.until - clock)), gx, gy + 60, 17, COL.text);
-    if (clock >= brewing.until) { save.dan += brewing.n; persist(); petMsg = { text: '炼好了！得到 ' + brewing.n + ' 颗丹', t: clock }; P.sound('win', 0.6); brewing = null; }
+    if (clock >= brewing.until) { petMsg = { text: '炼好了！得到 ' + brewing.n + ' 颗丹', t: clock }; P.sound('win', 0.6); brewing = null; }
   } else {
     text('葫芦里 ' + save.gourd + ' 只墨怪', gx, gy + 52, 16, COL.text, 'center', 'normal');
-    if (save.gourd > 0) button('brew', gx - 80, gy + 70, 160, 46, '炼丹', { size: 20, bg: COL.red, fn: () => { brewing = { until: clock + 3, n: save.gourd }; save.gourd = 0; persist(); P.sound('select', 0.6); } });
+    if (save.gourd > 0) button('brew', gx - 80, gy + 70, 160, 46, '炼丹', { size: 20, bg: COL.red, fn: () => { brewing = { until: clock + 3, n: save.gourd }; save.dan += save.gourd; save.gourd = 0; persist(); P.sound('select', 0.6); } }); // 丹当场进存档，3 秒只是演动画（中途退出也不会丢）
   }
   // 宠物卡
   let y = gy + 136;
@@ -2505,7 +2609,7 @@ P.nextFrame(frame);
 
 // 给测试用（只在浏览器里挂到 window 上）
 P.exposeForTest('__game', {
-  get g() { return g; }, get mode() { return mode; }, get result() { return result; }, get save() { return save; },
+  get g() { return g; }, get mode() { return mode; }, set mode(v) { mode = v; }, get result() { return result; }, get save() { return save; },
   get paintIdx() { return paintIdx; }, stats, L, fingerFor, slotCenter, buttons: () => buttons.slice(),
   get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; }, LV, newStage, SG, newSiege, newDaily, dailyLeft: () => dailyLeft(), siegeBusy: () => siegeBusy(),
   PG, PLV, newPetLevel, newEvolution, openCamp, feedPet, get petIdx() { return petIdx; },

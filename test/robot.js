@@ -219,6 +219,15 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await shot('13_章页');
   st = await page.evaluate(() => ({ mode: window.__game.mode, btn: window.__game.buttons().map((b) => b.id) }));
   ok(st.mode === 'map' && st.btn.includes('play') && st.btn.includes('camp') && st.btn.includes('classic') && !st.btn.includes('siege') && st.btn.filter((x) => x.startsWith('cell')).length === 10, '章页：一章 9 个关卡格 + 头目卡、开打、营地、经典拼画；守城收起来了');
+  // 章页底部大按钮永远是「继续 · 第 N 关」：点别的格子只看预览，按钮不变（Cc 11-24：「底下的这个选项不应该变」）
+  const fixedLbl = await page.evaluate(() => {
+    const G = window.__game, lbl = () => (G.buttons().find((b) => b.id === 'play') || {}).label;
+    const a = lbl(); const c = G.buttons().find((b) => b.id.startsWith('cell') && b.id !== 'cell' + G.save.petStage); if (c) c.fn();
+    return { a, cell: c && c.id };
+  });
+  await page.waitForTimeout(150);
+  st = await page.evaluate(() => ({ lbl: (window.__game.buttons().find((b) => b.id === 'play') || {}).label, preview: window.__game.buttons().some((b) => b.id === 'preview') }));
+  ok(/^继续 · 第 \d+ 关/.test(fixedLbl.a) && st.lbl === fixedLbl.a && st.preview, '章页：点别的关只出预览卡，底部按钮一直是「' + st.lbl + '」');
   // 设置：声音开关、重新开始（点两下才清空）
   await click('settings');
   await page.waitForTimeout(200);

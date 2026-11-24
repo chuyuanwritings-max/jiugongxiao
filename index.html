@@ -2137,7 +2137,7 @@ function button(id, x, y, w, h, label, opt) {
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(ix + 6, iy + 3); ctx.lineTo(ix + 12, iy + 6); ctx.lineTo(ix + 6, iy + 9); ctx.fill();
   }
   ctx.restore();
-  buttons.push({ id, x, y, w, h, fn: o.fn });
+  buttons.push({ id, x, y, w, h, fn: o.fn, label: String(label) });
 }
 function gearIcon(x, y, r, a, col) {
   ctx.save();
@@ -3460,7 +3460,34 @@ function chapterCell(i, x, y, w, h, ctxInfo) {
     ctx.restore();
   }
   if (isSel && !isCur) { ctx.strokeStyle = TH.jade; ctx.lineWidth = 2; rr(x - 2, y - 2, w + 4, h + 4, TH.rCell + 2); ctx.stroke(); }
-  if (!locked) buttons.push({ id: 'cell' + i, x, y, w, h, fn: () => { chapSel = i; P.sound('tap', 0.4); } });
+  // 点一下看这关的预览（下面的头目卡换成这关的卡）；再点一下收起
+  if (!locked) buttons.push({ id: 'cell' + i, x, y, w, h, fn: () => { chapSel = chapSel === i ? (i === cur ? cur : Math.floor(i / 10) * 10 + 9) : i; P.sound('tap', 0.4); } });
+}
+// 关卡预览卡（点了上面某一格时，顶替头目卡的位置）：这关要干什么、有什么墨怪、带谁、打没打过。只看，不能从这里开打
+function drawLevelPreview(i, x, y, w, h) {
+  const st = PLV[i], passed = i < save.petStage, isCur = i === Math.min(save.petStage, PLV.length - 1) && save.petStage < PLV.length;
+  panel(x, y, w, h, true);
+  text('第 ' + (i + 1) + ' 关', x + 16, y + 22, 20, COL.text, 'left');
+  const tag = passed ? '✓ 打过了' : isCur ? '下一关' : '还没到';
+  text(tag, x + 16, y + 46, 13, passed ? TH.jade : isCur ? TH.brass : TH.faint, 'left');
+  if (st.hard) text(st.hard > 1 ? '超难' : '难关', x + 16, y + 66, 13, st.hard > 1 ? '#c58ae0' : '#f08a70', 'left');
+  // 目标
+  let gx = x + 108;
+  Object.keys(st.goal).forEach((key) => {
+    if (key === 'score') { text(st.goal.score + ' 分', gx + 20, y + 24, 16, COL.text); gx += 64; return; }
+    goalIcon(key, gx + 10, y + 24, 20); text(key === 'all' ? '抓光' : '×' + st.goal[key], gx + 24, y + 24, 16, COL.text, 'left'); gx += 72;
+  });
+  // 墨怪：见过的写名字，没见过的画剪影
+  const mons = levelMons(st);
+  mons.slice(0, 3).forEach((m, k) => {
+    const mx = x + 118 + k * 64, my = y + h - 26, seen = save.introSeen[MON_INTRO[m.t]] || m.t === 'ink';
+    if (seen) drawMon(m, -1, mx, my, 11); else { ctx.fillStyle = '#05060f'; ctx.beginPath(); ctx.arc(mx, my, 11, 0, Math.PI * 2); ctx.fill(); text('?', mx, my, 13, TH.faint); }
+    text(seen ? PG.MON[m.t].name : '？', mx + 16, my, 11, COL.dim, 'left', 'normal');
+  });
+  // 带谁
+  const pid = ownedOf(st.only || st.best);
+  if (pid) { petIcon(pid, x + w - 34, y + h / 2 - 8, st.only ? 40 : 32, 0, 0); text(st.only ? '点名' : '最顺', x + w - 34, y + h / 2 + 24, 11, st.only ? C.blockColors[PG.PETS[pid].color][1] : COL.dim, 'center', 'normal'); }
+  buttons.push({ id: 'preview', x, y, w, h, fn: () => { chapSel = Math.floor(i / 10) * 10 + 9; } });
 }
 function drawChapter() {
   drawBg();
@@ -3468,7 +3495,8 @@ function drawChapter() {
   const lastCh = Math.floor((PLV.length - 1) / 10), curCh = done ? lastCh : Math.floor(cur / 10);
   if (chapView === null) chapView = curCh;
   const ch = chapView, lo = ch * 10, locked = ch > curCh;
-  if (chapSel === null || (Math.floor(chapSel / 10) !== ch && chapSel >= 0)) chapSel = locked ? -1 : ch === curCh && !done ? cur : lo;
+  // 默认选中：本章是当前关；别的章选头目（下面显示头目卡）；锁住的章不选
+  if (chapSel === null || (Math.floor(chapSel / 10) !== ch && chapSel >= 0)) chapSel = locked ? -1 : ch === curCh && !done ? cur : lo + 9;
   const top = L.top, info = { cur, done, locked, ch };
   // 顶栏：返回主菜单、章名（两边翻章）、设置
   button('home', 8, top, 92, 44, '‹ 主菜单', { fn: () => { mode = 'home'; } });
@@ -3493,7 +3521,9 @@ function drawChapter() {
   for (let n = 0; n < 9; n++) { const i = lo + n; if (i < PLV.length) chapterCell(i, 16 + (n % 3) * (cw + gap), gy0 + Math.floor(n / 3) * (chh + gap), cw, chh, info); }
   // 头目卡：名字 + 心、它会（红爪）、怕（转着的星，和关里它晕的时候头上那颗一样）
   const bi = lo + 9, bst = PLV[bi];
-  if (bst) {
+  const previewing = !locked && chapSel >= lo && chapSel < bi && chapSel !== cur;
+  if (previewing) drawLevelPreview(chapSel, 16, bossY, W - 32, bossH);
+  else if (bst) {
     const bk = BOSS_CARD[bst.bossKind || 'spit'], bx = 16, bw = W - 32, sel = chapSel === bi;
     panel(bx, bossY, bw, bossH, sel);
     const fx = bx + 52, fy = bossY + bossH / 2 + 4;
@@ -3531,12 +3561,12 @@ function drawChapter() {
     text('去喂 ›', 16 + tw - 14, trainY + 20, 13, COL.dim, 'right', 'normal');
     buttons.push({ id: 'train', x: 16, y: trainY, w: tw, h: 40, fn: () => openCamp() });
   }
-  // 开打：全屏唯一的金色大按钮。专属关写「XX 上场」；还没到的关只能看
-  const sel = chapSel, sst = PLV[sel];
-  if (locked || sel > cur) button('play', 16, btnY, W - 32, 58, locked ? '先打完这一章' : '先打第 ' + (cur + 1) + ' 关', { kind: 'sub', size: 20, fn: () => { chapView = null; chapSel = null; } });
+  // 底部大按钮永远是「继续 · 第 N 关」（Cc 11-24：「底下的这个选项不应该变……我没法跳关，我当然是打第 14 关了」）。
+  // 不管上面选中哪一格、翻到哪一章，点了都开打当前关；点上面的格子只是看预览。打过的关不从这里重打（学 Royal Match）
+  if (done) button('play', 16, btnY, W - 32, 58, '全部过关 · 新关卡在做', { kind: 'sub', size: 16, fn: () => {} });
   else {
-    const who = sst.only ? PG.PETS[ownedOf(sst.only) || sst.only].name + '上场' : '开打';
-    button('play', 16, btnY, W - 32, 58, '第 ' + (sel + 1) + ' 关 · ' + who, { size: 20, fn: () => newPetLevel(sel) });
+    const cst = PLV[cur], who = cst.only ? ' · ' + PG.PETS[ownedOf(cst.only) || cst.only].name + '上场' : '';
+    button('play', 16, btnY, W - 32, 58, '继续 · 第 ' + (cur + 1) + ' 关' + who, { size: 20, fn: () => newPetLevel(cur) });
   }
   // 底栏
   const campNew = save.gourd > 0 || (save.dan > 0 && save.petOrder.length);
@@ -3733,7 +3763,7 @@ function drawHomeButtons(cy) {
     { id: 'homeClassic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
     { id: 'homeSettings', label: '设置', icon: ICON.settings, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } },
   ], H - 92);
-  text('试玩版 0.8.2', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
+  text('试玩版 0.8.3', W / 2, H - 18, 11, TH.faint, 'center', 'normal');
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -4286,7 +4316,7 @@ function openCamp() { campFrom = mode === 'home' ? 'home' : 'map'; mode = 'camp'
 function drawCamp() {
   drawBg();
   const top = L.top;
-  button('campBack', 8, top, 100, 44, campFrom === 'home' ? '‹ 主菜单' : '‹ 关卡', { fn: () => { mode = campFrom; } });
+  button('campBack', 8, top, 100, 44, campFrom === 'home' ? '‹ 主菜单' : '‹ 地图', { fn: () => { mode = campFrom; } });
   text('营地', W / 2, top + 22, 20, COL.brassLight);
   // 1 葫芦卡
   let y = top + 54;

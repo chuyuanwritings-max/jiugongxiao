@@ -37,6 +37,16 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
     }
     await page.mouse.up();
   }
+  // 0.9.12：爆竹鼠的技能块拖到托盘里第 j 块的第 n 格上（啃掉它）
+  async function dragHand(j, n) {
+    const pos = await page.evaluate(([j, n]) => { const G = window.__game; return { from: G.slotCenter(3), to: G.fingerForHand(j, n) }; }, [j, n]);
+    await page.mouse.move(off.x + pos.from.x, off.y + pos.from.y);
+    await page.mouse.down();
+    await page.mouse.move(off.x + pos.to.enter.x, off.y + pos.to.enter.y, { steps: 5 }); // 先伸进托盘里那一块（进「啃手上」），再往上对准放大的那一格
+    await page.mouse.move(off.x + pos.to.x, off.y + pos.to.y, { steps: 5 });
+    await page.waitForTimeout(30);
+    await page.mouse.up();
+  }
   const click = async (id) => {
     const b = await page.evaluate((id) => window.__game.buttons().find((x) => x.id === id), id);
     if (!b) return false;
@@ -61,11 +71,11 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
         const G = window.__game; if (G.mode === 'start') G.skipCuts(); if (G.g.over || G.mode !== 'play') return null;
         // 0.9.8：宠物格里有技能块、打得到正经东西（或者三块都放不下）就先拖它
         const s = G.g.hand[3] && G.PG.skillBest(G.g);
-        if (s && (s.v >= 100 || ![0, 1, 2].some((i) => G.g.fits(i)))) return { i: 3, r: s.r, c: s.c };
+        if (s && (s.v >= 100 || ![0, 1, 2].some((i) => G.g.fits(i)))) return s.hand !== undefined ? { i: 3, hand: s.hand, cell: s.cell } : { i: 3, r: s.r, c: s.c };
         const b = G.PG.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c };
       });
       if (!m) break;
-      await dragTo(m.i, m.r, m.c);
+      if (m.hand !== undefined) await dragHand(m.hand, m.cell); else await dragTo(m.i, m.r, m.c);
       await page.waitForTimeout(50);
       if (until && (await page.evaluate(until))) return true;
     }
@@ -97,7 +107,9 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
     const h2 = await hlog();
     ok(h1.length === 1 && h1[0].level === 'light' && h2.length === 1, '震动：拿起方块震一下轻的，拖回托盘没放成不震（' + h2.map((x) => x.level).join(',') + '）');
   }
-  await dragTo(0, 3, 3);
+  // 0.9.12 新的第 1 关盘面：先摆一排只差最左一格，手上第 1 块换成 1 格，保证这一手消一排
+  await page.evaluate(() => { const G = window.__game, g = G.g; for (let c = 1; c < 9; c++) { g.board[72 + c] = 1; g.color[72 + c] = 0; } g.hand[0] = G.core.PIECES['1']; });
+  await dragTo(0, 8, 0);
   await page.waitForTimeout(140);
   await shot('02_第1关_第一下消一宫');
   {
@@ -172,12 +184,12 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
     await page.waitForTimeout(300);
     await closeIntro();
     if (!tries) await shot('06c_第9关_铁石');
-    await petPlay(150);
+    await petPlay(220);
     await page.waitForTimeout(1600);
-    st = await page.evaluate(() => ({ won: window.__game.g.won, rock: window.__game.g.got.rock }));
+    st = await page.evaluate(() => ({ won: window.__game.g.won, rock: window.__game.g.got.rock, need: window.__game.g.stage.goal.rock }));
     if (st.won) break;
   }
-  ok(st.won && st.rock >= 4, '第 9 关铁石关：普通消除消不掉，铜雀的技能块打碎 ' + st.rock + ' 块铁石过关');
+  ok(st.won && st.rock >= st.need, '第 9 关铁石关：普通消除消不掉，铜雀的技能块啄碎 ' + st.rock + ' 块铁石过关（0.9.12 起一关 ' + st.need + ' 块，放在最后一段）');
   // 营地：一下升一级（「升级 · N 颗」），升到 5 级出现「进化」
   await page.evaluate(() => { const G = window.__game; G.save.pets.tongque = { lv: 4, exp: 0 }; G.setSave({ dan: 20 }); G.openCamp(); });
   await page.waitForTimeout(200);
@@ -201,8 +213,12 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(300);
   await closeIntro();
   await shot('11_第10关_大墨怪');
-  await petPlay(60);
-  await page.waitForTimeout(1400);
+  for (let tries = 0; tries < 3; tries++) { // 头目关一般人六七成一次过：最多打 3 次
+    if (tries) { await page.evaluate(() => window.__game.newPetLevel(9)); await page.waitForTimeout(300); await closeIntro(); }
+    await petPlay(200);
+    await page.waitForTimeout(1400);
+    if (await page.evaluate(() => window.__game.g.won)) break;
+  }
   st = await page.evaluate(() => ({ won: window.__game.g.won, pets: window.__game.save.petOrder.slice() }));
   ok(st.won && st.pets.includes('baozhu'), '第 10 关打倒大墨怪（消 3 次），得到爆竹鼠');
   // 第 11 关：第一次打借你 2 级爆竹鼠，啃掉挤在一个大格里的铁石
@@ -210,10 +226,32 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(300);
   await closeIntro();
   await shot('12_第11关_爆竹鼠铁石');
-  await petPlay(80);
-  await page.waitForTimeout(1600);
-  st = await page.evaluate(() => ({ won: window.__game.g.won, team: window.__game.g.team.map((t) => t.id), rock: window.__game.g.got.rock}));
-  ok(st.won && st.team[0] === 'baozhu' && st.rock >= 3, '第 11 关：借来的爆竹鼠用技能块炸碎 ' + st.rock + ' 块铁石过关');
+  for (let tries = 0; tries < 3; tries++) {
+    if (tries) { await page.evaluate(() => window.__game.newPetLevel(10)); await page.waitForTimeout(300); await closeIntro(); }
+    await petPlay(200);
+    await page.waitForTimeout(1600);
+    if (await page.evaluate(() => window.__game.g.won)) break;
+  }
+  st = await page.evaluate(() => ({ won: window.__game.g.won, team: window.__game.g.team.map((t) => t.id), rock: window.__game.g.got.rock, need: window.__game.g.stage.goal.rock, hand: (window.__game.g.skillStats || {}).hand || 0 }));
+  ok(st.won && st.team[0] === 'baozhu' && st.rock >= st.need, '第 11 关：借来的爆竹鼠啃穿 ' + st.rock + ' 块铁石过关（啃手上的块 ' + st.hand + ' 次）');
+  // 0.9.12 爆竹鼠「啃」：技能块拖到手上那块的一格上，啃掉它；真鼠标拖
+  {
+    await page.evaluate(() => { const G = window.__game; G.newPetLevel(10); });
+    await page.waitForTimeout(300); await closeIntro();
+    await page.evaluate(() => { const G = window.__game, g = G.g, pt = g.team[0]; g.hand[0] = G.core.PIECES['3h']; g.hand[3] = Object.assign({}, G.PG.FIRE, { pet: pt.id, kind: 'gnaw', n: 1, uses: 1, tier: 1 }); });
+    await page.waitForTimeout(80);
+    await dragHand(0, 0);
+    await page.waitForTimeout(300);
+    await shot('12b_爆竹鼠啃手上的块');
+    st = await page.evaluate(() => { const g = window.__game.g; return { n: g.hand[0] ? g.hand[0].cells.length : 0, skill: !!g.hand[3] }; });
+    ok(st.n === 2 && !st.skill, '爆竹鼠的技能块拖到手上 3 格的长条上：啃掉 1 格剩 2 格，技能块用掉（剩 ' + st.n + ' 格）');
+  }
+  // 0.9.12 技能块够得着盘面最下面一排（以前手指要伸进托盘，被当成「拖回去」）
+  {
+    await page.evaluate(() => { const G = window.__game, g = G.g, pt = g.team[0]; g.board[80] = 1; g.color[80] = 0; g.hand[3] = Object.assign({}, G.PG.FIRE, { pet: 'tongque', kind: 'peck', n: 2, uses: 1, tier: 1 }); });
+    const ok8 = await page.evaluate(() => { const G = window.__game, f = G.fingerFor(G.g.hand[3], 8, 8), t = G.skillTarget({ x: f.x, y: f.y }); return !!t && t.r === 8 && t.c === 8; });
+    ok(ok8, '技能块拖到最下面一排（第 9 行）也认得出落点');
+  }
   // 第 12 关：甲壳怪——不带宠物也打得死：第一次消掉它掉一层甲，再消一次抓走
   await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 11, activePet: 'jinchique' }); G.newPetLevel(11); G.g.team = []; });
   await page.waitForTimeout(300);

@@ -1,3 +1,5 @@
+// 0.9.12：换成 Fable「宠物技能重做」的规则（报告 ../九宫消_宠物技能重做_20261125.md；副本 test/fable_skills/petgame_s.js）。
+// 四种本事：铜雀啄（盘上一排最近的 N 样）、爆竹鼠啃（手上的块 1 格 / 盘上的怪和铁石）、墨斗蚕吐丝（补空格）、火麒麟照亮下一批 + 火星。1 级只动 1–2 格；攒能量只算「消一排 +1」。
 // 0.9.8：合进 Fable 的「宠物系统重做 · 不限手数版」（报告：../九宫消_宠物系统重做_20261125.md 第十三节；副本 test/fable_counter/petgame_counter.js），再补回 0.9.6 记录器要的统计。
 // 和原版的四处不同：
 //   ① 宠物不再自己出手。能量满了，它吐一块「技能块」到托盘的第 4 格（宠物格，g.hand[3]），你自己拖到盘上，放哪打哪；存着不用也行（最多存一块）。
@@ -38,12 +40,30 @@ const EATABLE = (v) => v === 1 || IS_MON(v);
 // 宠物：能量满了吐一块技能块。tier（技能块大小）：1–2 级小、3–4 级中、5 级起（进化后）大。energy(lv)：攒满要几格。
 // kind = 克制表里它算哪一路（row 啄 / box 炸 / fill 缠 / gift 烧）；shape = 技能块打哪几格（h 横条 / v 竖条 / sq 一圈 / x 斜叉）
 const tierOf = (lv) => (lv >= 5 ? 3 : lv >= 3 ? 2 : 1);
+// 【技能重做】四种本事：peck 啄（盘上，横着一排里最近的 N 样东西）｜gnaw 啃（N 口，每口 1 格：手上的块或者盘上）｜silk 吐丝（补上这一排里最近的 N 个空格）｜fire 喷火（烧 1 格，顺着同一种颜色蹿，一共 N 格）
+// swap（实验）：把手上的一块换掉，从 N 块里挑一块。
+const at = (arr, lv) => arr[Math.min(arr.length, Math.max(1, lv)) - 1];
+const SKILL = {
+  // 每只宠物每一级（1–9 级；5 级 = 进化）：n 打几格（啃 = 几口）｜energy 攒满要几格｜start 开局带几格能量
+  n: { tongque: [2, 3, 3, 3, 4, 4, 5, 5, 6], baozhu: [1, 1, 1, 1, 2, 2, 2, 3, 3], modou: [1, 1, 1, 1, 2, 2, 2, 3, 3], qilin: [1, 1, 1, 1, 2, 2, 2, 2, 3] },
+  energy: { tongque: [6, 6, 6, 5, 4, 4, 4, 3, 3], baozhu: [7, 7, 6, 6, 5, 5, 4, 4, 3], modou: [7, 7, 6, 6, 5, 5, 4, 4, 3], qilin: [6, 6, 6, 5, 4, 4, 4, 3, 3] },
+  start: { tongque: [0, 0, 2, 2, 2, 3, 3, 3, 3], baozhu: [0, 2, 2, 3, 3, 4, 4, 4, 4], modou: [0, 2, 2, 3, 3, 4, 4, 4, 4], qilin: [0, 2, 2, 2, 2, 3, 3, 3, 3] },
+  look: { qilin: [1, 1, 2, 2, 2, 2, 3, 3, 3] }, // 火麒麟「照亮」：一直看得见下一批的头几块
+  kind: { tongque: 'peck', baozhu: 'gnaw', modou: 'silk', qilin: 'fire' },
+  uses: { tongque: [1, 1, 1, 1, 1, 1, 1, 1, 1] }, // 一块技能块能用几次（啃不看这个，它按口数算）
+  intro: 1, // 登场关（fastCharge）：开局的能量只差几格就满（第一次消就出技能块，教完就照平常攒）
+};
+const baseId = (id) => (id === 'jinchique' ? 'tongque' : id);
+const skillKind = (id) => SKILL.kind[baseId(id)];
+const skillN = (id, lv) => at(SKILL.n[baseId(id)], lv);
+const lookOf = (id, lv) => (SKILL.look[baseId(id)] ? at(SKILL.look[baseId(id)], lv) : 0);
+const startOf = (id, lv) => at(SKILL.start[baseId(id)], lv);
 const PETS = {
-  tongque: { name: '铜雀', color: 0, charge: 'clear', act: 'gift', kind: 'row', shape: 'h', energy: (lv) => (lv >= 4 ? 2 : 3), power: tierOf, evo: 'jinchique', evoLv: 5 },
-  jinchique: { name: '金翅雀', color: 0, charge: 'clear', act: 'gift', kind: 'row', shape: 'h', energy: () => 2, power: () => 3 },
-  baozhu: { name: '爆竹鼠', color: 1, charge: 'clear', act: 'gift', kind: 'box', shape: 'sq', energy: (lv) => (lv >= 4 ? 3 : 4), power: tierOf, evoLv: 5 },
-  modou: { name: '墨斗蚕', color: 2, charge: 'clear', act: 'gift', kind: 'fill', shape: 'x', energy: (lv) => (lv >= 4 ? 2 : 3), power: tierOf, evoLv: 5 },
-  qilin: { name: '火麒麟', color: 5, charge: 'clear', act: 'gift', kind: 'gift', shape: 'v', energy: (lv) => (lv >= 4 ? 2 : 3), power: tierOf, evoLv: 5 },
+  tongque: { name: '铜雀', color: 0, charge: 'clear', act: 'gift', kind: 'row', shape: 'h', energy: (lv) => at(SKILL.energy.tongque, lv), power: tierOf, evo: 'jinchique', evoLv: 5 },
+  jinchique: { name: '金翅雀', color: 0, charge: 'clear', act: 'gift', kind: 'row', shape: 'h', energy: (lv) => at(SKILL.energy.tongque, lv), power: () => 3 },
+  baozhu: { name: '爆竹鼠', color: 1, charge: 'clear', act: 'gift', kind: 'box', shape: 'sq', energy: (lv) => at(SKILL.energy.baozhu, lv), power: tierOf, evoLv: 5 },
+  modou: { name: '墨斗蚕', color: 2, charge: 'clear', act: 'gift', kind: 'fill', shape: 'x', energy: (lv) => at(SKILL.energy.modou, lv), power: tierOf, evoLv: 5 },
+  qilin: { name: '火麒麟', color: 5, charge: 'clear', act: 'gift', kind: 'gift', shape: 'v', energy: (lv) => at(SKILL.energy.qilin, lv), power: tierOf, evoLv: 5 },
 };
 // 技能块放在 (r, c)，打到哪几格（含它自己那格）
 function skillCells(shape, tier, r, c) {
@@ -60,10 +80,26 @@ function skillCells(shape, tier, r, c) {
   return out.map(([dr, dc]) => [r + dr, c + dc]).filter(([a, b]) => a >= 0 && a < 9 && b >= 0 && b < 9).map(([a, b]) => a * 9 + b);
 }
 const SKILL_VERB = { h: '横着啄', v: '竖着烧', sq: '炸', x: '斜着缠' };
-// 每只宠物这一级的本事（一行字）
+// 每只宠物这一级的本事（一行字；0.9.12 照 Fable 技能重做第七节第 15 条的底稿，等和 Cc 逐字定）
 function petDesc(id, lv) {
-  const d = PETS[id], t = d.power(lv || 1), n = skillCells(d.shape, t, 4, 4).length;
-  return '技能块' + SKILL_VERB[d.shape] + ' ' + n + ' 格';
+  lv = lv || 1;
+  const k = skillKind(id), n = skillN(id, lv), e = PETS[id].energy(lv);
+  if (k === 'peck') return '啄：啄掉这一排最近的 ' + n + ' 格 · 消 ' + e + ' 排出一块';
+  if (k === 'gnaw') return '啃：啃掉手上的块 ' + n + ' 格（也啃墨怪、铁石）· 消 ' + e + ' 排出一块';
+  if (k === 'silk') return '吐丝：补 ' + n + ' 个空格，缠走挨着的怪 · 消 ' + e + ' 排出一块';
+  if (k === 'fire') return '照亮下一批 ' + lookOf(id, lv) + ' 块 · 火星烧 ' + n + ' 格 · 消 ' + e + ' 排出一颗';
+  return '';
+}
+// 升一级多了什么（一句话；升级那一下、营地卡片上写）：「啄 2 格 → 3 格」「消 6 排 → 5 排出一块」「开局带 2 格能量」
+function petGain(id, lv) {
+  const k = skillKind(id), out = [];
+  const n0 = skillN(id, lv), n1 = skillN(id, lv + 1), e0 = PETS[id].energy(lv), e1 = PETS[id].energy(lv + 1), s0 = startOf(id, lv), s1 = startOf(id, lv + 1), l0 = lookOf(id, lv), l1 = lookOf(id, lv + 1);
+  const verb = { peck: '啄', gnaw: '啃', silk: '补', fire: '火星烧' }[k] || '';
+  if (n1 > n0) out.push(verb + ' ' + n0 + ' 格 → ' + n1 + ' 格');
+  if (e1 < e0) out.push('消 ' + e0 + ' 排 → ' + e1 + ' 排出一块');
+  if (s1 > s0) out.push('开局带 ' + s1 + ' 格能量');
+  if (l1 > l0) out.push('照亮 ' + l0 + ' 块 → ' + l1 + ' 块');
+  return out.join('，');
 }
 const CHARGE_TAG = { clear: '消一排 +1', place: '消一排 +1' };
 const CHARGE_TEXT = { clear: '每消掉一排，攒一格能量', place: '每放一块，攒一格能量' };
@@ -80,6 +116,14 @@ const RULES = {
   steal: 2,          // 墨怪对宠物使坏：馋嘴怪 / 大馋嘴每啃一口，偷走宠物几格能量（它的克星墨斗蚕不怕）
   bombDrain: true,   // 炸弹怪炸开时，把宠物的能量炸光（它的克星火麒麟不怕）
   rescue: 'any',     // 救命：三块都放不下、宠物格空着时，宠物提前把技能块给你、能量清空。'any' = 能量条里有一格就救；'half' = 攒到一半以上才救
+  startEnergy: null,
+  handMode: 'gnaw', swapN: 1, // 【实验】啃的技能块拖到手上的块上：'gnaw' 啃掉一格｜'swap' 换一块（从 swapN 块里挑）｜'none' 不能用在手上
+  gnawBlocks: false, // 啃：盘上啃不啃普通方块（false = 盘上只啃墨怪、铁石、头目；方块要啃就啃手上的）
+  colorPer: 0,  // 消掉它颜色的方块，每几块多攒一格（0 = 不算颜色，只算「消一排 +1」）
+  rescueMin: 1, // 救命：能量条里至少有几格，宠物才提前给技能块
+  previewPlan: 0, // 【实验】会用预览的机器人：看得见的块放下去能消几排，每排加几分
+  preview: 0,   // 【实验】一直看得见下一批的头几块（0 = 不看）
+  refill: false, // 【实验】用掉一块马上补一块 // 【难度实验】几级的宠物开局带几格能量
   rockNemesis: 'box', rockDmg: 2, // 爆竹鼠一口啃穿两层铁石，别的宠物一次一层
 };
 // 这只宠物（pet = { act, color }）是不是这只墨怪的克星
@@ -107,10 +151,30 @@ function bestPetFor(st) {
   return out[0].n > 0 ? out : [];
 }
 const FIRE = { id: 'skill', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'skill' }; // 名字留着给 main.js；现在每只宠物的技能块都是这个模子
-const skillPiece = (pt) => Object.assign({}, FIRE, { pet: pt.id, tier: PETS[pt.id].power(pt.lv) });
+const skillPiece = (pt) => { const kind = skillKind(pt.id), n = skillN(pt.id, pt.lv); return Object.assign({}, FIRE, { pet: pt.id, tier: PETS[pt.id].power(pt.lv), kind, n, uses: kind === 'gnaw' ? n : SKILL.uses[baseId(pt.id)] ? at(SKILL.uses[baseId(pt.id)], pt.lv) : 1 }); };
+// 自己抽一块（照 core.js 的 pickPiece；core 没导出）
+function pickPiece(rand, d) {
+  const w = [C.weightSmall(d), C.weightMid(d), C.weightBig(d)].map((x) => Math.max(0.02, x));
+  let t = rand() * (w[0] + w[1] + w[2]), cat = 0;
+  while (cat < 2 && t > w[cat]) { t -= w[cat]; cat++; }
+  const pool = core.IDS.filter((id) => core.PIECES[id].cat === cat);
+  return core.PIECES[pool[Math.floor(rand() * pool.length)]];
+}
+// 从一块里啃掉第 j 格（剩下的要还连着；只剩一格就整块吃掉 → null）
+function gnawPiece(p, j) {
+  if (p.cells.length <= 1) return null;
+  const rest = p.cells.filter((_, k) => k !== j);
+  const seen = new Set([0]), q = [0];
+  while (q.length) { const a = rest[q.pop()]; rest.forEach((b, k) => { if (!seen.has(k) && Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) === 1) { seen.add(k); q.push(k); } }); }
+  if (seen.size !== rest.length) return undefined; // 啃完断成两截：不让啃
+  const r0 = Math.min(...rest.map((x) => x[0])), c0 = Math.min(...rest.map((x) => x[1]));
+  const cells = rest.map(([a, b]) => [a - r0, b - c0]);
+  return { id: p.id + '~', cat: p.cat, cells, h: Math.max(...cells.map((x) => x[0])) + 1, w: Math.max(...cells.map((x) => x[1])) + 1, gnawed: (p.gnawed || 0) + 1 };
+}
+const near4 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; if (r > 0) out.push(k - 9); if (r < 8) out.push(k + 9); if (c > 0) out.push(k - 1); if (c < 8) out.push(k + 1); return out; };
+const OCC = (v) => v === 1 || v === 3 || v === 4 || v === 5; // 技能块打得到的东西：方块、墨怪、头目、铁石
 const petDef = (p) => PETS[p.id];
 function energyMax(g, p) {
-  if (g.stage.fastCharge) return 3; // 登场关：充得特别快，让人一眼看到它在帮忙
   return petDef(p).energy(p.lv);
 }
 const crossCells = (r, c) => [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]].map(([dr, dc]) => [r + dr, c + dc]).filter(([a, b]) => a >= 0 && a < 9 && b >= 0 && b < 9).map(([a, b]) => a * 9 + b);
@@ -126,7 +190,7 @@ function createPetGame(opts) {
     color: new Array(81).fill(0),
     rockHp: new Array(81).fill(0),
     handColor: [0, 0, 0, 0],
-    team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: 0 })),
+    team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: RULES.startEnergy ? RULES.startEnergy(p.lv || 1) : st.fastCharge ? Math.max(startOf(p.id, p.lv || 1), PETS[p.id].energy(p.lv || 1) - SKILL.intro) : startOf(p.id, p.lv || 1) })),
     bigHp: 0, bigCells: [], boss: null, skillUses: 0,
     jumpPlan: {}, // 跳跳怪：下一手要跳到哪（先探头）
     mon: new Array(81).fill(null), // 墨怪的种类和状态
@@ -187,10 +251,26 @@ function createPetGame(opts) {
     for (const x of ws) { if ((t -= x.w) <= 0) return x.ci; }
     return ws[0].ci;
   };
+  g.previewN = Math.max(RULES.preview || 0, ...g.team.map((p) => lookOf(p.id, p.lv)), 0);
   // 托盘第 4 格 = 宠物格：技能块放这儿，发新块、换一组都不动它
   const colorsOfHand = () => g.hand.map((p) => (p && p.special ? PETS[p.pet].color : g.pickColor()));
   const baseDeal = g.deal;
-  g.deal = () => { const sk = g.hand[3] || null; baseDeal(); g.hand[3] = sk; g.handGem[3] = null; g.handColor = colorsOfHand(); };
+  g.deal = () => { const sk = g.hand[3] || null; baseDeal();
+    if (g.previewN) { // 下一批是提前抽好的。看得见的那几块照原样发，看不见的可以重抽，凑到「三块有一种放法全放得下」；实在凑不出，就当着玩家的面换掉（记一次「预览说了不算」）
+      if (g.nextHand) {
+        const keep = g.nextHand.slice(0, g.previewN); let ok = null, d = g.diff ? g.diff() : 0;
+        if (core.solvable(g.board, g.nextHand)) ok = g.nextHand.slice();
+        else for (let t = 0; t < 40 && !ok && keep.length < 3; t++) { const h = keep.concat(Array.from({ length: 3 - keep.length }, () => pickPiece(g.rand, d))); if (core.solvable(g.board, h)) ok = h; d = Math.max(0, d - 0.08); }
+        if (ok) { g.hand = ok; g.handGem = g.handGem.map((x, k) => (x && g.hand[k] && x.cell < g.hand[k].cells.length ? x : null)); } else g.previewLies = (g.previewLies || 0) + 1;
+        g.previewDeals = (g.previewDeals || 0) + 1;
+      }
+      g.nextHand = [0, 1, 2].map(() => pickPiece(g.rand, g.diff ? g.diff() : 0));
+    }
+    g.hand[3] = sk; g.handGem[3] = null; g.handColor = colorsOfHand(); g.lastDealOK = core.solvable(g.board, g.hand.slice(0, 3).filter(Boolean)); g.lastDealMove = g.moves; g.lastDealUnfair = !g.lastDealOK && core.solvable(g.board, [core.PIECES['1'], core.PIECES['2h'], core.PIECES['1']]); if (!g.lastDealOK) g.badDeals = (g.badDeals || 0) + 1; };
+  g.lastDealOK = core.solvable(g.board, g.hand.slice(0, 3).filter(Boolean)); g.lastDealMove = 0;
+  // 【难度实验】一关里越往后越挤：发大块的多少跟着第几波走（st.dWave = 每过一波加多少）
+  // st.dSeg = [第一段, 第二段, 第三段] 各发多少大块（第一段送、后面越来越挤）；头目关：st.dBoss2 = 它半血以后再加多少
+  g.diff = () => (st.dSeg ? st.dSeg[Math.min((g.waveNo || 1) - 1, st.dSeg.length - 1)] : (st.d || 0)) + (st.dBoss2 && g.boss && g.boss.phase === 2 ? st.dBoss2 : 0) + (st.dBoss3 && g.boss && g.bigHp * 5 <= g.boss.max ? st.dBoss3 : 0); // dBoss3：头目只剩两成血时再加
   const baseReroll = g.reroll;
   g.reroll = () => { const sk = g.hand[3] || null; g.hand.length = 3; baseReroll(); g.hand[3] = sk; g.handGem[3] = null; g.handColor = colorsOfHand(); };
   g.hand[3] = null; g.handGem[3] = null;
@@ -287,28 +367,102 @@ function createPetGame(opts) {
   // 技能块只有一格，永远放得下；放下去清掉周围一小片，腾出地方。能量是空的就救不了：所以平时多消几排，就是在给自己攒命。
   function rescue(ev) {
     if (!g.stuck() || g.hand[3] || !g.team.length) return;
-    const ok = (x) => (RULES.rescue === 'half' ? x.energy * 2 >= energyMax(g, x) : x.energy >= 1);
+    const ok = (x) => (RULES.rescue === 'half' ? x.energy * 2 >= energyMax(g, x) : x.energy >= RULES.rescueMin);
     const pt = g.team.filter(ok).sort((x, y) => y.energy / energyMax(g, y) - x.energy / energyMax(g, x))[0];
     if (pt) pt.energy = 0;
     if (!pt) return;
-    g.hand[3] = skillPiece(pt); g.handColor[3] = petDef(pt).color; ev.rescue = pt.id;
+    g.hand[3] = skillPiece(pt); g.handColor[3] = petDef(pt).color; ev.rescue = pt.id; g.rescues = (g.rescues || 0) + 1;
     ev.petActs.push({ id: pt.id, kind: 'gift', lines: [], boxes: [], cells: [], rescue: true });
   }
-  // 放技能块：打它周围那一小片。不算一手，墨怪不动，不发新块。
-  function useSkill(i, r, c) {
-    const p = g.hand[i], pet = petOf(p.pet), cells = skillCells(PETS[p.pet].shape, p.tier, r, c);
-    const b = g.board.slice();
-    const ev = { piece: p, r, c, placed: [], units: [], cells: [], collected: [], bigHits: [], petActs: [], energy: {}, sparks: [], fire: null, gained: 0, win: false, stunHit: false, skill: { pet: p.pet, tier: p.tier, cells } };
-    breakRocks(b, cells, ev, pet);
-    if (cells.some((k) => b[k] === 4)) unitTouches(b, cells, ev, true, pet);
-    const before = cells.filter((k) => EATABLE(b[k]));
+  // 【技能重做】技能块用在哪（tg）：盘上 { r, c }；手上的块 { hand: 第几块, cell: 它的第几格 }。返回这一下会碰到什么（画面照这个亮），用不了返回 null。
+  //   啄：拖到盘上哪一格都行，啄掉这一排里离它最近的 N 样东西。喷火：拖到一样东西上，烧掉它，火顺着同一种颜色（墨块、小墨怪算同一种）蹿，一共 N 格。
+  //   啃：拖到盘上一样东西上啃 1 格，或者拖到手上的块的某一格上啃掉它；一块技能块能啃 N 口。吐丝：拖到空格上，补上它和这一排里离它最近的空格，一共 N 格；丝挨着的墨怪被缠住。
+  function skillPlan(pc, tg, b0) {
+    const b = b0 || g.board, kind = pc.kind, n = pc.n;
+    if (tg.hand !== undefined) {
+      const p = g.hand[tg.hand];
+      if (!p || p.special || tg.hand > 2) return null;
+      if (kind === 'gnaw' && RULES.handMode === 'none') return null;
+      if (kind === 'gnaw' && RULES.handMode === 'swap') return { hand: tg.hand, swap: true, n: RULES.swapN, cells: [], fill: [] };
+      if (kind === 'gnaw') { const q = gnawPiece(p, tg.cell); return q === undefined ? null : { hand: tg.hand, cell: tg.cell, to: q, cells: [], fill: [] }; }
+      if (kind === 'swap') return { hand: tg.hand, swap: true, cells: [], fill: [] };
+      return null;
+    }
+    const k = tg.r * 9 + tg.c;
+    if (kind === 'peck') {
+      const row = UNITS[tg.r].filter((x) => OCC(b[x])).sort((x, y) => Math.abs((x % 9) - tg.c) - Math.abs((y % 9) - tg.c) || x - y).slice(0, n);
+      return row.length ? { cells: row, fill: [] } : null;
+    }
+    if (kind === 'gnaw') return OCC(b[k]) && (RULES.gnawBlocks || b[k] !== 1) ? { cells: [k], fill: [] } : null;
+    if (kind === 'fire') {
+      if (!OCC(b[k])) return null;
+      // 同一种东西：方块 = 同一种颜色的方块（墨块算一种）；墨怪 = 同一种墨怪（挑色怪还要同色）；铁石 = 铁石；头目只烧它自己
+      const same = (x) => { if (x === k || b[x] !== b[k]) return false; if (b[k] === 1) return g.color[x] === g.color[k]; if (b[k] === 3) { const m1 = g.mon[k], m2 = g.mon[x]; return !!m1 && !!m2 && m1.t === m2.t && m1.col === m2.col; } return b[k] === 5; };
+      const dist = (x) => Math.abs(Math.floor(x / 9) - tg.r) + Math.abs((x % 9) - tg.c);
+      const out = [k].concat([...Array(81).keys()].filter(same).sort((x, y) => dist(x) - dist(y) || x - y).slice(0, n - 1));
+      return { cells: out, fill: [] };
+    }
+    if (kind === 'silk') {
+      if (b[k] !== 0) return null;
+      const fill = UNITS[tg.r].filter((x) => b[x] === 0).sort((x, y) => Math.abs((x % 9) - tg.c) - Math.abs((y % 9) - tg.c) || x - y).slice(0, n);
+      // 丝粘到的（上下左右挨着的）东西里，最多缠 N 样（补几格就最多缠几样）：先挑它克的墨怪，再小墨怪、铁石、头目，最后才是它打不动的
+      const pet = petOf(pc.pet), rank = (x) => (b[x] === 3 && g.mon[x] ? (g.mon[x].t === 'ink' ? 1 : isCounter(g.mon[x], pet) ? 0 : 4) : b[x] === 5 ? 2 : 3);
+      const adj = [...new Set(fill.flatMap(near4))].filter((x) => !fill.includes(x) && (b[x] === 3 || b[x] === 4 || b[x] === 5)).sort((x, y) => rank(x) - rank(y) || x - y).slice(0, n);
+      return { cells: adj, fill };
+    }
+    return null;
+  }
+  g.skillPlan = (tg) => (g.hand[3] ? skillPlan(g.hand[3], tg) : null);
+  g.skillUsable = () => { const pc = g.hand[3]; if (!pc) return false; if (pc.kind === 'gnaw' || pc.kind === 'swap') return true; return pc.kind === 'silk' ? g.board.some((v) => v === 0) : g.board.some(OCC); };
+  const baseFits = g.fits;
+  g.fits = (i) => (i === 3 ? g.skillUsable() : baseFits(i));
+  // 用技能块。不算一手，墨怪不动，不发新块。
+  function useSkill(i, tg) {
+    const p = g.hand[i], pet = petOf(p.pet), plan = skillPlan(p, tg);
+    if (!plan) return null;
+    const b = g.board.slice(), cells = plan.cells;
+    const ev = { piece: p, r: tg.r, c: tg.c, placed: [], units: [], cells: [], collected: [], bigHits: [], petActs: [], energy: {}, sparks: [], fire: null, gained: 0, win: false, stunHit: false, skill: { pet: p.pet, kind: p.kind, n: p.n, cells, fill: plan.fill, hand: plan.hand } };
+    if (p.bossBit) ev.petBossDone = true; // 一块技能块最多咬头目一口（啃能啃好几口，也只算一口）
     const c0 = g.caught;
-    clearCells(b, cells, ev, true, null, pet);
-    g.skillCaught = (g.skillCaught || 0) + g.caught - c0; // 统计：技能块抓走了几只
-    ev.cells = before.filter((k) => b[k] === 0);
-    g.hand[i] = null; g.skillUses++;
-    if ('acts' in g.got) g.got.acts++;
-    g.petActsTotal[p.pet] = (g.petActsTotal[p.pet] || 0) + 1;
+    g.skillStats = g.skillStats || { hand: 0, board: 0, cells: 0, uses: 0, caught: 0 };
+    if (plan.hand !== undefined) {
+      g.skillStats.hand++;
+      if (plan.swap) {
+        // 换块（实验）：从 N 块里挑一块。机器人挑「放得下、而且放下去盘面最好」的那块。
+        const d = Math.max(0, g.diff() - 0.3), cands = Array.from({ length: plan.n || p.n }, () => pickPiece(g.rand, d));
+        const score = (q) => { let best = -1e9; for (const [r, c] of core.placements(b, q)) { const res = core.placeAndClear(b, q, r, c); best = Math.max(best, res.units.length * 9 + core.evalBoard(res.board, null)); } return best; };
+        g.hand[plan.hand] = cands.map((q) => ({ q, v: score(q) })).sort((x, y) => y.v - x.v)[0].q; g.handGem[plan.hand] = null;
+      } else {
+        const hg = g.handGem[plan.hand];
+        g.hand[plan.hand] = plan.to;
+        if (hg) g.handGem[plan.hand] = hg.cell === plan.cell || !plan.to ? null : { cell: hg.cell > plan.cell ? hg.cell - 1 : hg.cell, kind: hg.kind };
+        if (!g.hand.slice(0, 3).some(Boolean)) { const keep = g.hand[3]; g.deal(); g.hand[3] = keep; } // 啃光了最后一块：发新的
+      }
+    } else {
+      g.skillStats.board++;
+      if (plan.fill.length) plan.fill.forEach((k) => { b[k] = 1; g.color[k] = PETS[p.pet].color; });
+      breakRocks(b, cells, ev, pet);
+      if (cells.some((k) => b[k] === 4)) unitTouches(b, cells, ev, true, pet);
+      if (ev.petBossDone) p.bossBit = true;
+      const before = cells.filter((k) => EATABLE(b[k]));
+      clearCells(b, cells, ev, true, null, pet);
+      ev.cells = before.filter((k) => b[k] === 0);
+      g.skillStats.cells += ev.cells.length + plan.fill.length;
+      if (plan.fill.length) {
+        // 丝补满了一排 / 一个大格：照你自己消的规矩消掉（不给它攒能量，不然它能自己养自己）
+        const units = []; for (let u = 0; u < 27; u++) if (UNITS[u].every((k) => b[k])) units.push(u);
+        if (units.length) {
+          const set = new Set(); units.forEach((u) => { unitTouches(b, UNITS[u], ev); UNITS[u].forEach((k) => set.add(k)); });
+          const b1 = b.slice(); const colorOk = (k, col) => units.some((u) => UNITS[u].includes(k) && UNITS[u].some((x) => b1[x] === 1 && g.color[x] === col));
+          const was = [...set].filter((k) => EATABLE(b[k]));
+          clearCells(b, [...set], ev, false, colorOk);
+          ev.units = units; ev.cells = ev.cells.concat(was.filter((k) => b[k] === 0)); g.skillStats.silkUnits = (g.skillStats.silkUnits || 0) + units.length;
+        }
+      }
+    }
+    g.skillCaught = (g.skillCaught || 0) + g.caught - c0; g.skillStats.caught += g.caught - c0;
+    p.uses--; g.skillStats.uses++;
+    if (p.uses <= 0) { g.hand[i] = null; g.skillUses++; if ('acts' in g.got) g.got.acts++; g.petActsTotal[p.pet] = (g.petActsTotal[p.pet] || 0) + 1; }
     while (g.spawnQ.length) { const sp = g.spawnQ.shift(); spawnAround(b, sp.k, sp.n, ev); }
     nextWave(b, ev);
     if (!g.playStats.firstGoal && (ev.collected.some((x) => x.what !== 'bubble') || ev.bigHits.length)) g.playStats.firstGoal = Math.max(1, g.moves);
@@ -321,6 +475,7 @@ function createPetGame(opts) {
     if (g.stuck()) { g.over = true; g.reason = 'stuck'; ev.stuck = true; }
     return ev;
   }
+  g.useSkill = (tg) => (g.hand[3] && !g.over ? useSkill(3, tg) : null);
 
   // ---------- 墨怪的回合（每放一块之后） ----------
   // 一块方块所在的一排、一竖、一大格加起来有多满（馋嘴专挑最满的啃，最气人）
@@ -447,8 +602,8 @@ function createPetGame(opts) {
   syncAll();
   g.place = (i, r, c) => {
     const p = g.hand[i];
+    if (p && !g.over && p.special === 'skill') return useSkill(i, { r, c });
     if (!p || g.over || !core.canPlace(g.board, p, r, c)) return null;
-    if (p.special === 'skill') return useSkill(i, r, c);
     const ci = g.handColor[i];
     const b = g.board.slice();
     const placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc);
@@ -484,7 +639,7 @@ function createPetGame(opts) {
     // 2. 积蓄能量：每消一排 / 一个大格 +1；消掉它颜色的方块每 3 块再 +1。宠物格里已经有技能块时，最多攒到满。
     for (const pt of g.team) {
       const mine = clearedCells.filter((k) => colorsBefore[k] === petDef(pt).color);
-      const gain = units.length + Math.floor(mine.length / 3);
+      const gain = units.length + (RULES.colorPer ? Math.floor(mine.length / RULES.colorPer) : 0); g.gainStats = g.gainStats || { u: 0, c: 0 }; g.gainStats.u += units.length; g.gainStats.c += RULES.colorPer ? Math.floor(mine.length / RULES.colorPer) : 0;
       if (gain) { pt.energy = Math.min(energyMax(g, pt) * 2 - 1, pt.energy + gain); ev.energy[pt.id] = gain; }
       if (mine.length) ev.sparks.push({ id: pt.id, cells: mine });
     }
@@ -512,6 +667,12 @@ function createPetGame(opts) {
     syncAll();
     left = core.goalLeft(g);
     if (done()) { ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
+    if (RULES.refill) { // 【实验】随用随补：用掉一块马上补一块（照样保证有活路）
+      let d = g.diff(), q = null; const others = g.hand.slice(0, 3).filter(Boolean);
+      for (let t = 0; t < 40; t++) { q = pickPiece(g.rand, d); if (core.solvable(g.board, others.concat(q))) break; d = Math.max(0, d - 0.08); q = null; }
+      if (!q && core.anyPlacement(g.board, core.PIECES['1'])) q = core.PIECES['1'];
+      if (q) { g.hand[i] = q; g.handColor[i] = g.pickColor(); g.handGem[i] = null; }
+    }
     if (!g.hand.slice(0, 3).some(Boolean)) g.deal();
     rescue(ev);
     if (g.stuck()) { g.over = true; g.reason = 'stuck'; ev.stuck = true; }
@@ -519,7 +680,7 @@ function createPetGame(opts) {
   };
   // 宠物下一次要下手的地方（能量差 1 格时画面亮出来）
   g.petTarget = () => null; // 技能块由你自己放，没有「它要下手的地方」了
-  g.skillCells = (pc, r, c) => skillCells(PETS[pc.pet].shape, pc.tier, r, c); // 拖着技能块时，画面照这个亮出它会打到哪几格
+  g.skillCells = (pc, r, c) => { const pl = skillPlan(pc, { r, c }); return pl ? pl.cells.concat(pl.fill) : []; }; // 拖着技能块时，画面照这个亮
   g.skillBest = () => skillBest(g);
   // 「差一点」（0.9.4，检验报告 C10 / E3）：头目按打掉了几颗心算、抓光关按抓了几只算（原来按「打死了没有」算，头目、抓光关永远不说差一点）；门槛从七成收到八成
   // 离过关还有多远：0–1（头目按心、抓光按抓了几只、其余按目标数；冲分按分数）
@@ -600,6 +761,7 @@ function bestMove(g, skill) {
   for (const m of top) {
     const rest = g.hand.filter((p, k) => p && !p.special && k !== m.i);
     if (rest.length && !core.solvable(m.board, rest)) m.v -= 100;
+    else if (g.previewN && g.nextHand && rest.length < 3) { const look = rest.concat(g.nextHand.slice(0, Math.min(g.previewN, 3 - rest.length))); if (look.length > rest.length && !core.solvable(m.board, look)) m.v -= 60; } if (g.previewN && g.nextHand && RULES.previewPlan) { let bonus = 0; for (const q of g.nextHand.slice(0, g.previewN)) { let mx = 0; for (const [r2, c2] of core.placements(m.board, q)) { const u2 = core.placeAndClear(m.board, q, r2, c2).units.length; if (u2 > mx) mx = u2; } bonus += mx; } m.v += bonus * RULES.previewPlan; } // 看得见下一批：别把它堵死
   }
   top.sort((a, b) => b.v - a.v);
   const s = skill === undefined ? 1 : skill;
@@ -613,42 +775,87 @@ function simulate(opts) {
   while (!g.over && guard++ < 400) {
     if (useSkillIfGood(g)) continue;
     const m = bestMove(g, o.skill);
-    if (!m) { if (g.hand[3]) { const s = skillBest(g); if (s && g.place(3, s.r, s.c)) continue; } break; }
+    if (!m) { if (g.hand[3]) { const s = skillBest(g); if (s && g.useSkill(s)) continue; } break; }
     g.elapsed += o.secPerMove(g);
     g.place(m.i, m.r, m.c);
   }
   return g;
 }
 
-// 机器人放技能块：挑打得到最多「它打得动的东西」的那一格。v ≥ 100 = 至少打到一样正经东西（它克的墨怪 / 小墨怪 / 铁石 / 头目）
+// 机器人用技能块：把每一种用法都试一遍，挑最值的。v ≥ 100 = 至少办成一件正经事（抓到墨怪 / 碎铁石 / 咬到头目 / 收到宝石 / 让本来消不掉的目标消掉）。
 function skillBest(g) {
   const p = g.hand[3];
   if (!p) return null;
-  const pet = petOf(p.pet), left = core.goalLeft(g), wantMon = left.monster > 0 || left.all > 0;
-  let best = null;
-  for (let k = 0; k < 81; k++) {
-    if (g.board[k] !== 0) continue;
-    const r = Math.floor(k / 9), c = k % 9, cells = skillCells(PETS[p.pet].shape, p.tier, r, c);
-    let v = 0, touchBoss = false;
+  const pet = petOf(p.pet), left = core.goalLeft(g), wantMon = left.monster > 0 || left.all > 0, b = g.board;
+  const fitsNow = [0, 1, 2].some((i) => g.hand[i] && core.anyPlacement(b, g.hand[i]));
+  const hands = [0, 1, 2].map((i) => g.hand[i]).filter(Boolean);
+  const bossV = () => 100 * (g.boss && RULES.bossWeak[g.boss.kind] === pet.act ? RULES.bossWeakDmg : RULES.bossOtherDmg);
+  let best = null; const seen = new Set();
+  const offer = (tg, v) => { if (!best || v > best.v) best = Object.assign({ v }, tg); };
+  const scoreHit = (cells, nb) => { // 技能块碰到的格子值多少；顺手把「打完以后的盘面」写进 nb
+    let v = 0, boss = false;
     for (const x of cells) {
-      const bv = g.board[x];
-      if (bv === 3 && g.mon[x]) v += isCounter(g.mon[x], pet) ? (wantMon ? 100 : 30) + (g.mon[x].t !== 'ink' ? 20 : 0) : 0;
-      else if (bv === 5) v += left.rock > 0 ? 100 : 3;
-      else if (bv === 4) touchBoss = true;
-      else if (bv === 1) v += (g.gem[x] && left[core.GEMS[g.gem[x]].id] > 0 ? 100 : 0) + (g.color[x] === -2 ? 2 : 0.5); // 清掉墨块比清掉自己的块好
+      const bv = b[x];
+      if (bv === 3 && g.mon[x]) { if (isCounter(g.mon[x], pet)) { v += (wantMon ? 100 : 30) + (g.mon[x].t !== 'ink' ? 20 : 0); nb[x] = 0; } }
+      else if (bv === 5) { v += left.rock > 0 ? 100 : 3; if (g.rockHp[x] <= (pet.act === RULES.rockNemesis ? RULES.rockDmg : 1)) nb[x] = 0; }
+      else if (bv === 4) boss = true;
+      else if (bv === 1) { v += (g.gem[x] && left[core.GEMS[g.gem[x]].id] > 0 ? 100 : 0) + (g.color[x] === -2 ? 2 : 0.5); nb[x] = 0; }
     }
-    if (touchBoss && g.bigHp > 0) v += 100 * (g.boss && RULES.bossWeak[g.boss.kind] === pet.act ? RULES.bossWeakDmg : RULES.bossOtherDmg);
-    if (!best || v > best.v) best = { r, c, v };
+    if (boss && g.bigHp > 0 && !p.bossBit) v += bossV();
+    return v;
+  };
+  const unstick = (nb, hs) => (!fitsNow && (hs || hands).some((h) => core.anyPlacement(nb, h)) ? 1000 : 0);
+  if (p.kind === 'peck' || p.kind === 'fire' || p.kind === 'gnaw') {
+    for (let k = 0; k < 81; k++) {
+      const pl = g.skillPlan({ r: Math.floor(k / 9), c: k % 9 });
+      if (!pl) continue;
+      const key = pl.cells.join(','); if (seen.has(key)) continue; seen.add(key);
+      const nb = b.slice(); const v = scoreHit(pl.cells, nb);
+      offer({ r: Math.floor(k / 9), c: k % 9 }, v + unstick(nb) + (fitsNow ? 0 : core.evalBoard(nb, null) * 0.01));
+    }
   }
+  if (p.kind === 'silk') {
+    for (let k = 0; k < 81; k++) {
+      const pl = g.skillPlan({ r: Math.floor(k / 9), c: k % 9 });
+      if (!pl) continue;
+      const nb = b.slice(); let v = scoreHit(pl.cells, nb);
+      pl.fill.forEach((x) => (nb[x] = 1));
+      const units = []; for (let u = 0; u < 27; u++) if (UNITS[u].every((x) => nb[x])) units.push(u);
+      const set = new Set(); units.forEach((u) => UNITS[u].forEach((x) => set.add(x)));
+      for (const x of set) {
+        if (nb[x] === 3 && g.mon[x]) { const m = g.mon[x]; const ok = m.t === 'color' ? false : !(m.t === 'shell' && m.hp > 0); v += wantMon ? (ok ? 100 : m.t === 'shell' ? 40 : 0) : 10; if (ok) nb[x] = 0; }
+        else if (nb[x] === 1) { if (g.gem[x] && left[core.GEMS[g.gem[x]].id] > 0) v += 100; nb[x] = 0; }
+        else if (nb[x] === 4 && left.boss > 0) v += 100; else if (nb[x] === 2 && left.box > 0) v += 100;
+      }
+      v += units.length * 30 - (units.length ? 0 : pl.fill.length * 3); // 补了没消掉：白占地方
+      offer({ r: Math.floor(k / 9), c: k % 9 }, v + unstick(nb));
+    }
+  }
+  if (p.kind === 'gnaw' && RULES.handMode === 'gnaw') {
+    // 啃手上的块：① 它本来放不下，啃一口就放得下；② 啃一口以后正好能消掉一排带墨怪的（原来那块办不到）
+    const catchOf = (q) => { let m = 0; for (const [r, c] of core.placements(b, q)) { const res = core.placeAndClear(b, q, r, c); if (!res.units.length) continue; let n = 0; for (const x of res.cells) if (b[x] === 3) n++; for (const u of res.units) if (UNITS[u].some((x) => (b[x] === 4 && left.boss > 0) || (b[x] === 2 && left.box > 0))) n++; if (n + res.units.length * 0.1 > m) m = n + res.units.length * 0.1; } return m; };
+    [0, 1, 2].forEach((i) => {
+      const h = g.hand[i]; if (!h) return;
+      const fit0 = core.anyPlacement(b, h), c0 = fit0 ? catchOf(h) : 0;
+      h.cells.forEach((_, j) => {
+        const q = gnawPiece(h, j); if (q === undefined) return;
+        let v = 0;
+        if (!q) v = fitsNow ? 0 : 20; // 整块吃掉
+        else { const fit1 = core.anyPlacement(b, q); if (!fit0 && fit1) v = fitsNow ? 40 : 1000; else if (!fit0) v = fitsNow ? 0 : 10 - q.cells.length; if (fit1 && (wantMon || left.boss > 0 || left.box > 0)) { const c1 = catchOf(q); if (c1 >= 1 && c1 > c0 + 0.5) v += 100 + (c1 - c0) * 10; } }
+        if (v > 0) offer({ hand: i, cell: j }, v);
+      });
+    });
+  }
+  if (p.kind === 'swap' || (p.kind === 'gnaw' && RULES.handMode === 'swap')) [0, 1, 2].forEach((i) => { const h = g.hand[i]; if (!h) return; const fit0 = core.anyPlacement(b, h); offer({ hand: i }, fit0 ? 1 + h.cells.length * 0.1 : fitsNow ? 40 : 1000); }); // 换掉放不下的那块
   return best;
 }
-// 有正经东西可打就用；三块都放不下，也用（清地方）
+// 有正经事可办就用；三块都放不下，也用（腾地方）
 function useSkillIfGood(g) {
   if (!g.hand[3] || g.over) return false;
   const s = skillBest(g);
   if (!s) return false;
-  const fits = [0, 1, 2].some((i) => g.fits(i));
-  if (s.v >= 100 || !fits) return !!g.place(3, s.r, s.c);
+  const fits = [0, 1, 2].some((i) => g.hand[i] && core.anyPlacement(g.board, g.hand[i]));
+  if (s.v >= 100 || !fits) return !!g.useSkill(s);
   return false;
 }
-module.exports = { RULES, isCounter, bestPetFor, skillCells, skillBest, useSkillIfGood, tierOf, petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { petGain, lookOf, startOf, SKILL, skillKind, skillN, gnawPiece, pickPiece, RULES, isCounter, bestPetFor, skillCells, skillBest, useSkillIfGood, tierOf, petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };

@@ -42,7 +42,7 @@ function seekMove(g) {
   if (!cands.length) return null;
   cands.sort((a, b) => b.v - a.v);
   const top = cands.slice(0, 8);
-  for (const m of top) { const rest = g.hand.filter((p, k) => p && k !== m.i && !p.special); if (rest.length && !core.solvable(m.board, rest)) m.v -= 1000; }
+  for (const m of top) { const rest = g.hand.filter((p, k) => p && k !== m.i && !p.special); if (rest.length && !core.solvable(m.board, rest)) m.v -= 1000; else if (g.previewN && g.nextHand && rest.length < 3) { const look = rest.concat(g.nextHand.slice(0, Math.min(g.previewN, 3 - rest.length))); if (look.length > rest.length && !core.solvable(m.board, look)) m.v -= 500; } if (g.previewN && g.nextHand && PG.RULES.previewPlan) { let bonus = 0; for (const q of g.nextHand.slice(0, g.previewN)) { let mx = 0; for (const [r2, c2] of core.placements(m.board, q)) { const u2 = core.placeAndClear(m.board, q, r2, c2).units.length; if (u2 > mx) mx = u2; } bonus += mx; } m.v += bonus * PG.RULES.previewPlan; } }
   top.sort((a, b) => b.v - a.v);
   return top[0];
 }
@@ -63,7 +63,7 @@ function play(st, team, seed, skill) {
       g.hand.forEach((p, i) => { if (p && !p.special) for (const [r, c] of core.placements(g.board, p)) all.push({ i, r, c }); });
       m = all.length ? all[Math.floor(g.rand() * all.length)] : null;
     } else m = skill === 9 ? seekMove(g) : PG.bestMove(g, skill < 0 ? 0.25 : skill);
-    if (!m) { if (g.hand[3]) { const s2 = PG.skillBest(g); if (s2 && g.place(3, s2.r, s2.c)) continue; } break; }
+    if (!m) { if (g.hand[3]) { const s2 = PG.skillBest(g); if (s2 && g.useSkill(s2)) continue; } break; }
     const ev = g.place(m.i, m.r, m.c);
     if (ev && (ev.units.length || ev.petActs.length) && !log.firstClear) log.firstClear = g.moves;
     const h2 = goalHave(g);

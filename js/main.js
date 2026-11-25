@@ -576,8 +576,38 @@ function snap(p, x, y) {
 }
 // 反过来：想放到 (r, c)，手指该在哪（测试和教学手势用）
 function fingerFor(p, r, c) {
+  if (p && p.special === 'skill') return { x: L.bx + c * L.cell + L.cell / 2, y: L.by + r * L.cell + L.cell / 2 + SKL() };
   return { x: L.bx + c * L.cell + (p.w * L.cell) / 2, y: L.by + r * L.cell + (p.h * L.cell) / 2 + L.lift };
 }
+// 技能块拖到哪（0.9.12 技能重做）：盘上 { r, c }；爆竹鼠的「啃」拖到托盘里某一块上 { hand, cell }
+// 悬在托盘那块上时，把它放大到盘面格子大小、抬到托盘上方（Fable 技能重做第七节第 10 条），技能块画在手指上方，对准哪一格就啃哪一格
+function bigHandOrigin(j) { const q = g.hand[j], w = q.w * L.cell, h = q.h * L.cell; return { x: Math.max(8, Math.min(W - 8 - w, slotCenter(j).x - w / 2)), y: L.trayY - 8 - h }; }
+// 技能块只有 1 格，浮得比普通块低一点（SKL），不然盘面最下面两排要把手指伸进托盘才够得着
+const SKL = () => Math.round(L.cell * 1.2);
+// 啃手上的块：手指伸进托盘深处（过了托盘上沿半格）就进「啃手上」；进了以后手指往上抬去对准放大的那块也不退出，直到抬出托盘上方两格半
+function handHover(d) {
+  const p = g.hand[3];
+  if (!p || p.kind !== 'gnaw') return null;
+  if (d.y > L.trayY + L.cell * 0.5) { const j0 = slotAt(d.x); d.hl = j0 <= 2 && g.hand[j0] ? j0 : d.hl !== undefined && d.y < L.trayY + L.trayH ? d.hl : undefined; }
+  else if (d.hl !== undefined && d.y < L.trayY - L.cell * 2.5) d.hl = undefined;
+  const j = d.hl;
+  if (j === undefined || !g.hand[j]) return null;
+  const q = g.hand[j], o = bigHandOrigin(j), vx = d.x, vy = d.y - SKL();
+  let best = 0, bd = 1e9;
+  q.cells.forEach(([r, c], n) => { const dd = (o.x + (c + 0.5) * L.cell - vx) ** 2 + (o.y + (r + 0.5) * L.cell - vy) ** 2; if (dd < bd) { bd = dd; best = n; } });
+  return { hand: j, cell: best };
+}
+function skillTarget(d) {
+  const p = g.hand[3];
+  if (!p) return null;
+  const h = handHover(d);
+  if (h) return h;
+  const vx = d.x, vy = d.y - SKL(); // 技能块画在手指上方 SKL 处，落在它中心所在的那一格
+  const r = Math.floor((vy - L.by) / L.cell), c = Math.floor((vx - L.bx) / L.cell);
+  return r >= 0 && r < 9 && c >= 0 && c < 9 ? { r, c } : null;
+}
+// 反过来：想啃手上第 j 块的第 n 格，手指该在哪（测试用）
+function fingerForHand(j, n) { const q = g.hand[j], o = bigHandOrigin(j), [r, c] = q.cells[n]; return { x: o.x + (c + 0.5) * L.cell, y: o.y + (r + 0.5) * L.cell + SKL(), enter: { x: slotCenter(j).x, y: L.trayY + L.trayH * 0.6 } }; }
 // 如果放下去会消掉哪些格
 function previewClear(p, r, c) {
   if (p.special === 'skill') return new Set(g.skillCells(p, r, c));
@@ -658,6 +688,21 @@ function onTouch(type, id, x, y) {
 function drop() {
   const i = drag.slot;
   const p = g.hand[i];
+  if (p && p.special === 'skill') { // 0.9.12：技能块不走「放进空格」那套，照落点用
+    const tg = skillTarget(drag);
+    drag = null;
+    if (!tg || !g.skillPlan(tg)) { T.rec('x', 3, tg ? (tg.hand !== undefined ? 'h' + tg.hand : tg.r) : -1, tg ? (tg.hand !== undefined ? tg.cell : tg.c) : -1); P.sound('deny', 0.5); return; }
+    const colorsBefore = colorAt.slice();
+    const pev = g.useSkill(tg);
+    if (!pev) return;
+    for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
+    T.rec('k', pev.skill.pet, tg.hand !== undefined ? 'h' + tg.hand : tg.r, tg.hand !== undefined ? tg.cell : tg.c, pev.skill.cells.length + (pev.skill.fill || []).length, (pev.counter || []).length, (pev.petMiss || []).length);
+    if (pev.rescue) T.rec('r', pev.rescue);
+    if (pev.wave) T.rec('w', pev.wave.no, pev.wave.of);
+    if (pev.win && !g._settled) settlePet();
+    juicePets(pev, colorsBefore);
+    return;
+  }
   const s = snap(p, drag.x, drag.y);
   drag = null;
   if (!p || !core.canPlace(g.board, p, s.r, s.c)) {
@@ -670,8 +715,7 @@ function drop() {
     const colorsBefore = colorAt.slice();
     const pev = g.place(i, s.r, s.c);
     if (!pev) return;
-    if (pev.skill) T.rec('k', pev.skill.pet, s.r, s.c, pev.skill.cells.length, (pev.counter || []).length, (pev.petMiss || []).length);
-    else T.rec('d', i, s.r, s.c, p.id, (pev.units || []).length, pev.beat || 1, (pev.collected || []).length);
+    T.rec('d', i, s.r, s.c, p.id, (pev.units || []).length, pev.beat || 1, (pev.collected || []).length);
     if (pev.rescue) T.rec('r', pev.rescue);
     if (pev.drain && pev.drain.length) T.rec('n', pev.drain.length);
     if (pev.wave) T.rec('w', pev.wave.no, pev.wave.of);
@@ -1018,7 +1062,10 @@ function drawBoard(showGhost) {
   if (showGhost && drag && g.hand[drag.slot]) {
     const p = g.hand[drag.slot];
     const s = snap(p, drag.x, drag.y);
-    if (core.canPlace(g.board, p, s.r, s.c)) {
+    if (p.special === 'skill') {
+      const tg = skillTarget(drag), plan = tg && tg.hand === undefined ? g.skillPlan(tg) : null;
+      if (plan) { ghost = { p, s: { r: tg.r, c: tg.c }, ci: handColor(drag.slot), plan }; willClear = new Set(plan.cells); }
+    } else if (core.canPlace(g.board, p, s.r, s.c)) {
       ghost = { p, s, ci: handColor(drag.slot), hg: g.handGem[drag.slot] };
       willClear = previewClear(p, s.r, s.c);
     }
@@ -1073,6 +1120,13 @@ function drawBoard(showGhost) {
       if (PG.isCounter(g.mon[k], pet)) { ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + cell / 2, y + cell / 2, cell * 0.46, 0, Math.PI * 2); ctx.stroke(); }
       else { ctx.strokeStyle = 'rgba(200,205,215,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + cell * 0.2, y + cell * 0.2); ctx.lineTo(x + cell * 0.8, y + cell * 0.8); ctx.moveTo(x + cell * 0.8, y + cell * 0.2); ctx.lineTo(x + cell * 0.2, y + cell * 0.8); ctx.stroke(); }
     });
+  }
+  if (ghost && ghost.plan) {
+    // 吐丝要补的空格：淡淡的宠物色；落点画一圈
+    ghost.plan.fill.forEach((k) => block(cellX(k % 9), cellY(Math.floor(k / 9)), cell, 0.45, PG.PETS[ghost.p.pet].color));
+    const tx = cellX(ghost.s.c) + cell / 2, ty = cellY(ghost.s.r) + cell / 2;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.globalAlpha = 0.8; ctx.beginPath(); ctx.arc(tx, ty, cell * 0.3, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+    ghost = null;
   }
   if (ghost) {
     ghost.p.cells.forEach(([dr, dc], n) => {
@@ -1186,13 +1240,43 @@ function drawTray() {
     const p = g.hand[i];
     if (!p || (drag && drag.slot === i)) continue;
     const c = slotCenter(i);
-    const fits = core.anyPlacement(g.board, p);
+    const fits = i === 3 ? true : core.anyPlacement(g.board, p);
+    // 快堵死的预告（0.9.12，Fable 难度报告第三节）：这块只剩一两个地方放得下，轻轻发抖、描红边
+    const tight = i < 3 && fits && !g.over && core.placements(g.board, p).length <= 2;
     const s = i === 3 ? Math.min(L.mini * 1.5, SLOT3W() - 26, L.trayH - 26) : Math.min(L.mini, (slotW() - 20) / p.w, (L.trayH - 16) / p.h);
-    drawPiece(p, c.x, c.y + Math.sin(clock * 3 + i) * 1.5, s, fits ? 1 : 0.28, handColor(i), g.handGem[i]);
+    const sx = tight ? Math.sin(clock * 28) * 1.6 : 0;
+    if (tight) { ctx.strokeStyle = 'rgba(226,85,59,' + (0.55 + Math.sin(clock * 8) * 0.3) + ')'; ctx.lineWidth = 2; rr(c.x - (p.w * s) / 2 - 5 + sx, c.y - (p.h * s) / 2 - 5, p.w * s + 10, p.h * s + 10, 6); ctx.stroke(); }
+    drawPiece(p, c.x + sx, c.y + Math.sin(clock * 3 + i) * 1.5, s, fits ? 1 : 0.28, handColor(i), g.handGem[i]);
+    if (i === 3 && p.uses > 1) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.arc(c.x + s * 0.55, c.y - s * 0.55, 10, 0, Math.PI * 2); ctx.fill(); text('×' + p.uses, c.x + s * 0.55, c.y - s * 0.55 + 1, 11, '#fff'); } // 啃：还剩几口
+  }
+  // 火麒麟的灯（0.9.12）：一直照着下一批的头几块，画在托盘下面
+  if (g.previewN && g.nextHand && !g.over) {
+    const ms = Math.max(8, L.mini * 0.55), ly = L.trayY + L.trayH + 6, n = Math.min(3, g.previewN);
+    let lx = 16;
+    ctx.fillStyle = 'rgba(255,190,90,0.16)'; rr(lx - 6, ly - 2, 46 + n * (ms * 4 + 8), ms * 3 + 10, 8); ctx.fill();
+    text('下一批', lx + 18, ly + ms * 1.5 + 3, 11, '#ffcf7a');
+    lx += 44;
+    for (let j = 0; j < n; j++) { const q = g.nextHand[j]; if (!q) continue; ctx.globalAlpha = 0.75; drawPiece(q, lx + ms * 2, ly + ms * 1.5 + 3, Math.min(ms, (ms * 3.6) / q.w, (ms * 2.6) / q.h), 0.75, 3); ctx.globalAlpha = 1; lx += ms * 4 + 8; }
+  }
+  // 爆竹鼠的技能块悬在托盘某一块上：那块放大、抬到托盘上方，对准的那格亮牙印（啃了会断成两截的格子打灰叉）
+  if (drag && drag.slot === 3) {
+    const h = handHover(drag);
+    if (h) {
+      const q = g.hand[h.hand], o = bigHandOrigin(h.hand), ok = !!g.skillPlan(h);
+      ctx.fillStyle = 'rgba(10,12,28,0.75)'; rr(o.x - 8, o.y - 8, q.w * L.cell + 16, q.h * L.cell + 16, 10); ctx.fill();
+      drawPiece(q, o.x + (q.w * L.cell) / 2, o.y + (q.h * L.cell) / 2, L.cell, 1, handColor(h.hand), g.handGem[h.hand]);
+      const [r0, c0] = q.cells[h.cell], tx = o.x + c0 * L.cell, ty = o.y + r0 * L.cell;
+      ctx.strokeStyle = ok ? COL.red : 'rgba(200,205,215,0.9)'; ctx.lineWidth = 4;
+      if (ok) { ctx.strokeRect(tx + 3, ty + 3, L.cell - 6, L.cell - 6); ctx.fillStyle = COL.red; for (let n = 0; n < 3; n++) { ctx.beginPath(); ctx.moveTo(tx + L.cell * (0.2 + n * 0.22), ty + 4); ctx.lineTo(tx + L.cell * (0.31 + n * 0.22), ty + L.cell * 0.3); ctx.lineTo(tx + L.cell * (0.42 + n * 0.22), ty + 4); ctx.fill(); } }
+      else { ctx.beginPath(); ctx.moveTo(tx + 8, ty + 8); ctx.lineTo(tx + L.cell - 8, ty + L.cell - 8); ctx.moveTo(tx + L.cell - 8, ty + 8); ctx.lineTo(tx + 8, ty + L.cell - 8); ctx.stroke(); }
+    }
   }
   if (drag && g.hand[drag.slot]) {
     const p = g.hand[drag.slot];
-    drawPiece(p, drag.x, drag.y - L.lift, L.cell, 0.95, handColor(drag.slot), g.handGem[drag.slot]);
+    drawPiece(p, drag.x, drag.y - (p.special === 'skill' ? SKL() : L.lift), L.cell, 0.95, handColor(drag.slot), g.handGem[drag.slot]);
+    // 啃手上：对准的那一格再描一圈在最上面（不然被手里的技能块挡住）
+    const h = drag.slot === 3 ? handHover(drag) : null;
+    if (h) { const q = g.hand[h.hand], o = bigHandOrigin(h.hand), [r0, c0] = q.cells[h.cell], ok = !!g.skillPlan(h); ctx.strokeStyle = ok ? COL.red : 'rgba(200,205,215,0.9)'; ctx.lineWidth = 4; ctx.setLineDash(ok ? [] : [6, 4]); ctx.strokeRect(o.x + c0 * L.cell + 2, o.y + r0 * L.cell + 2, L.cell - 4, L.cell - 4); ctx.setLineDash([]); }
   }
 }
 function drawMofei() {
@@ -1788,12 +1872,12 @@ const INTRO = {
   bubble: { title: '泡泡', lines: ['先把块放到泡泡上，', '再消掉那一格，泡泡就破'], row: ['b', 'b', '*', 'b', 'b'], key: 'bubble' },
   // 0.5 宠物线
   monster: { title: '小墨怪', lines: ['它蹲在哪一排，', '把那一排消掉，就抓到它'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
-  pet: { title: '铜雀攒能量', lines: ['你每消掉一排，它攒一格；攒满了，', '它吐一块技能块到右下角，拖到墨怪旁边'], pet: 'tongque' },
+  pet: { title: '铜雀出战', lines: ['你每消掉一排，它攒一格；攒满了吐一块技能块，', '拖到盘上，它啄掉那一排最近的 2 格'], pet: 'tongque' },
   gold: { title: '金色能让它攒得更快', lines: ['消掉金色的方块，金光飞到铜雀身上，', '每 3 块多攒一格能量'], pet: 'tongque', glow: true },
   rock: { title: '铁石', lines: ['你消不掉它：', '宠物的技能块才打得碎'], rockPic: true },
   boss: { title: '大墨怪', lines: ['它占四格，消不掉；', '它在的那一排每消一次，打它一下'], pet: null, bossPic: true },
-  baozhu: { title: '爆竹鼠出战', lines: ['它的技能块炸一圈；', '跳跳怪、分身怪、铁石怕它'], pet: 'baozhu' },
-  modou: { title: '墨斗蚕出战', lines: ['它的技能块斜着打一个叉；', '馋嘴怪、墨苔怪怕它'], pet: 'modou' },
+  baozhu: { title: '爆竹鼠出战', lines: ['技能块拖到手上卡住的那块上，啃掉 1 格；', '也啃墨怪、铁石。跳跳怪、分身怪怕它'], pet: 'baozhu' },
+  modou: { title: '墨斗蚕出战', lines: ['技能块拖到空格上，吐丝补上 1 格；', '挨着的怪被缠走。馋嘴怪、墨苔怪怕它'], pet: 'modou' },
   gempiece: { title: '块上的宝石', lines: ['发下来的块上也有宝石：', '放下去，再把那一排消掉'], row: ['b', 'b', 'b', '.', 'b'], key: 'b' },
   shell: { title: '甲壳怪', lines: ['每消一次掉一层甲，甲掉光再消就抓到；', '铜雀的技能块一下连甲抓走'], monPic: { t: 'shell', hp: 2 } },
   eat: { title: '馋嘴怪', lines: ['每隔几手啃掉身边一块（先亮牙印）；', '墨斗蚕的技能块一下抓走它'], monPic: { t: 'eat', tgt: 1 } },
@@ -1805,7 +1889,7 @@ const INTRO = {
   boss3: { title: '分身王', lines: ['每挨一下，身边蹦出一只小墨怪；', '爆竹鼠的技能块打它，一下掉 3 颗心'], bossPic: 'split' },
   jumper: { title: '跳跳怪', lines: ['每放 3 块它跳一格；', '爆竹鼠炸一圈，它跳不掉'], jumperPic: true },
   wave: { title: '墨怪一波一波来', lines: ['这一波抓光了，下一波从墨里冒出来；', '你放的块都还在'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
-  qilin: { title: '火麒麟出战', lines: ['它的技能块竖着烧一条；', '炸弹怪怕它'], pet: 'qilin' },
+  qilin: { title: '火麒麟出战', lines: ['它一直照着下一批的第 1 块（托盘下面）；', '攒满吐一颗火星，烧掉 1 格。炸弹怪怕它'], pet: 'qilin' },
   steal: { title: '墨怪会偷能量', lines: ['冒紫闪电的墨怪，下一手偷宠物能量；', '克它的宠物不怕偷'], monPic: { t: 'shell', hp: 1 } },
   acts: { title: '让宠物多出手', lines: ['顶上画着几个宠物头像，', '它出手几次才算过关'], pet: null, actsPic: true },
 };
@@ -1817,8 +1901,9 @@ function drawStartCard() {
   ctx.save(); ctx.globalAlpha = ease;
   panel(px, py, pw, ph);
   text('第 ' + (c.i + 1) + ' 关', W / 2, py + 40, 28, COL.brassLight);
-  if (st.hard) text(st.hard > 1 ? '超难关' : '难关', W / 2, py + 70, 13, st.hard > 1 ? '#c58ae0' : '#f08a70');
-  else if (st.goal.boss) text(BOSS_CARD[st.bossKind || 'spit'].name, W / 2, py + 70, 13, '#f08a70');
+  const mustDan = c.i >= save.petStage && save.petOrder.length ? (st.goal.boss ? 3 : st.hard ? 2 : 0) : 0; // 0.9.12：难关、头目第一次打必掉几颗，写出来（打之前就知道打过会怎样）
+  if (st.hard) text((st.hard > 1 ? '超难关' : '难关') + (mustDan ? ' · 必掉 ' + mustDan + ' 颗丹' : ''), W / 2, py + 70, 13, st.hard > 1 ? '#c58ae0' : '#f08a70');
+  else if (st.goal.boss) text(BOSS_CARD[st.bossKind || 'spit'].name + (mustDan ? ' · 必掉 ' + mustDan + ' 颗丹' : ''), W / 2, py + 70, 13, '#f08a70');
   // 目标
   const keys = Object.keys(st.goal), cw = 76, gx0 = W / 2 - (cw * keys.length) / 2;
   keys.forEach((key, n) => {
@@ -2065,6 +2150,7 @@ const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕
 // Cc 11-24：「刚拿到宠物直接就升到 5 级……游戏时长会变得太短」→ 门槛提高，铜雀大约要打十几关才够进化
 // 0.9.8（Fable 宠物重做第五节）：只有丹能升级，出战不涨经验。升一级要几颗丹：到 5 级共 14 颗，到 10 级再 50 颗，到 15 级再 100 颗。rec.exp = 这一级已经喂了几颗
 const EXP_NEED = [0, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 999];
+const baseOf = (id) => (id === 'jinchique' ? 'tongque' : id);
 const DAN_EXP = 1;
 const LV_CAP = 15;
 function petNodeLabel(i) { return String(i + 1); }
@@ -2106,7 +2192,8 @@ function petIcon(id, x, y, s, lv, pop) {
 }
 // 专属关（0.8）：点名的宠物有没有（进化后的也算）；这一关实际带谁、几级
 function ownedOf(id) { if (!id) return null; if (save.pets[id]) return id; const e = PG.PETS[id] && PG.PETS[id].evo; return e && save.pets[e] ? e : null; }
-function levelTeam(st, i, lendLv) {
+function levelTeam(st, i, lendLv, lendId) {
+  if (lendId && !st.only) { const o = ownedOf(lendId); return [{ id: o || lendId, lv: Math.max(o ? save.pets[o].lv : 1, lendLv || 3) }]; } // 0.9.12：连输两次「请对口的来帮忙」，借一只 3 级的（自己的更高就用自己的）
   if (!st.only) return ownedTeam();
   const own = ownedOf(st.only);
   let lv = own ? save.pets[own].lv : 0;
@@ -2114,7 +2201,7 @@ function levelTeam(st, i, lendLv) {
   if (lendLv) lv = Math.max(lv, lendLv); // 连输两次后「借一只」
   return [{ id: own || st.only, lv: Math.max(1, lv) }];
 }
-function newPetLevel(i, quiet, lendLv) { // quiet：只把盘面摆好、不放过场（开机时给老玩家垫底用）；lendLv：借一只几级的
+function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好、不放过场（开机时给老玩家垫底用）；lendLv：借一只几级的
   const st0 = PLV[i];
   if (!st0) return;
   if (st0.evolveLevel) {
@@ -2130,10 +2217,13 @@ function newPetLevel(i, quiet, lendLv) { // quiet：只把盘面摆好、不放�
   }
   petIdx = i; stageIdx = -1;
   // 专属关：点名的那只自动换上，只管这一关（营地里选的出战宠物不改）；第 4 关的「充得特别快」只有第一次
-  const team = levelTeam(st0, i, lendLv);
+  const team = levelTeam(st0, i, lendLv, lendId);
   const st1 = Object.assign({}, st0, { fastCharge: !!st0.fastCharge && save.petStage <= i });
-  // 保底（0.9，学 Candy Crush 的悄悄降难度）：同一关连输 3 次，下一局发的三块一定都放得下、大块少一点；屏幕上什么都不显示
-  if (save.loss && save.loss[i] >= 3) { st1.luck = 1; st1.d = Math.max(0, (st0.d || 0) - 0.15); }
+  // 安全网（0.9.12，Cc 11-25 定「三层都上」）：同一关连输 3 次，后两段发的大块少四成；5 次少七成；7 次只发基础大小。过了这关就恢复（loss 清零），重打已过的关不放松。屏幕上什么都不显示
+  const L0 = (save.loss && save.loss[i]) || 0;
+  if (L0 >= 3 && i >= save.petStage) { const k = L0 >= 7 ? 0 : L0 >= 5 ? 0.3 : 0.6; st1.d = (st0.d || 0) * k; if (st0.dSeg) st1.dSeg = st0.dSeg.map((x, n) => (n ? x * k : x)); if (st0.dBoss2) st1.dBoss2 = st0.dBoss2 * k; if (st0.dBoss3) st1.dBoss3 = st0.dBoss3 * k; }
+  // 升级后的第一关（只算第一次打）：开局能量只差一格就满，马上用到新本事（Fable 技能重做第六节第 6 件，Kira 先定 A，待 Cc 看）
+  if (team[0] && save.freshPet && save.freshPet[baseOf(team[0].id)] && i >= save.petStage) { st1.fastCharge = true; delete save.freshPet[baseOf(team[0].id)]; persist(); }
   g = PG.createPetGame({ stage: st1, team, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone });
   g.onlyPet = st0.only ? team[0].id : null;
   chapView = null; chapSel = null;
@@ -2271,9 +2361,8 @@ function drawPetCaption() {
   }
 }
 function juicePets(ev, colorsBefore) {
-  if (ev.rescue) g.rescues = (g.rescues || 0) + 1; // 试玩记录：宠物救命几次
   // 先照原来的一套：放下弹一下、消掉的碎掉、收到的东西飞向顶上
-  juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? 4 : 1), collected: ev.collected });
+  if (!ev.skill || (ev.units && ev.units.length)) juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? (ev.units.length >= 2 ? 3 : 2) : 1), collected: ev.collected }); // 技能块（0.9.12）只有吐丝补满了一排才走消除那一套，别的由 juicePK 演
   if (ev.fire) { const c = boxCenter(ev.fire.box); rings.push({ t: clock, big: false, at: c }); flash = 0.25; P.sound('combo3', 0.7); shake = Math.max(shake, 8); }
   juicePK(ev);
   // 同色的块化成光点飞到宠物身上
@@ -2354,10 +2443,20 @@ function juicePK(ev) {
   const at = (k) => ({ x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2 });
   const burst = (k, col, n, sp, delay) => { const c = at(k); for (let i = 0; i < n; i++) { const a2 = Math.random() * Math.PI * 2, v = (sp || 100) * (0.6 + Math.random() * 0.8); fx.push({ kind: 'shard', x: c.x, y: c.y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 90, t: clock + (delay || 0), life: 0.55, s: 3 + Math.random() * 4, col }); } };
   if (ev.skill) {
-    const col = C.blockColors[PG.PETS[ev.skill.pet].color][1];
-    ev.skill.cells.forEach((k, j) => burst(k, col, 3, 110, j * 0.015));
-    rings.push({ t: clock, big: false, at: at(ev.r * 9 + ev.c) });
-    flash = Math.max(flash, 0.15); shake = Math.max(shake, 6); P.sound('combo3', 0.7); haptic('medium');
+    // 0.9.12 四种本事各演各的：啄 = 一格一格「笃」；啃手上 = 托盘那块掉渣；吐丝 = 绿丝绕成一团；火星 = 一团火
+    const sk = ev.skill, col = C.blockColors[PG.PETS[sk.pet].color][1];
+    if (sk.hand !== undefined) {
+      const c = slotCenter(sk.hand);
+      for (let n = 0; n < 12; n++) { const a2 = Math.random() * Math.PI * 2, v = 60 + Math.random() * 90; fx.push({ kind: 'shard', x: c.x, y: c.y - 10, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 80, t: clock, life: 0.6, s: 3 + Math.random() * 3, col }); }
+      P.sound('pick', 0.9); haptic('medium');
+    } else {
+      const kind = sk.kind;
+      sk.cells.forEach((k, j) => { burst(k, kind === 'fire' ? '#ff8a3a' : col, kind === 'peck' ? 5 : 7, 120, j * 0.09); if (j) timeline.push({ t: clock + j * 0.09, fn: () => { P.sound('tap', 0.7); haptic('light'); } }); });
+      (sk.fill || []).forEach((k, j) => burst(k, col, 6, 70, j * 0.06));
+      rings.push({ t: clock, big: false, at: at(ev.r * 9 + ev.c) });
+      flash = Math.max(flash, 0.1); shake = Math.max(shake, 3);
+      P.sound(kind === 'fire' ? 'bolt' : kind === 'silk' ? 'select' : 'tap', 0.8); haptic('medium');
+    }
   }
   (ev.counter || []).forEach((c) => { burst(c.k, COL.brassLight, 18, 220); burst(c.k, '#ffffff', 6, 140); flash = Math.max(flash, 0.3); P.sound('combo4', 0.8); haptic('medium'); }); // 克住了：金光炸开
   (ev.petMiss || []).forEach((m) => { petFx.petMiss = petFx.petMiss || {}; petFx.petMiss[m.k] = clock; burst(m.k, '#9aa0b0', 5, 70); P.sound('deny', 0.5); }); // 打不动：灰光挡住
@@ -2499,12 +2598,24 @@ function settlePet() {
       save.petStage = Math.max(save.petStage, petIdx + 1);
     } else {
       save.petStage = Math.max(save.petStage, petIdx + 1);
-      if (st.gift && !save.pets[st.gift]) { save.pets[st.gift] = { lv: 1, exp: 0 }; save.petOrder.push(st.gift); r.gift = st.gift; if (!save.activePet) save.activePet = st.gift; }
+      if (st.gift && !save.pets[st.gift]) { save.pets[st.gift] = { lv: 1, exp: 1 }; save.petOrder.push(st.gift); r.gift = st.gift; if (!save.activePet) save.activePet = st.gift; } // 0.9.12：送宠物时它自己叼着 1 颗丹（条一上来就是 1 / 2，不是空的）
     }
     // 掉丹（0.9.8，第一次过这关才掉）：头目关 3 颗、难关 2 颗；普通关六成会掉 1 颗，连着两关没掉、第三关一定掉
-    if (save.petOrder.length && !petReplay && !st.evolve) {
+    // 0.9.12（Cc 11-25 定）：第一章普通关每关必掉 1 颗；第二章起普通关的丹「向难关凑」：在喂的那只已经只差 1 颗、难关就在下一两关 → 这关不掉；差得多但追得上 → 这关必掉；其余照旧（六成，连着两关没掉第三关必掉）
+    if (save.petOrder.length && !petReplay && !st.evolve && !r.gift) {
       let n = st.goal.boss ? 3 : st.hard ? 2 : 0;
-      if (!n) { save.danDry = save.danDry || 0; if (save.danDry >= 2 || Math.random() < 0.6) { n = 1; save.danDry = 0; } else save.danDry++; }
+      if (!n && petIdx < 10) n = 1;
+      else if (!n) {
+        save.danDry = save.danDry || 0;
+        let p = 0.6, forced = save.danDry >= 2;
+        const tgt = (save.lastFed && save.pets[save.lastFed] && save.lastFed) || save.activePet || save.petOrder[0], rec = save.pets[tgt];
+        if (rec) {
+          const gap = (EXP_NEED[rec.lv] || 999) - rec.exp - save.dan;
+          let j = petIdx + 1; while (j < PLV.length && !(PLV[j].goal.boss || PLV[j].hard)) j++;
+          if (j < PLV.length) { const dist = j - petIdx, R = PLV[j].goal.boss ? 3 : 2; if (dist <= 2 && gap === 1) { p = 0; forced = false; } else if (gap > R && gap <= R + dist) p = 1; }
+        }
+        if (forced || Math.random() < p) { n = 1; save.danDry = 0; } else save.danDry++;
+      }
       save.dan += n; r.dan = n;
     }
   }
@@ -2613,8 +2724,17 @@ function drawPetOver() {
     button('tocamp', bx, by + 20, bw, 64, '回营地', { size: 28, fn: () => openCamp() });
   } else {
     button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => (g.stage.evolve ? newEvolution(g.stage.evolve.pet, petIdx) : newPetLevel(petIdx)) });
-    const lendLv = g.onlyPet && save.loss && save.loss[petIdx] >= 2 ? Math.max(3, (g.team[0] ? g.team[0].lv : 1) + 2) : 0;
-    if (lendLv) { // 专属关连输两次：递个梯子
+    const lost2 = save.loss && save.loss[petIdx] >= 2;
+    const lendLv = g.onlyPet && lost2 ? Math.max(3, (g.team[0] ? g.team[0].lv : 1) + 2) : 0;
+    // 0.9.12：不点名的关连输两次，带的不是对口的 → 「这关的怪不怕 X。请 Y 来？」借一只 3 级的（Cc 11-25 定三层网的第一层，看得见、在教她带谁）
+    const rank = !g.onlyPet && lost2 && g.team[0] ? PG.bestPetFor(g.stage) : [];
+    const top = rank.find((x) => ownedOf(x.id)), mine = rank.find((x) => baseOf(x.id) === baseOf(g.team[0].id)); // 自己有的里面最对口的那只，比带着的这只更对口才请
+    const bestId = top && mine && top.n > mine.n ? ownedOf(top.id) : null;
+    if (bestId) {
+      text('这关的怪不怕' + PG.PETS[g.team[0].id].name + '。', W / 2, by - 14, 14, COL.dim, 'center', 'normal');
+      button('lend', bx, by + 70, bw * 0.6 - 6, 44, '请' + PG.PETS[bestId].name + '来帮忙', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, 3, bestId) });
+      button('tomap', bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+    } else if (lendLv) { // 专属关连输两次：递个梯子
       button('lend', bx, by + 70, bw * 0.6 - 6, 44, '借一只 ' + lendLv + ' 级的再来', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, lendLv) });
       button('tomap', bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
     } else if (g.adsUsed < C.adMax) {
@@ -2724,10 +2844,13 @@ function levelUpPet(id) {
   const rec = save.pets[id], cost = danToLevel(id);
   if (save.dan < cost) { petMsg = { text: '还差 ' + (cost - save.dan) + ' 颗丹：去打关，过关有机会掉丹', t: clock }; return; }
   save.dan -= cost;
+  const lv0 = rec.lv;
   addExp(rec, cost * DAN_EXP);
   petFx.pop[id] = clock;
-  const d = PG.PETS[id];
-  petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (d.evo && rec.lv >= d.evoLv ? '可以进化了！' : '现在能' + PG.petDesc(id, rec.lv)), t: clock };
+  save.lastFed = id; // 掉丹「向难关凑」看的是你在喂哪只
+  if (rec.lv > lv0) { save.freshPet = save.freshPet || {}; save.freshPet[baseOf(id)] = true; }
+  const d = PG.PETS[id], gain = rec.lv > lv0 ? PG.petGain(id, lv0) : '';
+  petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (d.evo && rec.lv >= d.evoLv ? '可以进化了！' : gain ? gain : ''), t: clock };
   P.sound('lit', 0.7);
   persist();
 }
@@ -3317,7 +3440,7 @@ P.exposeForTest('__app', {
 P.exposeForTest('__layout', LY);
 P.exposeForTest('__game', {
   get g() { return g; }, get mode() { return mode; }, set mode(v) { mode = v; }, get result() { return result; }, get save() { return save; },
-  get paintIdx() { return paintIdx; }, stats, L, fingerFor, slotCenter, buttons: () => buttons.slice(),
+  get paintIdx() { return paintIdx; }, stats, L, fingerFor, fingerForHand, skillTarget, slotCenter, buttons: () => buttons.slice(),
   get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; }, LV, newStage, SG, newSiege, newDaily, dailyLeft: () => dailyLeft(), siegeBusy: () => siegeBusy(),
   PG, PLV, newPetLevel, newEvolution, openCamp, feedPet, get petIdx() { return petIdx; },
   reset() { save = freshSave(); persist(); newStage(0); },

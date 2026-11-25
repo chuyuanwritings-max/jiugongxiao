@@ -118,7 +118,7 @@ async function openWith(browser, init) {
       await page.mouse.move(off.x + pos.from.x, off.y + pos.from.y); await page.mouse.down();
       await page.mouse.move(off.x + pos.to.x, off.y + pos.to.y, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(150);
     };
-    await move(); await move();
+    await move(); // 0.9.14 debug：只放一手再加后面一手。第 1 关现在是「消掉 3 排」，照引导放三手就过关了（原来这里放两手 + 后面一手 = 过关，就记不到「中途退出」，这一项一直是红的）
     // 拿起又放回托盘：一条「没放成」
     const from = await page.evaluate(() => window.__game.slotCenter([0, 1, 2].find((i) => window.__game.g.hand[i])));
     await page.mouse.move(off.x + from.x, off.y + from.y); await page.mouse.down(); await page.mouse.move(off.x + from.x + 3, off.y + from.y + 3); await page.mouse.up();

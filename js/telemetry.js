@@ -9,13 +9,30 @@
 //   k 用技能块(宠物, 行, 列, 打到几格, 克住几只, 打不动几只)   r 宠物救命(宠物)   n 被偷能量(几次)   w 下一波(第几波, 共几波)
 //   营地里喂丹、换出战、进化、看广告复活、设置里的开关：都是按钮，记在 b 里（按钮名见解码工具）
 const P = require('./platform.js');
+const Z = require('./deflate.js');
+const hasCS = typeof CompressionStream !== 'undefined' && typeof Blob !== 'undefined'; // 微信小游戏、老一点的手机浏览器没有
 const KEY = 'jgx_ev1';
 const MAX = 40000; // 一条约 20 字，存满约 0.8 MB；满了丢最早的
-let ev = P.load(KEY) || [];
+let ev = P.load(KEY);
+if (!Array.isArray(ev)) ev = []; // 存的东西读不懂（不是一串记录）就从空的开始，不能让开机就出错
 let last = Date.now(), lastInput = Date.now(), hiddenAt = 0, dirty = false, timer = null;
 let packed = null; // 预先压缩好的导出（复制必须在手指点下去那一刻同步做，压缩是异步的，所以先备好）
 
-function flush() { timer = null; if (dirty) { P.save(KEY, ev); dirty = false; } }
+// 存不进去时：真到了微信一个键 1 MB 的上限（记了几万条），就丢掉最早的四分之一再存，最多 4 回。原来满了以后每次都存不进、也不报，
+// 关掉游戏再开，后来记的全没了。别的原因存不进就不丢：留在内存里，这一次打开照样复制得出来
+function flush() {
+  timer = null;
+  if (!dirty) return;
+  dirty = false;
+  if (P.save(KEY, ev) !== false) return;
+  for (let n = 0; n < 4 && ev.length > 100; n++) {
+    let big = false;
+    try { big = JSON.stringify(ev).length > 700000; } catch (e) { big = false; }
+    if (!big) return;
+    ev.splice(0, Math.ceil(ev.length / 4));
+    if (P.save(KEY, ev) !== false) return;
+  }
+}
 function rec(code, ...data) {
   const now = Date.now();
   ev.push([Math.round((now - last) / 100), code, ...data]);
@@ -41,7 +58,7 @@ function payload(extra) { return Object.assign({ game: '九宫消', fmt: 1 }, ex
 function prepare(extra) {
   const raw = JSON.stringify(payload(extra));
   packed = { text: raw, n: ev.length };
-  if (typeof CompressionStream === 'undefined' || typeof Blob === 'undefined') return;
+  if (!hasCS) return; // 没有就等点「复制」那一下用 js/deflate.js 现压（见 exportText）
   try {
     const stream = new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate-raw'));
     new Response(stream).arrayBuffer().then((buf) => {
@@ -55,6 +72,8 @@ function prepare(extra) {
 // 复制时用：备好的压缩包只差最后几条（比如点「复制」这一下）就直接用；差多了现场出一份原样的
 function exportText(extra) {
   if (!packed || ev.length - packed.n > 3 || ev.length < packed.n) prepare(extra);
+  // 0.9.14 debug：微信里原来拷出来的是没压过的原样记录（打十关两万多字，粘不进一条微信消息）。现在自己压，格式和网页版一样
+  if (!hasCS && packed.text.slice(0, 5) !== 'JGX1:') { const z = Z.pack(packed.text); if (z) packed = { text: 'JGX1:' + z, n: packed.n }; }
   return packed.text;
 }
 module.exports = { rec, input, prepare, exportText, count: () => ev.length, flush, _all: () => ev };

@@ -4,7 +4,7 @@
 const isWx = typeof wx !== 'undefined' && wx && typeof wx.createCanvas === 'function';
 
 function setup(onTouch) {
-  let canvas, width, height, dpr;
+  let canvas, width, height, dpr, capsule = null;
   if (isWx) {
     canvas = wx.createCanvas();
     const info = (wx.getWindowInfo && wx.getWindowInfo()) || wx.getSystemInfoSync();
@@ -13,10 +13,21 @@ function setup(onTouch) {
     dpr = Math.min(2, info.pixelRatio || 2); // 0.8.4：最多按 2 倍画（3 倍屏多画一倍多的像素，手机上看不出差别，却会卡）
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
+    // 右上角的胶囊按钮（「···」和关闭，微信自己画在最上面）：它挡住的地方不能放东西（0.9.14 debug）
+    try {
+      let r = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
+      if (!r || !(r.width > 0) || !(r.bottom > 0) || r.bottom > height / 3) { // 有的机型开机时拿到全 0：照状态栏高度估一个
+        const sb = info.statusBarHeight > 0 ? info.statusBarHeight : (info.safeArea && info.safeArea.top > 0 ? info.safeArea.top : height > 760 ? 47 : 20);
+        r = { left: width - 94, right: width - 7, top: sb + 4, bottom: sb + 36 };
+      }
+      capsule = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    } catch (e) { capsule = null; }
+    // live = 现在还按在屏幕上的手指（e.touches）。切后台、系统手势有时不给「抬起」，游戏靠它知道拖着的那根手指早就不在了
     const send = (type) => (e) => {
       const list = e.changedTouches || [];
+      const live = e.touches ? Array.prototype.map.call(e.touches, (t) => t.identifier) : undefined;
       for (let i = 0; i < list.length; i++) {
-        onTouch(type, list[i].identifier, list[i].clientX, list[i].clientY);
+        onTouch(type, list[i].identifier, list[i].clientX, list[i].clientY, live);
       }
     };
     wx.onTouchStart((e) => {
@@ -25,7 +36,7 @@ function setup(onTouch) {
     });
     wx.onTouchMove(send('move'));
     wx.onTouchEnd(send('up'));
-    wx.onTouchCancel(send('up'));
+    wx.onTouchCancel(send('cancel')); // 被系统打断（来电、切后台、系统手势）：不算松手，拖着的块放回托盘（原来当成松手，块会落在打断那一刻的位置）
   } else {
     canvas = document.getElementById('game');
     // 电脑上预览时装成一部手机大小；手机浏览器里就占满屏
@@ -35,6 +46,7 @@ function setup(onTouch) {
     // 游戏修改器切机型时，指定装成哪部手机
     const dev = window.__DEVICE;
     if (dev) { width = dev.w; height = dev.h; }
+    if (window.__CAPSULE) capsule = window.__CAPSULE; // 测试：在网页里装一个微信的胶囊按钮
     dpr = Math.min(2, window.devicePixelRatio || 2); // 同上：网页版 3 倍屏也按 2 倍画
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
@@ -60,9 +72,21 @@ function setup(onTouch) {
       onTouch('up', e.pointerId, p[0], p[1]);
     };
     canvas.addEventListener('pointerup', up);
-    canvas.addEventListener('pointercancel', up);
+    canvas.addEventListener('pointercancel', (e) => { const p = pos(e); onTouch('cancel', e.pointerId, p[0], p[1]); });
   }
-  return { canvas, ctx: canvas.getContext('2d'), width, height, dpr };
+  const ctx = canvas.getContext('2d');
+  polyfillEllipse(ctx);
+  return { canvas, ctx, width, height, dpr, capsule };
+}
+// 老的微信画布没有 ctx.ellipse（馋嘴怪的嘴、甲壳怪的壳、过场都在用）：没有就用「挪、转、压扁、画圆弧」补一个，补在原型上，离屏画布也有
+function polyfillEllipse(ctx) {
+  try {
+    if (!ctx || typeof ctx.ellipse === 'function') return;
+    const fn = function (x, y, rx, ry, rot, a0, a1, ccw) { this.save(); this.translate(x, y); this.rotate(rot || 0); this.scale(rx, ry); this.arc(0, 0, 1, a0, a1, !!ccw); this.restore(); };
+    const proto = Object.getPrototypeOf(ctx);
+    if (proto && proto !== Object.prototype) proto.ellipse = fn;
+    if (typeof ctx.ellipse !== 'function') ctx.ellipse = fn;
+  } catch (e) { /* 补不上就算了 */ }
 }
 
 // 离屏画布：微信里第一次之后的 wx.createCanvas() 都是离屏的
@@ -183,13 +207,15 @@ function load(key) {
   }
 }
 
+// 存上了返回 true；存不了（微信一个键最多 1 MB、满了会抛错）返回 false，不报错
 function save(key, value) {
   try {
     const raw = JSON.stringify(value);
     if (isWx) wx.setStorageSync(key, raw);
     else window.localStorage.setItem(key, raw);
+    return true;
   } catch (e) {
-    // 存不了就算了：原型里不影响玩
+    return false;
   }
 }
 

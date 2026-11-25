@@ -179,6 +179,8 @@ function energyMax(g, p) {
 }
 const crossCells = (r, c) => [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]].map(([dr, dc]) => [r + dr, c + dc]).filter(([a, b]) => a >= 0 && a < 9 && b >= 0 && b < 9).map(([a, b]) => a * 9 + b);
 const boxOfK = (k) => core.boxOf(Math.floor(k / 9), k % 9);
+// 这一关一共几波：开局盘上那一波 + 后面一波一波冒出来的（关卡卡片、宠物园、关里顶上的圆点都用这一个数）
+const waveTotalOf = (st) => 1 + ((st && st.waves) || []).length;
 
 // opts: { stage, team:[{id,lv}], seed, tutorial }
 function createPetGame(opts) {
@@ -219,7 +221,7 @@ function createPetGame(opts) {
   // 每一波写成一张 9×9 的小图，只认里面的墨怪和铁石；那一格被占了，就冒在离它最近的空格。没有手数上限，也没有倒计时：输法只有「三块都放不下」。
   const isMonCh = (ch) => !!MON_CHAR[ch] || (ch >= '0' && ch <= '6');
   g.waveQ = (st.waves || []).map((w) => w.slice());
-  g.waveNo = 1; g.waveTotal = 1 + g.waveQ.length;
+  g.waveNo = 1; g.waveTotal = waveTotalOf(st);
   const waveMonCount = () => g.waveQ.reduce((a, w) => a + w.join('').split('').filter(isMonCh).length, 0);
   function nextWave(b, ev) {
     if (!g.waveQ.length || g.mon.some(Boolean)) return;
@@ -275,6 +277,18 @@ function createPetGame(opts) {
   g.reroll = () => { const sk = g.hand[3] || null; g.hand.length = 3; baseReroll(); g.hand[3] = sk; g.handGem[3] = null; g.handColor = colorsOfHand(); };
   g.hand[3] = null; g.handGem[3] = null;
   g.handColor = colorsOfHand();
+  // 0.9.14 debug：开局这三块是 core 在墨怪、铁石、头目摆上盘之前发的，五十局里有一局三块没法全放下。照「发牌一定有活路」（Cc 11-25 定）重发一次；新手引导那一手不动
+  if (!o.tutorial && !core.solvable(g.board, g.hand.slice(0, 3).filter(Boolean))) g.deal();
+  // 火麒麟的灯：开局也照着下一批（原来第一批放完才开始照，登场关一开局什么都看不到）
+  if (g.previewN && !g.nextHand) g.nextHand = [0, 1, 2].map(() => pickPiece(g.rand, g.diff()));
+  // 看广告复活以后一定有块可放（0.9.14 debug）：正中间是头目 / 墨怪 / 铁石时「清空正中间」清不出地方，换一组又没换到放得下的，
+  // 原来就成了「没判输、也没块能放」，点什么都没反应。现在把放不下的换成 1 格的；盘上一个空格都没有才照旧算输
+  const baseRevive = g.revive;
+  g.revive = () => {
+    baseRevive();
+    if (g.stuck()) { let free = g.board.filter((v) => v === 0).length; for (let i = 0; i < 3 && free > 0; i++) if (g.hand[i] && !core.anyPlacement(g.board, g.hand[i])) { g.hand[i] = core.PIECES['1']; g.handGem[i] = null; free--; } }
+    if (g.stuck()) { g.over = true; g.reason = 'stuck'; }
+  };
   // 能量满了、宠物格空着：吐一块技能块（能量多出来的留着）。宠物格占着就先憋着。
   function giveSkill(ev) {
     for (const pt of g.team) {
@@ -859,4 +873,4 @@ function useSkillIfGood(g) {
   if (s.v >= 100 || !fits) return !!g.useSkill(s);
   return false;
 }
-module.exports = { petGain, lookOf, startOf, SKILL, skillKind, skillN, gnawPiece, pickPiece, RULES, isCounter, bestPetFor, skillCells, skillBest, useSkillIfGood, tierOf, petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { waveTotalOf, petGain, lookOf, startOf, SKILL, skillKind, skillN, gnawPiece, pickPiece, RULES, isCounter, bestPetFor, skillCells, skillBest, useSkillIfGood, tierOf, petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };

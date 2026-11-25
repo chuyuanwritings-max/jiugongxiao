@@ -634,6 +634,7 @@ function createPetGame(opts) {
       clearCells(b, [...set], ev, false, colorOk);
     }
     ev.units = units; ev.cells = clearedCells;
+    if (units.length) g.got.lines = (g.got.lines || 0) + units.length; // 0.9.14：「消掉几排」的目标（第 1 关；不管带没带宠物都算）
     const ps = g.playStats; ps.units += units.length;
     if (units.length) { ps.clearMoves++; ps.dry = 0; if (!ps.firstClear) ps.firstClear = g.moves; } else { ps.dry++; ps.maxDry = Math.max(ps.maxDry, ps.dry); }
     // 2. 积蓄能量：每消一排 / 一个大格 +1；消掉它颜色的方块每 3 块再 +1。宠物格里已经有技能块时，最多攒到满。

@@ -194,6 +194,7 @@ function save(key, value) {
 }
 
 function exposeForTest(name, value) {
+  if (typeof globalThis !== 'undefined' && globalThis.__WX_TEST__) globalThis[name] = value; // 模拟微信环境的测试（test/wx-play.js）用
   if (!isWx && typeof window !== 'undefined') window[name] = value;
 }
 

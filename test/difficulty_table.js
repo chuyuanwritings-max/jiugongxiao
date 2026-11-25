@@ -55,7 +55,7 @@ const realFile = path.join(__dirname, 'real_log.json');
 if (fs.existsSync(realFile)) {
   const raw = JSON.parse(fs.readFileSync(realFile, 'utf8'));
   const logs = Array.isArray(raw) ? raw : raw.log || [];
-  logs.forEach((r) => { (real[r.lv] = real[r.lv] || []).push(r); });
+  logs.filter((r) => !r.quit).forEach((r) => { (real[r.lv] = real[r.lv] || []).push(r); }); // 中途退出的不算一局输
 }
 
 const rows = [];

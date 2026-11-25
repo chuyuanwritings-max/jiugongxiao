@@ -46,7 +46,7 @@ async function openWith(browser, init) {
     ok(await clickBtn('setCopyLog'), '设置页有「复制试玩记录」');
     await page.waitForTimeout(300);
     const got = await page.evaluate(() => navigator.clipboard.readText());
-    let n = -1; try { n = JSON.parse(got).log.length; } catch (e) {}
+    let n = -1; try { n = require('./decode_log.js').decode(got).log.length; } catch (e) {}
     const box = await page.$('#copyBox');
     ok(n === 37 && !box, '普通浏览器：一点就复制进剪贴板，37 局全在（实际 ' + n + ' 局），不弹框');
     ok(errors.length === 0, '普通浏览器：没有报错' + (errors.length ? '：' + errors[0] : ''));
@@ -62,7 +62,7 @@ async function openWith(browser, init) {
     await clickBtn('setCopyLog');
     await page.waitForTimeout(300);
     const box = await page.evaluate(() => { const t = document.getElementById('copyBoxText'); return t ? t.value : null; });
-    let n = -1; try { n = JSON.parse(box).log.length; } catch (e) {}
+    let n = -1; try { n = require('./decode_log.js').decode(box).log.length; } catch (e) {}
     ok(n === 37, '复制不了的浏览器：弹出复制框，框里是全部 37 局（实际 ' + n + ' 局）');
     await page.click('#copyBoxCopy');
     const label = await page.textContent('#copyBoxCopy');
@@ -103,6 +103,50 @@ async function openWith(browser, init) {
     await page.waitForTimeout(150);
     const log = await page.evaluate(() => window.__game.save.playLog);
     ok(log.length === 1 && log[0].quit === 1 && log[0].lv === 1 && log[0].moves >= 1, '打了一手就退回地图：记下一行「中途退出」（' + JSON.stringify(log[0] || {}).slice(0, 80) + '）');
+    await ctx.close();
+  }
+
+  // 5. 全流程记录：真鼠标玩几手 → 切后台再回来 → 停手 15 秒 → 退出 → 复制 → 解码，每样都在
+  {
+    const D = require('./decode_log.js');
+    const { ctx, page, off } = await openWith(browser);
+    await page.evaluate(() => { const G = window.__game; G.save.playLog = []; G.newPetLevel(0); });
+    await page.waitForTimeout(200);
+    const move = async () => {
+      const pos = await page.evaluate(() => { const G = window.__game, b = G.PG.bestMove(G.g, 1); return b && { from: G.slotCenter(b.i), to: G.fingerFor(G.g.hand[b.i], b.r, b.c) }; });
+      if (!pos) return;
+      await page.mouse.move(off.x + pos.from.x, off.y + pos.from.y); await page.mouse.down();
+      await page.mouse.move(off.x + pos.to.x, off.y + pos.to.y, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(150);
+    };
+    await move(); await move();
+    // 拿起又放回托盘：一条「没放成」
+    const from = await page.evaluate(() => window.__game.slotCenter([0, 1, 2].find((i) => window.__game.g.hand[i])));
+    await page.mouse.move(off.x + from.x, off.y + from.y); await page.mouse.down(); await page.mouse.move(off.x + from.x + 3, off.y + from.y + 3); await page.mouse.up();
+    // 切后台 2 秒再回来
+    await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForTimeout(2100);
+    await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    // 停手 15 秒（把钟拨快）
+    await page.evaluate(() => { const real = Date.now.bind(Date); const skew = 15000; Date.now = () => real() + skew; });
+    await move();
+    const b = await page.evaluate(() => window.__game.buttons().find((x) => x.id === 'map'));
+    await page.mouse.click(off.x + b.x + b.w / 2, off.y + b.y + b.h / 2);
+    await page.evaluate(() => { window.__game.mode = 'settings'; });
+    await page.waitForTimeout(600); // 等它把记录压好
+    const bt = await page.evaluate(() => window.__game.buttons().find((x) => x.id === 'setCopyLog'));
+    await page.mouse.click(off.x + bt.x + bt.w / 2, off.y + bt.y + bt.h / 2);
+    await page.waitForTimeout(300);
+    const text = await page.evaluate(() => navigator.clipboard.readText());
+    let d = null; try { d = D.decode(text); } catch (e) {}
+    const codes = d ? new Set(d.events.map((e) => e.code)) : new Set();
+    const need = ['o', 'm', 'L', 'p', 'd', 'x', 'h', 's', 'i', 'b', 'q'];
+    const miss = need.filter((c) => !codes.has(c));
+    ok(text.startsWith('JGX1:') && d && !miss.length, '全流程记录：复制出来是压缩的（' + text.length + ' 字），解开后开游戏、换页面、开关、拿起、放下、没放成、切后台、回来、停手、按钮、中途退出都在' + (miss.length ? '；缺 ' + miss.join(',') : ''));
+    const back = d && d.events.find((e) => e.code === 's'), idle = d && d.events.find((e) => e.code === 'i');
+    ok(back && back.data[0] >= 2 && idle && idle.data[0] >= 14, '全流程记录：回到前台记了离开几秒（' + (back && back.data[0]) + '）、停手记了几秒（' + (idle && idle.data[0]) + '）');
+    const md = d ? D.summarize(d) : '';
+    if (!(/中途退出/.test(md) && /\| 1 \| 1 \|/.test(md))) console.log(md);
+    ok(/中途退出/.test(md) && /\| 1 \| 1 \|/.test(md), '解码工具能写出人看的总结（每关打几次、在哪歇下）');
     await ctx.close();
   }
 

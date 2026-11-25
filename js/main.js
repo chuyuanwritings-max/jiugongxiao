@@ -8,7 +8,8 @@ const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
-const VERSION = '0.9.11'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
+const VERSION = '0.9.12'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -42,6 +43,7 @@ const persist = () => P.save(KEY, save);
 
 // ---------- 画布和布局 ----------
 const scr = P.setup(onTouch);
+T.rec('o', VERSION, Math.round(scr.width), Math.round(scr.height), Math.round(Date.now() / 1000)); // 试玩记录：开游戏
 let ctx = scr.ctx; // let：过场要借现成的画法（petIcon、inkMonster）画到离屏画布上，见 withCtx
 const { width: W, height: H, dpr } = scr;
 function withCtx(c2, fn) { const keep = ctx; ctx = c2; try { fn(); } finally { ctx = keep; } }
@@ -624,6 +626,7 @@ function hitButton(x, y) {
 function onTouch(type, id, x, y) {
   if (mode === 'cut') { if (type === 'down') { CUT.skip(); if (!CUT.playing) endCuts(); } return; }
   if (type === 'down') {
+    T.input();
     if (drag) return; // 只认一根手指
     const b = hitButton(x, y);
     if (b) { downBtn = b.id; return; }
@@ -631,6 +634,7 @@ function onTouch(type, id, x, y) {
       const i = slotAt(x);
       if (g.hand[i]) {
         drag = { slot: i, x, y, id };
+        T.rec('p', i, g.hand[i].special || g.hand[i].id);
         P.sound('pick', 0.5);
         haptic('light');
       }
@@ -642,7 +646,7 @@ function onTouch(type, id, x, y) {
       const b = hitButton(x, y);
       const was = downBtn;
       downBtn = null;
-      if (b && b.id === was && b.fn) { P.sound('tap', 0.5); haptic('light'); b.fn(); }
+      if (b && b.id === was && b.fn) { T.rec('b', b.id); P.sound('tap', 0.5); haptic('light'); b.fn(); }
       return;
     }
     if (drag && drag.id === id) {
@@ -657,6 +661,7 @@ function drop() {
   const s = snap(p, drag.x, drag.y);
   drag = null;
   if (!p || !core.canPlace(g.board, p, s.r, s.c)) {
+    if (p) T.rec('x', i, s.r, s.c);
     P.sound('deny', 0.5);
     return;
   }
@@ -665,6 +670,11 @@ function drop() {
     const colorsBefore = colorAt.slice();
     const pev = g.place(i, s.r, s.c);
     if (!pev) return;
+    if (pev.skill) T.rec('k', pev.skill.pet, s.r, s.c, pev.skill.cells.length, (pev.counter || []).length, (pev.petMiss || []).length);
+    else T.rec('d', i, s.r, s.c, p.id, (pev.units || []).length, pev.beat || 1, (pev.collected || []).length);
+    if (pev.rescue) T.rec('r', pev.rescue);
+    if (pev.drain && pev.drain.length) T.rec('n', pev.drain.length);
+    if (pev.wave) T.rec('w', pev.wave.no, pev.wave.of);
     for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
     if (!save.petTutDone) { save.petTutDone = true; save.tutorialDone = true; persist(); }
     if (pev.win && !g._settled) settlePet(); // 赢了马上记账，结算页等动画演完再出
@@ -2014,7 +2024,7 @@ let copyMsg = null; // 「复制试玩记录」之后的一句提示
 const PLAYTEST = true;
 function copyPlayLog() {
   const n = (save.playLog || []).length;
-  P.copyText(JSON.stringify({ game: '九宫消', ver: VERSION, log: save.playLog || [] }), (ok) => {
+  P.copyText(T.exportText({ ver: VERSION, log: save.playLog || [] }), (ok) => {
     copyMsg = { text: ok === true ? '已复制 ' + n + ' 局，粘到微信发回来' : ok === 'box' ? '在弹出的框里复制' : '复制不了，再点一次试试', t: clock };
   }, '试玩记录（' + n + ' 局）');
 }
@@ -2512,6 +2522,7 @@ function settlePet() {
 function logPlay(quit) {
   if (!g || !g.pets || !g.stage || g.stage.evolve || g._logged) return;
   g._logged = true;
+  T.rec(quit ? 'q' : 'E', ...(quit ? [] : [g.won ? 1 : 0]), g.moves, Math.round((P.now() - (g.startMs || P.now())) / 1000), Math.round(g.progressFrac() * 100));
   const ps = g.playStats, pt = g.team[0];
   save.playLog = save.playLog || [];
   save.playLog.push({
@@ -3229,8 +3240,11 @@ function drawShareCard() {
 }
 
 // ---------- 主循环 ----------
+let lastModeRec = null;
 function frame() {
   const now = P.now();
+  if (mode !== lastModeRec) { T.rec('m', mode); lastModeRec = mode; if (mode === 'play' && g && g.pets && !g._recL) { g._recL = true; const pt = g.team[0]; T.rec('L', g.stage && g.stage.evolve ? 'evo' : petIdx + 1, pt ? pt.id : '', pt ? pt.lv : 0, ((save.loss || {})[petIdx] || 0) + 1); } // 真进了关里才算开一关（开机时垫底摆好的盘不算）
+  if (mode === 'over' || mode === 'settings') T.prepare({ ver: VERSION, log: save.playLog || [] }); } // 到结算、设置页先把记录压好，点复制时马上能用
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   update((mode === 'album' && albumFrom === 'play') || mode === 'cut' ? 0 : dt);

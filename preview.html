@@ -2028,7 +2028,8 @@ const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
-const VERSION = '0.9.11'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
+const VERSION = '0.9.12'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -2062,6 +2063,7 @@ const persist = () => P.save(KEY, save);
 
 // ---------- 画布和布局 ----------
 const scr = P.setup(onTouch);
+T.rec('o', VERSION, Math.round(scr.width), Math.round(scr.height), Math.round(Date.now() / 1000)); // 试玩记录：开游戏
 let ctx = scr.ctx; // let：过场要借现成的画法（petIcon、inkMonster）画到离屏画布上，见 withCtx
 const { width: W, height: H, dpr } = scr;
 function withCtx(c2, fn) { const keep = ctx; ctx = c2; try { fn(); } finally { ctx = keep; } }
@@ -2644,6 +2646,7 @@ function hitButton(x, y) {
 function onTouch(type, id, x, y) {
   if (mode === 'cut') { if (type === 'down') { CUT.skip(); if (!CUT.playing) endCuts(); } return; }
   if (type === 'down') {
+    T.input();
     if (drag) return; // 只认一根手指
     const b = hitButton(x, y);
     if (b) { downBtn = b.id; return; }
@@ -2651,6 +2654,7 @@ function onTouch(type, id, x, y) {
       const i = slotAt(x);
       if (g.hand[i]) {
         drag = { slot: i, x, y, id };
+        T.rec('p', i, g.hand[i].special || g.hand[i].id);
         P.sound('pick', 0.5);
         haptic('light');
       }
@@ -2662,7 +2666,7 @@ function onTouch(type, id, x, y) {
       const b = hitButton(x, y);
       const was = downBtn;
       downBtn = null;
-      if (b && b.id === was && b.fn) { P.sound('tap', 0.5); haptic('light'); b.fn(); }
+      if (b && b.id === was && b.fn) { T.rec('b', b.id); P.sound('tap', 0.5); haptic('light'); b.fn(); }
       return;
     }
     if (drag && drag.id === id) {
@@ -2677,6 +2681,7 @@ function drop() {
   const s = snap(p, drag.x, drag.y);
   drag = null;
   if (!p || !core.canPlace(g.board, p, s.r, s.c)) {
+    if (p) T.rec('x', i, s.r, s.c);
     P.sound('deny', 0.5);
     return;
   }
@@ -2685,6 +2690,11 @@ function drop() {
     const colorsBefore = colorAt.slice();
     const pev = g.place(i, s.r, s.c);
     if (!pev) return;
+    if (pev.skill) T.rec('k', pev.skill.pet, s.r, s.c, pev.skill.cells.length, (pev.counter || []).length, (pev.petMiss || []).length);
+    else T.rec('d', i, s.r, s.c, p.id, (pev.units || []).length, pev.beat || 1, (pev.collected || []).length);
+    if (pev.rescue) T.rec('r', pev.rescue);
+    if (pev.drain && pev.drain.length) T.rec('n', pev.drain.length);
+    if (pev.wave) T.rec('w', pev.wave.no, pev.wave.of);
     for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
     if (!save.petTutDone) { save.petTutDone = true; save.tutorialDone = true; persist(); }
     if (pev.win && !g._settled) settlePet(); // 赢了马上记账，结算页等动画演完再出
@@ -4034,7 +4044,7 @@ let copyMsg = null; // 「复制试玩记录」之后的一句提示
 const PLAYTEST = true;
 function copyPlayLog() {
   const n = (save.playLog || []).length;
-  P.copyText(JSON.stringify({ game: '九宫消', ver: VERSION, log: save.playLog || [] }), (ok) => {
+  P.copyText(T.exportText({ ver: VERSION, log: save.playLog || [] }), (ok) => {
     copyMsg = { text: ok === true ? '已复制 ' + n + ' 局，粘到微信发回来' : ok === 'box' ? '在弹出的框里复制' : '复制不了，再点一次试试', t: clock };
   }, '试玩记录（' + n + ' 局）');
 }
@@ -4532,6 +4542,7 @@ function settlePet() {
 function logPlay(quit) {
   if (!g || !g.pets || !g.stage || g.stage.evolve || g._logged) return;
   g._logged = true;
+  T.rec(quit ? 'q' : 'E', ...(quit ? [] : [g.won ? 1 : 0]), g.moves, Math.round((P.now() - (g.startMs || P.now())) / 1000), Math.round(g.progressFrac() * 100));
   const ps = g.playStats, pt = g.team[0];
   save.playLog = save.playLog || [];
   save.playLog.push({
@@ -5249,8 +5260,11 @@ function drawShareCard() {
 }
 
 // ---------- 主循环 ----------
+let lastModeRec = null;
 function frame() {
   const now = P.now();
+  if (mode !== lastModeRec) { T.rec('m', mode); lastModeRec = mode; if (mode === 'play' && g && g.pets && !g._recL) { g._recL = true; const pt = g.team[0]; T.rec('L', g.stage && g.stage.evolve ? 'evo' : petIdx + 1, pt ? pt.id : '', pt ? pt.lv : 0, ((save.loss || {})[petIdx] || 0) + 1); } // 真进了关里才算开一关（开机时垫底摆好的盘不算）
+  if (mode === 'over' || mode === 'settings') T.prepare({ ver: VERSION, log: save.playLog || [] }); } // 到结算、设置页先把记录压好，点复制时马上能用
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   update((mode === 'album' && albumFrom === 'play') || mode === 'cut' ? 0 : dt);
@@ -6521,7 +6535,17 @@ function copyText(str, ok, title) {
     try { showCopyBox(str, title); cb('box'); } catch (e2) { cb(false); }
   }
 }
-module.exports = { copyText, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+// 切到后台 / 回到前台（试玩记录用）：微信 wx.onHide / onShow，网页 visibilitychange
+function onVisibility(cb) {
+  try {
+    if (isWx) { wx.onHide && wx.onHide(() => cb(false)); wx.onShow && wx.onShow(() => cb(true)); return; }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => cb(document.visibilityState === 'visible'));
+      window.addEventListener('pagehide', () => cb(false));
+    }
+  } catch (e) { /* 拿不到就不记 */ }
+}
+module.exports = { onVisibility, copyText, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
 
 });
 __def("js/sfx.js", function (module, exports, require) {
@@ -7070,6 +7094,69 @@ function simulate(opts) {
 }
 
 module.exports = { POOL_BY_RUN, WAVES, FIRST_RUN_WAVES, ROUNDS, SLOTS, RELICS, RELIC_IDS, STAR_PATH, resolve, createSiege, makeOffer, palOf, bestMove, bestPick, simulate };
+
+});
+__def("js/telemetry.js", function (module, exports, require) {
+// 全流程试玩记录（0.9.12，Cc 11-25：「你统计的记录，应该是整套游戏流程全部操作的记录……
+// 甚至玩家在什么时候停下来不玩了、歇了一会、过一会再接着玩，这些数据你都要统计。」）
+//
+// 每一件事记一条：[离上一条过了几个 0.1 秒, 代号, ...数据]。代号表（解码工具 test/decode_log.js 照这张表翻成中文）：
+//   o 开游戏(版本, 屏宽, 屏高, 绝对时间秒)   h 切到后台   s 回到前台(离开了几秒)   i 停手(几秒没碰屏幕)
+//   m 换页面(去哪页)   b 点按钮(按钮名)
+//   L 开一关(第几关, 出战宠物, 宠物等级, 这关第几次打)   E 一关打完(赢1/输0, 几手, 几秒, 目标完成百分比)   q 中途退出(几手, 几秒, 百分比)
+//   p 拿起(第几格, 块名)   d 放下成了(第几格, 行, 列, 块名, 消了几条, 节拍, 抓到几个)   x 放下没成(第几格, 行, 列)
+//   k 用技能块(宠物, 行, 列, 打到几格, 克住几只, 打不动几只)   r 宠物救命(宠物)   n 被偷能量(几次)   w 下一波(第几波, 共几波)
+//   营地里喂丹、换出战、进化、看广告复活、设置里的开关：都是按钮，记在 b 里（按钮名见解码工具）
+const P = require('./platform.js');
+const KEY = 'jgx_ev1';
+const MAX = 40000; // 一条约 20 字，存满约 0.8 MB；满了丢最早的
+let ev = P.load(KEY) || [];
+let last = Date.now(), lastInput = Date.now(), hiddenAt = 0, dirty = false, timer = null;
+let packed = null; // 预先压缩好的导出（复制必须在手指点下去那一刻同步做，压缩是异步的，所以先备好）
+
+function flush() { timer = null; if (dirty) { P.save(KEY, ev); dirty = false; } }
+function rec(code, ...data) {
+  const now = Date.now();
+  ev.push([Math.round((now - last) / 100), code, ...data]);
+  last = now;
+  if (ev.length > MAX) ev.splice(0, ev.length - MAX);
+  dirty = true;
+  if (!timer) timer = setTimeout(flush, 4000); // 攒 4 秒写一次（整份写进手机存储，太勤会卡）；切后台时马上写
+}
+// 每次碰屏幕先叫这个：离上次碰超过 10 秒，记一条「停手」
+function input() {
+  const now = Date.now();
+  if (!hiddenAt && now - lastInput > 10000) rec('i', Math.round((now - lastInput) / 1000));
+  lastInput = now;
+}
+P.onVisibility((visible) => {
+  const now = Date.now();
+  if (!visible) { if (hiddenAt) return; hiddenAt = now; rec('h'); flush(); }
+  else { rec('s', hiddenAt ? Math.round((now - hiddenAt) / 1000) : 0); hiddenAt = 0; lastInput = now; }
+});
+
+function payload(extra) { return Object.assign({ game: '九宫消', fmt: 1 }, extra, { ev }); }
+// 预先压缩：浏览器有 CompressionStream 就压成 JGX1:base64（一般小十倍），没有就原样 JSON
+function prepare(extra) {
+  const raw = JSON.stringify(payload(extra));
+  packed = { text: raw, n: ev.length };
+  if (typeof CompressionStream === 'undefined' || typeof Blob === 'undefined') return;
+  try {
+    const stream = new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    new Response(stream).arrayBuffer().then((buf) => {
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      if (packed && packed.n === ev.length) packed = { text: 'JGX1:' + btoa(bin), n: ev.length };
+    }).catch(() => {});
+  } catch (e) { /* 没压缩就用原样的 */ }
+}
+// 复制时用：备好的压缩包只差最后几条（比如点「复制」这一下）就直接用；差多了现场出一份原样的
+function exportText(extra) {
+  if (!packed || ev.length - packed.n > 3 || ev.length < packed.n) prepare(extra);
+  return packed.text;
+}
+module.exports = { rec, input, prepare, exportText, count: () => ev.length, flush, _all: () => ev };
 
 });
 __require('')('./game.js');

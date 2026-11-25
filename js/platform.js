@@ -266,4 +266,14 @@ function copyText(str, ok, title) {
     try { showCopyBox(str, title); cb('box'); } catch (e2) { cb(false); }
   }
 }
-module.exports = { copyText, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+// 切到后台 / 回到前台（试玩记录用）：微信 wx.onHide / onShow，网页 visibilitychange
+function onVisibility(cb) {
+  try {
+    if (isWx) { wx.onHide && wx.onHide(() => cb(false)); wx.onShow && wx.onShow(() => cb(true)); return; }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => cb(document.visibilityState === 'visible'));
+      window.addEventListener('pagehide', () => cb(false));
+    }
+  } catch (e) { /* 拿不到就不记 */ }
+}
+module.exports = { onVisibility, copyText, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };

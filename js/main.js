@@ -8,7 +8,7 @@ const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
-const VERSION = '0.9.8'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.9'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -587,6 +587,26 @@ function previewClear(p, r, c) {
 }
 
 // ---------- 输入 ----------
+// ---------- 震动（0.9.9，照 ../../../00_震动手感规矩_1.0.md）----------
+// 哪里都只叫 haptic('light' | 'medium' | 'heavy')，不直接叫 P.vibrate：
+// 同一下（同一次点按、同一帧）叫了好几次，只震最重的那一档；离上一次震不到 40 毫秒就留到下一帧再震。
+const HAPTIC_RANK = { light: 1, medium: 2, heavy: 3 }, HAPTIC_NAME = ['', 'light', 'medium', 'heavy'];
+let hapticWant = 0, hapticLast = -1e9, hapticQueued = false;
+function haptic(level) {
+  hapticWant = Math.max(hapticWant, HAPTIC_RANK[level] || 1);
+  if (!hapticQueued) { hapticQueued = true; Promise.resolve().then(hapticFlush); } // 这一下的代码全跑完再震，好挑出最重的
+}
+function hapticFlush() {
+  hapticQueued = false;
+  if (!hapticWant) return;
+  const now = P.now();
+  if (now - hapticLast < 40) return; // 没隔够：frame() 每帧还会再来叫一次
+  const level = HAPTIC_NAME[hapticWant];
+  hapticWant = 0; hapticLast = now;
+  if (save.noVibrate) return;
+  P.vibrate(level);
+  if (typeof window !== 'undefined' && window.__hapticLog) window.__hapticLog.push({ t: now, level, mode }); // 机器人测试打桩
+}
 function hitButton(x, y) {
   for (let i = buttons.length - 1; i >= 0; i--) {
     const b = buttons[i];
@@ -605,7 +625,7 @@ function onTouch(type, id, x, y) {
       if (g.hand[i]) {
         drag = { slot: i, x, y, id };
         P.sound('pick', 0.5);
-        P.vibrate(false);
+        haptic('light');
       }
     }
   } else if (type === 'move') {
@@ -615,7 +635,7 @@ function onTouch(type, id, x, y) {
       const b = hitButton(x, y);
       const was = downBtn;
       downBtn = null;
-      if (b && b.id === was && b.fn) { P.sound('tap', 0.5); b.fn(); }
+      if (b && b.id === was && b.fn) { P.sound('tap', 0.5); haptic('light'); b.fn(); }
       return;
     }
     if (drag && drag.id === id) {
@@ -683,7 +703,7 @@ function juice(ev) {
   const cy = cellY(ev.r) + (p.h * L.cell) / 2;
   if (ev.beat === 1) {
     P.sound('place', 0.7);
-    P.vibrate(false);
+    haptic('light');
     texts.push({ s: '+' + ev.gained, x: cx, y: cy, t: clock, size: 16, col: COL.text });
     return;
   }
@@ -711,7 +731,6 @@ function juice(ev) {
     for (let n = 0; n < 3; n++) bolts.push({ row: 1 + n * 3.5, t: clock + n * 0.06, dir: n % 2 ? -1 : 1 });
     rings.push({ t: clock, big: ev.center });
     flash = 0.35;
-    P.vibrate(true);
   }
   if (ev.crossbow) bolts.push({ row: ev.crossbow.row + 0.5, t: clock, dir: 1 });
   ev.newlyLit.forEach((b) => litAnim.push({ b, t: clock }));
@@ -727,7 +746,7 @@ function juice(ev) {
   if (ev.beat === 5) P.sound('five', 0.9), P.sound('combo4', 0.4);
   if (ev.crossbow) P.sound('bolt', 0.6);
   if (ev.newlyLit.length) setTimeout(() => P.sound('lit', 0.6), 120);
-  if (ev.beat >= 3) P.vibrate(ev.beat >= 4);
+  haptic(ev.win || ev.beat >= 5 ? 'heavy' : 'medium'); // 消掉了：一次只震一下，连消取最重一档
   // 跳字
   let label = '+' + ev.gained;
   texts.push({ s: label, x: cx, y: cy - 6, t: clock, size: 18 + ev.beat * 4, col: ev.beat >= 4 ? COL.brassLight : COL.text });
@@ -749,6 +768,7 @@ function endGame() {
   if (g._ended) return;
   g._ended = true;
   overAt = clock;
+  haptic('heavy'); // 过关、输了都是大事
   stats.overs.push(P.now());
   drag = null;
   if (g.siege) return endSiege();
@@ -1984,8 +2004,6 @@ let settingsFrom = 'home';
 let copyMsg = null; // 「复制试玩记录」之后的一句提示
 let settingsAsk = 0; // 「重新开始」要点两下：第一下变成「真的清空？」，3 秒内再点才清
 P.setMuted(!!save.muted);
-const _vibrate = P.vibrate;
-P.vibrate = (strong) => { if (!save.noVibrate) _vibrate(strong); };
 function drawSettings() {
   drawBg();
   text('设置', W / 2, L.top + 30, 28, COL.brassLight);
@@ -1993,7 +2011,7 @@ function drawSettings() {
   let y = L.top + 90;
   button('setSound', bx, y, bw, 58, '声音：' + (save.muted ? '关' : '开'), { size: 22, bg: save.muted ? COL.woodDark : COL.copper, fn: () => { save.muted = !save.muted; P.setMuted(save.muted); persist(); } });
   y += 76;
-  button('setVibe', bx, y, bw, 58, '振动：' + (save.noVibrate ? '关' : '开'), { size: 22, bg: save.noVibrate ? COL.woodDark : COL.copper, fn: () => { save.noVibrate = !save.noVibrate; persist(); if (!save.noVibrate) _vibrate(false); } });
+  button('setVibe', bx, y, bw, 58, '震动：' + (save.noVibrate ? '关' : '开'), { size: 22, bg: save.noVibrate ? COL.woodDark : COL.copper, fn: () => { save.noVibrate = !save.noVibrate; persist(); } }); // 打开的那一下，按钮自己的 light 就会震
   y += 96;
   const asking = settingsAsk && clock - settingsAsk < 3;
   button('setReset', bx, y, bw, 58, asking ? '真的清空？再点一次' : '重新开始', { size: 22, bg: COL.red, danger: true, fn: () => {
@@ -2241,11 +2259,11 @@ function juicePets(ev, colorsBefore) {
   if (ev.lit) { ev.lit.forEach((k, j) => setTimeout(() => P.sound('chain' + Math.min(12, g.evLit.size - ev.lit.length + j + 1), 0.6), j * 80)); }
   const burst = (k, col, n, sp) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let i = 0; i < n; i++) { const a2 = Math.random() * Math.PI * 2, v = (sp || 100) * (0.6 + Math.random() * 0.8); fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 90, t: clock, life: 0.55, s: 3 + Math.random() * 4, col }); } };
   const mark = (tab, k) => { petFx[tab] = petFx[tab] || {}; petFx[tab][k] = clock; };
-  (ev.shellCrack || []).forEach((h) => { mark('shellHit', h.k); burst(h.k, STEEL[h.left % 3], 10 * h.n + (h.left === 0 ? 12 : 0), h.left === 0 ? 220 : 160); burst(h.k, '#ffffff', 4, 120); P.sound(h.left === 0 ? 'combo2' : 'tap', 0.9); shake = Math.max(shake, h.left === 0 ? 6 : 4); P.vibrate(h.left === 0); }); // 甲掉一层：铁片飞出去；最后一层碎掉更响更大
+  (ev.shellCrack || []).forEach((h) => { mark('shellHit', h.k); burst(h.k, STEEL[h.left % 3], 10 * h.n + (h.left === 0 ? 12 : 0), h.left === 0 ? 220 : 160); burst(h.k, '#ffffff', 4, 120); P.sound(h.left === 0 ? 'combo2' : 'tap', 0.9); shake = Math.max(shake, h.left === 0 ? 6 : 4); haptic('medium'); }); // 甲掉一层：铁片飞出去；最后一层碎掉更响更大
   (ev.colorMiss || []).forEach((k) => { mark('colorMiss', k); P.sound('tap', 0.4); });
-  (ev.eats || []).concat((ev.bossEats || []).map((k) => ({ k }))).forEach((e) => { burst(e.k, (C.blockColors[colorsBefore[e.k]] || C.prefillColor)[0], 9, 90); P.sound('pick', 0.7); }); // 被啃掉的块碎成渣
+  (ev.eats || []).concat((ev.bossEats || []).map((k) => ({ k }))).forEach((e) => { burst(e.k, (C.blockColors[colorsBefore[e.k]] || C.prefillColor)[0], 9, 90); P.sound('pick', 0.7); haptic('medium'); }); // 被啃掉的块碎成渣
   (ev.moss || []).forEach((e) => burst(e.k, '#2f5a3c', 6, 60));
-  (ev.bombs || []).forEach((e) => { burst(e.k, '#ffb070', 16, 200); e.cells.forEach((k) => burst(k, '#2a2236', 4, 60)); flash = Math.max(flash, 0.25); shake = Math.max(shake, 8); P.sound('combo4', 0.7); });
+  (ev.bombs || []).forEach((e) => { burst(e.k, '#ffb070', 16, 200); e.cells.forEach((k) => burst(k, '#2a2236', 4, 60)); flash = Math.max(flash, 0.25); shake = Math.max(shake, 8); P.sound('combo4', 0.7); haptic('heavy'); });
   (ev.spawns || []).forEach((e) => { burst(e.to, '#3b3150', 6, 80); P.sound('select', 0.4); });
   (ev.armorBounce || []).forEach((k) => { petFx.armorBounce = petFx.armorBounce || {}; petFx.armorBounce[k] = clock; P.sound('tap', 0.7); });
   (ev.armorBreak || []).forEach((k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 8; n++) { const a2 = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 120; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 100, t: clock + 0.4, life: 0.6, s: 4 + Math.random() * 4 }); } });
@@ -2255,9 +2273,9 @@ function juicePets(ev, colorsBefore) {
     petInk.push({ from, k: ev.bossSpit, t: clock + 0.1 });
     timeline.push({ t: clock + 0.1, fn: () => P.sound('combo2', 0.5) });
   }
-  if (ev.bossJump) { flash = 0.2; shake = Math.max(shake, 9); P.sound('combo4', 0.6); }
+  if (ev.bossJump) { flash = 0.2; shake = Math.max(shake, 9); P.sound('combo4', 0.6); haptic('heavy'); }
   if (ev.bigHits.length) {
-    petFx.bossHit = clock; shake = Math.max(shake, 6); P.sound('combo2', 0.7);
+    petFx.bossHit = clock; shake = Math.max(shake, 6); P.sound('combo2', 0.7); haptic('medium');
     // 碎掉的那颗红心飞出去
     const k0 = g.bigCells[0], x = cellX(k0 % 9) + L.cell, y = cellY(Math.floor(k0 / 9)) - 4;
     for (let n = 0; n < 8; n++) { const a2 = Math.random() * Math.PI * 2, sp = 90 + Math.random() * 120; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 120, t: clock, life: 0.6, s: 4 + Math.random() * 3 }); }
@@ -2297,7 +2315,7 @@ function juicePets(ev, colorsBefore) {
     });
     timeline.push({ t, fn: () => { P.sound(style === 'spit' ? 'combo2' : 'select', 0.6); if (act.rescue) flash = 0.3; } });
     if (style === 'spin') timeline.push({ t: spinEnd, fn: () => { P.sound('line', 0.7); flash = 0.12; } });
-    timeline.push({ t: t + jump + cells.length * per, fn: () => { P.vibrate(true); if (act.kind === 'box') { shake = Math.max(shake, 6); P.sound('combo3', 0.6); } } });
+    timeline.push({ t: t + jump + cells.length * per, fn: () => { haptic('medium'); if (act.kind === 'box') { shake = Math.max(shake, 6); P.sound('combo3', 0.6); } } });
     t = run.end - 0.1;
   });
   timeline.push({ t, fn: () => { if (g.over && mode === 'play') endGame(); } });
@@ -2314,18 +2332,19 @@ function juicePK(ev) {
     const col = C.blockColors[PG.PETS[ev.skill.pet].color][1];
     ev.skill.cells.forEach((k, j) => burst(k, col, 3, 110, j * 0.015));
     rings.push({ t: clock, big: false, at: at(ev.r * 9 + ev.c) });
-    flash = Math.max(flash, 0.15); shake = Math.max(shake, 6); P.sound('combo3', 0.7); P.vibrate(true);
+    flash = Math.max(flash, 0.15); shake = Math.max(shake, 6); P.sound('combo3', 0.7); haptic('medium');
   }
-  (ev.counter || []).forEach((c) => { burst(c.k, COL.brassLight, 18, 220); burst(c.k, '#ffffff', 6, 140); flash = Math.max(flash, 0.3); P.sound('combo4', 0.8); }); // 克住了：金光炸开
+  (ev.counter || []).forEach((c) => { burst(c.k, COL.brassLight, 18, 220); burst(c.k, '#ffffff', 6, 140); flash = Math.max(flash, 0.3); P.sound('combo4', 0.8); haptic('medium'); }); // 克住了：金光炸开
   (ev.petMiss || []).forEach((m) => { petFx.petMiss = petFx.petMiss || {}; petFx.petMiss[m.k] = clock; burst(m.k, '#9aa0b0', 5, 70); P.sound('deny', 0.5); }); // 打不动：灰光挡住
   (ev.drain || []).forEach((d, j) => {
     const n = Math.max(0, g.team.findIndex((p) => p.id === d.id));
     const from = g.board[d.from] === 4 ? { x: cellX(d.from % 9) + L.cell, y: cellY(Math.floor(d.from / 9)) + L.cell } : at(d.from);
     drainInk.push({ from, to: petPos(n), t: clock + 0.15 + j * 0.12, id: d.id, bomb: d.kind === 'bomb' });
   });
+  if (ev.drain && ev.drain.length) timeline.push({ t: clock + 0.65, fn: () => haptic('heavy') }); // 被偷能量 = 被打：第一团墨打到宠物时重重震一下，几团只震一次
   // 第一次被偷能量：演完喷墨，出一张说明卡（只出一次）
   if (ev.drain && ev.drain.length && !save.introSeen.steal) timeline.push({ t: clock + 1.2, fn: () => { if (mode === 'play' && !g.over && !save.introSeen.steal) { introKind = 'steal'; mode = 'intro'; } } });
-  if (ev.wave) { ev.wave.cells.forEach((k, j) => burst(k, '#3b3150', 10, 120, 0.1 + j * 0.04)); flash = Math.max(flash, 0.2); shake = Math.max(shake, 5); timeline.push({ t: clock + 0.1, fn: () => P.sound('combo2', 0.6) }); }
+  if (ev.wave) { ev.wave.cells.forEach((k, j) => burst(k, '#3b3150', 10, 120, 0.1 + j * 0.04)); flash = Math.max(flash, 0.2); shake = Math.max(shake, 5); timeline.push({ t: clock + 0.1, fn: () => { P.sound('combo2', 0.6); haptic('medium'); } }); }
 }
 function petRunPos(run) {
   const tt = clock - run.t0;
@@ -2398,7 +2417,7 @@ drawPetBoard = function () {
     return true;
   });
   // 墨怪冲宠物喷的墨团（0.9.8）：从墨怪飞到宠物头像，落到就抖一下、能量条闪红
-  drainInk = drainInk.filter((m) => { if (clock - m.t >= 0.5) { petFx.drained = petFx.drained || {}; petFx.drained[m.id] = clock; P.sound('pick', 0.6); P.vibrate(false); return false; } return true; });
+  drainInk = drainInk.filter((m) => { if (clock - m.t >= 0.5) { petFx.drained = petFx.drained || {}; petFx.drained[m.id] = clock; P.sound('pick', 0.6); return false; } return true; });
   drainInk.forEach((m) => {
     if (clock < m.t) return;
     const a = (clock - m.t) / 0.5, x = m.from.x + (m.to.x - m.from.x) * a, y = m.from.y + (m.to.y - m.from.y) * a - Math.sin(a * Math.PI) * 60;
@@ -2792,7 +2811,7 @@ function juiceSiege(sev, colorsBefore) {
         P.sound('line', 0.6);
       } else if (st.id === 'thunder' || st.id === 'chain') {
         (st.boxes || []).forEach((b) => { const c = boxCenter(b); beams.push({ from, to: c, t: clock, col }); rings.push({ t: clock, big: false, at: c }); });
-        P.sound('combo3', 0.6); shake = Math.max(shake, 7); P.vibrate(true);
+        P.sound('combo3', 0.6); shake = Math.max(shake, 7); haptic('medium');
       } else if (st.id === 'loader') {
         texts.push({ s: '上弦！', x: from.x, y: from.y + 34, t: clock, size: 18, col: COL.brassLight });
         P.sound('select', 0.5);
@@ -2836,7 +2855,7 @@ function juiceSiege(sev, colorsBefore) {
       const cp = cartPos();
       for (let n = 0; n < 16; n++) { const a = Math.random() * Math.PI * 2, sp = 100 + Math.random() * 180; fx.push({ kind: 'gear', x: cp.x, y: cp.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 100, t: clock, life: 0.9, s: 5 + Math.random() * 7, a: 0 }); }
       texts.push({ s: '打掉了！', x: W / 2, y: cp.y + 30, t: clock + 0.05, size: 30, col: COL.brassLight, big: true });
-      P.sound('win', 0.6); flash = 0.3;
+      P.sound('win', 0.6); flash = 0.3; haptic('heavy');
       say('打掉了！');
       siegeFx.chooseAt = clock + 0.6;
     }
@@ -3230,6 +3249,7 @@ function frame() {
     if ((mode === 'play' || mode === 'intro') && g.pets) drawPetCaption();
     if (mode === 'ad') drawAd();
   }
+  hapticFlush(); // 上一下没隔够 40 毫秒、留下来的震动
   P.nextFrame(frame);
 }
 

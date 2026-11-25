@@ -85,12 +85,34 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   let st = await page.evaluate(() => ({ pets: !!window.__game.g.pets, idx: window.__game.petIdx, mode: window.__game.mode, seen: !!window.__game.save.cutSeen.chapter0 }));
   ok(cut0 === 'cut' && st.seen, '第一次打开先放第一章开场过场（运镜大图）');
   ok(st.pets && st.idx === 0 && st.mode === 'play', '点一下跳过过场，直接进第 1 关（不先看地图）');
+  // 0.9.9 震动（照 ../../00_震动手感规矩_1.0.md 第三节）：打桩记下每一次震动
+  await page.evaluate(() => { window.__hapticLog = []; });
+  const hlog = () => page.evaluate(() => window.__hapticLog.slice());
+  {
+    // 拿起来又放回托盘：拿起震一下 light，没放成的那一下不震
+    const from = await page.evaluate(() => window.__game.slotCenter(0));
+    await page.mouse.move(off.x + from.x, off.y + from.y); await page.mouse.down(); await page.waitForTimeout(60);
+    const h1 = await hlog();
+    await page.mouse.move(off.x + from.x + 4, off.y + from.y + 3); await page.mouse.up(); await page.waitForTimeout(120);
+    const h2 = await hlog();
+    ok(h1.length === 1 && h1[0].level === 'light' && h2.length === 1, '震动：拿起方块震一下轻的，拖回托盘没放成不震（' + h2.map((x) => x.level).join(',') + '）');
+  }
   await dragTo(0, 3, 3);
   await page.waitForTimeout(140);
   await shot('02_第1关_第一下消一宫');
+  {
+    const h = (await hlog()).slice(1);
+    ok(h.length >= 2 && h[0].level === 'light' && h.slice(1).some((x) => x.level === 'medium') && !h.slice(1).some((x) => x.level === 'light'), '震动：拿起 light、放下消掉一宫只震一下 medium（' + h.map((x) => x.level).join(',') + '）');
+  }
+  const movesBefore = await page.evaluate(() => window.__game.g.moves), logBefore = (await hlog()).length;
   await petPlay(40);
   await page.waitForTimeout(1300);
   await shot('03_第1关完成');
+  {
+    const h = await hlog(), mv = (await page.evaluate(() => window.__game.g.moves)) - movesBefore, got = h.length - logBefore;
+    const gaps = h.slice(1).map((x, i) => x.t - h[i].t), minGap = gaps.length ? Math.min(...gaps) : 99;
+    ok(got >= mv * 2 && h.some((x) => x.level === 'heavy') && minGap >= 40, '震动：第 1 关 ' + mv + ' 手全都震了（' + got + ' 次，每手拿 + 放），过关 heavy，两次最少隔 ' + minGap + ' 毫秒');
+  }
   st = await page.evaluate(() => ({ won: window.__game.g.won, stage: window.__game.save.petStage }));
   st = await page.evaluate(() => ({ won: window.__game.g.won, stage: window.__game.save.petStage, pets: window.__game.save.petOrder.slice() }));
   ok(st.won && st.stage === 1 && st.pets.includes('tongque'), '真鼠标拖块过第 1 关，过关就送铜雀（0.9.8 起第 1 关就给）');
@@ -383,6 +405,16 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await shot('19_画册');
   ok((await page.evaluate(() => window.__game.mode)) === 'album', '画册打开');
 
+  {
+    // 设置里关掉震动：照样玩，一下都不震；整局所有震动两两都隔够 40 毫秒
+    await page.evaluate(() => { const G = window.__game; G.save.noVibrate = true; G.newGame(false); G.g.hand = [G.core.PIECES['1'], G.core.PIECES['1'], G.core.PIECES['1']]; });
+    const n0 = (await hlog()).length;
+    await dragTo(0, 0, 0); await page.waitForTimeout(120);
+    const n1 = (await hlog()).length;
+    await page.evaluate(() => { window.__game.save.noVibrate = false; });
+    const h = await hlog(), gaps = h.slice(1).map((x, i) => x.t - h[i].t);
+    ok(n1 === n0 && Math.min(...gaps) >= 40, '震动：设置里关掉就不震；整个测试 ' + h.length + ' 次震动，两次最少隔 ' + Math.min(...gaps) + ' 毫秒（' + ['light', 'medium', 'heavy'].map((l) => l + ' ' + h.filter((x) => x.level === l).length).join('、') + '）');
+  }
   ok(errors.length === 0, '没有报错' + (errors.length ? '：' + errors.slice(0, 3).join(' | ') : ''));
   console.log(`\n${pass} 项通过，${fail} 项没过`);
   await browser.close();

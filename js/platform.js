@@ -93,12 +93,17 @@ function nextFrame(fn) {
   return requestAnimationFrame(fn);
 }
 
-function vibrate(strong) {
-  if (isWx && wx.vibrateShort) {
-    wx.vibrateShort({ type: strong ? 'heavy' : 'light', fail() {} });
-  } else if (typeof navigator !== 'undefined' && navigator.vibrate) {
-    navigator.vibrate(strong ? 30 : 10);
-  }
+// 震动三档：light / medium / heavy（照 ../../../00_震动手感规矩_1.0.md）。旧写法 true = heavy、false = light 也认。
+// 安卓有的机型不认 type 会走 fail：安静，什么都不做。
+function vibrate(level) {
+  const type = level === true ? 'heavy' : level === 'medium' || level === 'heavy' ? level : 'light';
+  try {
+    if (isWx && wx.vibrateShort) {
+      wx.vibrateShort({ type, fail() {} });
+    } else if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate(type === 'heavy' ? 30 : type === 'medium' ? 18 : 10);
+    }
+  } catch (e) { /* 不报错 */ }
 }
 
 // 激励视频。填了广告位 id 且在微信里才放真广告，返回 true；

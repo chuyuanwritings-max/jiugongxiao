@@ -220,7 +220,7 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(400);
   await shot('13_章页');
   st = await page.evaluate(() => ({ mode: window.__game.mode, btn: window.__game.buttons().map((b) => b.id) }));
-  ok(st.mode === 'map' && st.btn.includes('play') && st.btn.includes('camp') && st.btn.includes('classic') && !st.btn.includes('siege') && st.btn.filter((x) => x.startsWith('cell')).length === 10, '章页：一章 9 个关卡格 + 头目卡、开打、营地、经典拼画；守城收起来了');
+  ok(st.mode === 'map' && st.btn.includes('play') && !st.btn.includes('camp') && !st.btn.includes('classic') && !st.btn.includes('album3') && !st.btn.includes('siege') && st.btn.filter((x) => x.startsWith('cell')).length === 10, '章页：一章 9 个关卡格 + 头目卡、开打；营地 / 画册 / 经典拼画入口都去掉了（0.9.7）');
   // 章页底部大按钮永远是「继续 · 第 N 关」：点别的格子只看预览，按钮不变（Cc 11-24：「底下的这个选项不应该变」）
   const fixedLbl = await page.evaluate(() => {
     const G = window.__game, lbl = () => (G.buttons().find((b) => b.id === 'play') || {}).label;
@@ -250,9 +250,10 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(300);
 
   // ---------- 经典拼画（0.1 / 0.2 的玩法） ----------
-  await click('classic');
+  // 0.9.7 起没有入口了（Cc：「经典拼画有啥用啊？」），代码还在，直接调起来测，免得留着的代码坏掉
+  await page.evaluate(() => window.__game.newGame(false));
   await page.waitForTimeout(300);
-  ok(await page.evaluate(() => !window.__game.g.stage && window.__game.mode === 'play'), '地图点「经典拼画」进 3 分钟拼画');
+  ok(await page.evaluate(() => !window.__game.g.stage && window.__game.mode === 'play'), '经典拼画（没有入口，代码还能跑）');
   // 机器人接着玩，用真拖拽
   let moves = 0, sawGhost = false;
   for (; moves < 40; moves++) {

@@ -8,7 +8,7 @@ const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
-const VERSION = '0.9.6'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.7'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -1692,13 +1692,7 @@ function drawChapter() {
     const cst = PLV[cur], who = cst.only ? ' · ' + PG.PETS[ownedOf(cst.only) || cst.only].name + '上场' : '';
     button('play', rP.x, btnY, rP.w, rP.h, '继续 · 第 ' + (cur + 1) + ' 关' + who, { size: 20, fn: () => newPetLevel(cur) });
   }
-  // 底栏
-  const campNew = canLevelAny();
-  iconBar([
-    { id: 'camp', label: '营地', icon: ICON.camp, dot: campNew, fn: () => openCamp() },
-    { id: 'album3', label: '画册', icon: ICON.album, fn: () => openAlbum() },
-    { id: 'classic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
-  ], barY, rBar);
+  // 底栏去掉了（0.9.7，Cc 11-25：「经典拼画有啥用啊？……画册有啥用啊？……营地有啥用啊？……这都删了吧」）。过关后照旧回营地那一页；给宠物升级还能从上面「先练谁」进
 }
 
 // ---------- 新东西的说明卡（一张小动画 + 一两行字 +「继续」） ----------
@@ -1873,7 +1867,7 @@ function drawAlbum() {
   });
 }
 
-// ---------- 主菜单：标题 + 继续 + 营地 / 经典拼画 / 画册 / 设置 ----------
+// ---------- 主菜单：标题 + 继续 + 设置 ----------
 // （正式的标题背景图等 Midjourney 主页图到了再换；现在是代码画的九宫格 + 宠物）
 function drawHome() {
   drawBg();
@@ -1927,9 +1921,7 @@ function drawHomeButtons(cy) {
   button('homePlay', rM.x, rM.y, rM.w, rM.h, save.petStage ? '继续 · ' + petLevelName(cur) : '开始', { size: 20, fn: () => { chapView = null; chapSel = null; mode = 'map'; } });
   // 0.8：只留一个金色大按钮，其余收成底栏图标（学经典数独首页）
   iconBar([
-    { id: 'homeCamp', label: '营地', icon: ICON.camp, dot: canLevelAny(), fn: () => openCamp() },
-    { id: 'homeAlbum', label: '画册', icon: ICON.album, fn: () => openAlbum() },
-    { id: 'homeClassic', label: '经典拼画', icon: ICON.classic, fn: () => newGame(false) },
+    // 营地、画册、经典拼画三个入口去掉了（0.9.7，Cc 11-25：「像是自己给自己搞复杂的乱七八糟的东西」）
     { id: 'homeSettings', label: '设置', icon: ICON.settings, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } },
   ], rBr.y, rBr);
   text('试玩版 ' + VERSION, W / 2, H - 18, 11, TH.faint, 'center', 'normal');

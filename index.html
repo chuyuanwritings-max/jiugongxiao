@@ -2118,68 +2118,6 @@ module.exports = [
 ];
 
 });
-__def("js/lzw.js", function (module, exports, require) {
-// 小压缩器（0.9.14）：微信小游戏里没有浏览器的 CompressionStream，试玩记录原样复制会有好几万字，微信发不出去。
-// 用 LZW（按字典把重复的片段换成编号），编号写成「URL 安全的 base64 字母」，每个编号定长、随字典变大而加宽。
-// 只用到最基本的 JS，微信里能跑。解码在 test/decode_log.js 里（同一个算法反过来）。格式：'JGL1:' + 字母串
-const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-function compress(str) {
-  // 先把字符串转成 UTF-8 字节（中文也能压），字典起始 256 个单字节
-  const bytes = [];
-  for (let i = 0; i < str.length; i++) {
-    let c = str.charCodeAt(i);
-    if (c >= 0xd800 && c <= 0xdbff && i + 1 < str.length) { const d = str.charCodeAt(i + 1); if (d >= 0xdc00 && d <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); i++; } }
-    if (c < 0x80) bytes.push(c);
-    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63));
-    else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-    else bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
-  }
-  const dict = new Map();
-  let next = 256, w = '', bits = 9, out = '', acc = 0, accBits = 0;
-  const emit = (code) => { acc = acc * Math.pow(2, bits) + code; accBits += bits; while (accBits >= 6) { accBits -= 6; const v = Math.floor(acc / Math.pow(2, accBits)); out += B64[v]; acc -= v * Math.pow(2, accBits); } };
-  for (let i = 0; i < bytes.length; i++) {
-    const c = String.fromCharCode(bytes[i]), wc = w + c;
-    if (w === '' || dict.has(wc) || (wc.length === 1)) { w = wc; continue; }
-    emit(w.length === 1 ? w.charCodeAt(0) : dict.get(w));
-    if (next < 1 << 20) { dict.set(wc, next++); if (next > (1 << bits) && bits < 20) bits++; }
-    w = c;
-  }
-  if (w !== '') emit(w.length === 1 ? w.charCodeAt(0) : dict.get(w));
-  if (accBits > 0) out += B64[acc * Math.pow(2, 6 - accBits)];
-  return 'JGL1:' + bytes.length + ':' + out;
-}
-function decompress(s) {
-  const m = /^JGL1:(\d+):(.*)$/s.exec(s);
-  if (!m) throw new Error('不是 JGL1 格式');
-  const total = +m[1], data = m[2], idx = {};
-  for (let i = 0; i < 64; i++) idx[B64[i]] = i;
-  const dict = []; for (let i = 0; i < 256; i++) dict.push([i]);
-  let bits = 9, acc = 0, accBits = 0, p = 0, prev = null;
-  const bytes = [];
-  const read = () => { while (accBits < bits) { if (p >= data.length) return -1; acc = acc * 64 + idx[data[p++]]; accBits += 6; } accBits -= bits; const v = Math.floor(acc / Math.pow(2, accBits)); acc -= v * Math.pow(2, accBits); return v; };
-  while (bytes.length < total) {
-    const code = read(); if (code < 0) break;
-    let entry;
-    if (code < dict.length) entry = dict[code];
-    else if (code === dict.length && prev) entry = prev.concat(prev[0]);
-    else throw new Error('坏数据');
-    for (const b of entry) bytes.push(b);
-    if (prev && dict.length < 1 << 20) { dict.push(prev.concat(entry[0])); if (dict.length + 1 > (1 << bits) && bits < 20) bits++; }
-    prev = entry;
-  }
-  // UTF-8 → 字符串
-  let str = '';
-  for (let i = 0; i < bytes.length;) {
-    const b = bytes[i];
-    let c;
-    if (b < 0x80) { c = b; i += 1; } else if (b < 0xe0) { c = ((b & 31) << 6) | (bytes[i + 1] & 63); i += 2; } else if (b < 0xf0) { c = ((b & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63); i += 3; } else { c = ((b & 7) << 18) | ((bytes[i + 1] & 63) << 12) | ((bytes[i + 2] & 63) << 6) | (bytes[i + 3] & 63); i += 4; }
-    str += String.fromCodePoint(c);
-  }
-  return str;
-}
-module.exports = { compress, decompress };
-
-});
 __def("js/main.js", function (module, exports, require) {
 // 洛书九宫 原型 0.3：旅程地图 + 15 关（照 Woodoku 旅程）、经典 3 分钟拼画、拖块、特效、结算、画册。规则全在 core.js，关卡在 levels.js。
 const P = require('./platform.js');
@@ -3508,14 +3446,18 @@ function drawTray() {
     const s = i === 3 ? Math.min(L.mini * 1.5, SLOT3W() - 26, L.trayH - 26) : Math.min(L.mini, (slotW() - 20) / p.w, (L.trayH - 16) / p.h);
     const sx = tight ? Math.sin(clock * 28) * 1.6 : 0;
     if (tight) { ctx.strokeStyle = 'rgba(226,85,59,' + (0.55 + Math.sin(clock * 8) * 0.3) + ')'; ctx.lineWidth = 2; rr(c.x - (p.w * s) / 2 - 5 + sx, c.y - (p.h * s) / 2 - 5, p.w * s + 10, p.h * s + 10, 6); ctx.stroke(); }
-    drawPiece(p, c.x + sx, c.y + Math.sin(clock * 3 + i) * 1.5, s, fits ? 1 : 0.28, handColor(i), g.handGem[i]);
+    // 只剩技能块能用（三块都放不下）：技能块跳一跳、外面一圈光，告诉玩家「拖它」（0.9.14，Fable debug 报告：不然三块全灰像卡死了）
+    const onlySkill = i === 3 && !g.over && ![0, 1, 2].some((j) => g.hand[j] && core.anyPlacement(g.board, g.hand[j]));
+    const bounce = onlySkill ? -Math.abs(Math.sin(clock * 6)) * 10 : 0;
+    if (onlySkill) { ctx.strokeStyle = 'rgba(243,210,122,' + (0.5 + Math.sin(clock * 6) * 0.4) + ')'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(c.x, c.y + bounce, s * 0.9, 0, Math.PI * 2); ctx.stroke(); }
+    drawPiece(p, c.x + sx, c.y + Math.sin(clock * 3 + i) * 1.5 + bounce, s, fits ? 1 : 0.28, handColor(i), g.handGem[i]);
     if (i === 3 && p.uses > 1) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.arc(c.x + s * 0.55, c.y - s * 0.55, 10, 0, Math.PI * 2); ctx.fill(); text('×' + p.uses, c.x + s * 0.55, c.y - s * 0.55 + 1, 11, '#fff'); } // 啃：还剩几口
     ctx.restore();
   }
   // 火麒麟的灯（0.9.12）：一直照着下一批的头几块，画在托盘下面
   if (g.previewN && g.nextHand && !g.over) {
     const ms = Math.max(8, L.mini * 0.55), ly = L.trayY + L.trayH + 6, n = Math.min(3, g.previewN);
-    let lx = 16;
+    let lx = PLAYTEST ? 62 : 16; // 试玩版：左下角让给「记一下」那支笔
     ctx.fillStyle = 'rgba(255,190,90,0.16)'; rr(lx - 6, ly - 2, 46 + n * (ms * 4 + 8), ms * 3 + 10, 8); ctx.fill();
     text('下一批', lx + 18, ly + ms * 1.5 + 3, 11, '#ffcf7a');
     lx += 44;

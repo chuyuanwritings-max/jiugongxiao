@@ -1325,14 +1325,18 @@ function drawTray() {
     const s = i === 3 ? Math.min(L.mini * 1.5, SLOT3W() - 26, L.trayH - 26) : Math.min(L.mini, (slotW() - 20) / p.w, (L.trayH - 16) / p.h);
     const sx = tight ? Math.sin(clock * 28) * 1.6 : 0;
     if (tight) { ctx.strokeStyle = 'rgba(226,85,59,' + (0.55 + Math.sin(clock * 8) * 0.3) + ')'; ctx.lineWidth = 2; rr(c.x - (p.w * s) / 2 - 5 + sx, c.y - (p.h * s) / 2 - 5, p.w * s + 10, p.h * s + 10, 6); ctx.stroke(); }
-    drawPiece(p, c.x + sx, c.y + Math.sin(clock * 3 + i) * 1.5, s, fits ? 1 : 0.28, handColor(i), g.handGem[i]);
+    // 只剩技能块能用（三块都放不下）：技能块跳一跳、外面一圈光，告诉玩家「拖它」（0.9.14，Fable debug 报告：不然三块全灰像卡死了）
+    const onlySkill = i === 3 && !g.over && ![0, 1, 2].some((j) => g.hand[j] && core.anyPlacement(g.board, g.hand[j]));
+    const bounce = onlySkill ? -Math.abs(Math.sin(clock * 6)) * 10 : 0;
+    if (onlySkill) { ctx.strokeStyle = 'rgba(243,210,122,' + (0.5 + Math.sin(clock * 6) * 0.4) + ')'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(c.x, c.y + bounce, s * 0.9, 0, Math.PI * 2); ctx.stroke(); }
+    drawPiece(p, c.x + sx, c.y + Math.sin(clock * 3 + i) * 1.5 + bounce, s, fits ? 1 : 0.28, handColor(i), g.handGem[i]);
     if (i === 3 && p.uses > 1) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.arc(c.x + s * 0.55, c.y - s * 0.55, 10, 0, Math.PI * 2); ctx.fill(); text('×' + p.uses, c.x + s * 0.55, c.y - s * 0.55 + 1, 11, '#fff'); } // 啃：还剩几口
     ctx.restore();
   }
   // 火麒麟的灯（0.9.12）：一直照着下一批的头几块，画在托盘下面
   if (g.previewN && g.nextHand && !g.over) {
     const ms = Math.max(8, L.mini * 0.55), ly = L.trayY + L.trayH + 6, n = Math.min(3, g.previewN);
-    let lx = 16;
+    let lx = PLAYTEST ? 62 : 16; // 试玩版：左下角让给「记一下」那支笔
     ctx.fillStyle = 'rgba(255,190,90,0.16)'; rr(lx - 6, ly - 2, 46 + n * (ms * 4 + 8), ms * 3 + 10, 8); ctx.fill();
     text('下一批', lx + 18, ly + ms * 1.5 + 3, 11, '#ffcf7a');
     lx += 44;

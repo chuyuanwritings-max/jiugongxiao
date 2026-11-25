@@ -23,9 +23,8 @@ function seekMove(g) {
   const isT = (b, k, gem) => (gem[k] && left[core.GEMS[gem[k]].id] > 0 && b[k]) || (b[k] === 3 && wantMon) || (b[k] === 2 && left.box > 0) || (b[k] === 4 && left.boss > 0);
   const cands = [];
   g.hand.forEach((p, i) => {
-    if (!p) return;
+    if (!p || p.special) return;
     for (const [r, c] of core.placements(g.board, p)) {
-      if (p.special) { cands.push({ i, r, c, v: PG.IS_MON(g.board[r * 9 + c]) ? 0 : U[18 + core.boxOf(r, c)].filter((k) => g.board[k] === 3 || g.board[k] === 5 || g.board[k] === 4).length * 100, board: g.board }); continue; }
       const res = core.placeAndClear(g.board, p, r, c);
       const gem = g.gem.slice();
       const hg = g.handGem && g.handGem[i];
@@ -54,16 +53,17 @@ function play(st, team, seed, skill) {
   const g = PG.createPetGame({ stage: st, team, seed, tutorial: !!st.__tut }); // 第 1 关第一次打：第一组发的是教学那三块（3×3、5 长条、4 长条），照 main.js
   const log = { firstClear: 0, firstGoal: 0, goalMoves: [] };
   let guard = 0, have = goalHave(g);
-  while (!g.over && guard++ < 400) {
+  while (!g.over && guard++ < 900) {
+    if (PG.useSkillIfGood(g)) { const h3 = goalHave(g); if (h3 > have) { if (!log.firstGoal) log.firstGoal = g.moves; log.goalMoves.push(g.moves); } have = h3; continue; }
     let m;
     if (skill === 8) m = g.rand() < 0.6 ? seekMove(g) : PG.bestMove(g, 0.25);
-    else if (skill === 7) { const x = g.rand(); if (x < 0.4) m = seekMove(g); else if (x < 0.7) m = PG.bestMove(g, 0.25); else { const all = []; g.hand.forEach((p, i) => { if (p) for (const [r, c] of core.placements(g.board, p)) all.push({ i, r, c }); }); m = all.length ? all[Math.floor(g.rand() * all.length)] : null; } }
+    else if (skill === 7) { const x = g.rand(); if (x < 0.4) m = seekMove(g); else if (x < 0.7) m = PG.bestMove(g, 0.25); else { const all = []; g.hand.forEach((p, i) => { if (p && !p.special) for (const [r, c] of core.placements(g.board, p)) all.push({ i, r, c }); }); m = all.length ? all[Math.floor(g.rand() * all.length)] : null; } }
     else if (skill < 0 && g.rand() < -skill) {
       const all = [];
-      g.hand.forEach((p, i) => { if (p) for (const [r, c] of core.placements(g.board, p)) all.push({ i, r, c }); });
+      g.hand.forEach((p, i) => { if (p && !p.special) for (const [r, c] of core.placements(g.board, p)) all.push({ i, r, c }); });
       m = all.length ? all[Math.floor(g.rand() * all.length)] : null;
     } else m = skill === 9 ? seekMove(g) : PG.bestMove(g, skill < 0 ? 0.25 : skill);
-    if (!m) break;
+    if (!m) { if (g.hand[3]) { const s2 = PG.skillBest(g); if (s2 && g.place(3, s2.r, s2.c)) continue; } break; }
     const ev = g.place(m.i, m.r, m.c);
     if (ev && (ev.units.length || ev.petActs.length) && !log.firstClear) log.firstClear = g.moves;
     const h2 = goalHave(g);

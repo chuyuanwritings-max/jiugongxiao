@@ -8,7 +8,7 @@ const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
-const VERSION = '0.9.7'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.8'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -391,7 +391,19 @@ function blob(cx, cy, r, fill, shade, hi) {
   }
 }
 // m：墨怪状态（没有就当小墨怪）；k：它在哪格（-1 = 说明卡上的示意）
+// 墨怪外面再加两样（0.9.8 怪和宠物 PK）：瞪着宠物时头上冒紫闪电（下一手要喷墨偷能量）；被不克它的技能块打到，一圈灰光挡住、抖一下
 function drawMon(m, k, cx, cy, r) {
+  const missAge = k >= 0 && petFx.petMiss && petFx.petMiss[k] !== undefined ? clock - petFx.petMiss[k] : 9;
+  const sh = missAge < 0.35 ? Math.sin(clock * 70) * 3 : 0;
+  drawMonBody(m, k, cx + sh, cy, r);
+  if (missAge < 0.5) { ctx.strokeStyle = 'rgba(190,195,210,' + (1 - missAge * 2) + ')'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, r * (1.05 + missAge * 0.6), 0, Math.PI * 2); ctx.stroke(); }
+  if (k >= 0 && m && m.tgt === -1 && PG.RULES.pester[m.t]) {
+    const bx = cx + r * 0.55, by = cy - r * 1.05, s2 = r * (0.5 + Math.abs(Math.sin(clock * 9)) * 0.12);
+    ctx.fillStyle = '#c58ae0'; ctx.strokeStyle = COL.ink; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(bx + s2 * 0.2, by - s2); ctx.lineTo(bx - s2 * 0.45, by + s2 * 0.1); ctx.lineTo(bx, by + s2 * 0.1); ctx.lineTo(bx - s2 * 0.2, by + s2); ctx.lineTo(bx + s2 * 0.45, by - s2 * 0.1); ctx.lineTo(bx, by - s2 * 0.1); ctx.closePath(); ctx.stroke(); ctx.fill();
+  }
+}
+function drawMonBody(m, k, cx, cy, r) {
   const t = m ? m.t : 'ink';
   const since = (tab) => (petFx[tab] && petFx[tab][k] !== undefined ? clock - petFx[tab][k] : 9);
   if (t === 'shell') {
@@ -545,9 +557,15 @@ const cellX = (c) => L.bx + c * L.cell;
 const cellY = (r) => L.by + r * L.cell;
 
 // ---------- 拖块 ----------
+// 0.9.8：有宠物的关，托盘右边多一格「宠物格」（技能块放这儿）；前三格挤一挤
+const hasPetSlot = () => !!(g && g.pets && g.team && g.team.length);
+const SLOT3W = () => (hasPetSlot() ? (W - 16) * 0.24 : 0); // 宠物格多宽
+const slotW = () => (W - SLOT3W() - (hasPetSlot() ? 8 : 0)) / 3;
 function slotCenter(i) {
-  return { x: (W / 3) * (i + 0.5), y: L.trayY + L.trayH / 2 };
+  if (i === 3) return { x: W - 8 - SLOT3W() / 2, y: L.trayY + L.trayH / 2 };
+  return { x: slotW() * (i + 0.5), y: L.trayY + L.trayH / 2 };
 }
+function slotAt(x) { if (hasPetSlot() && x > W - 8 - SLOT3W() - 4) return 3; return Math.max(0, Math.min(2, Math.floor(x / slotW()))); }
 // 手指在 (x, y) 时，块落在哪一格（左上角）
 function snap(p, x, y) {
   const left = x - (p.w * L.cell) / 2;
@@ -560,6 +578,7 @@ function fingerFor(p, r, c) {
 }
 // 如果放下去会消掉哪些格
 function previewClear(p, r, c) {
+  if (p.special === 'skill') return new Set(g.skillCells(p, r, c));
   const b = g.board.slice();
   for (const [dr, dc] of p.cells) b[(r + dr) * 9 + c + dc] = 1;
   const set = new Set();
@@ -582,7 +601,7 @@ function onTouch(type, id, x, y) {
     const b = hitButton(x, y);
     if (b) { downBtn = b.id; return; }
     if (mode === 'play' && !g.over && !(g.siege && (g.phase !== 'play' || siegeBusy())) && y > L.trayY - 20) {
-      const i = Math.max(0, Math.min(2, Math.floor(x / (W / 3))));
+      const i = slotAt(x);
       if (g.hand[i]) {
         drag = { slot: i, x, y, id };
         P.sound('pick', 0.5);
@@ -969,7 +988,9 @@ function drawBoard(showGhost) {
   }
   if (willClear && willClear.size) {
     ctx.fillStyle = 'rgba(243,210,122,' + (0.22 + Math.sin(clock * 10) * 0.08) + ')';
+    if (ghost && ghost.p.special === 'skill') { const sc = C.blockColors[PG.PETS[ghost.p.pet].color][1]; ctx.fillStyle = sc; ctx.globalAlpha = 0.4 + Math.sin(clock * 10) * 0.12; }
     willClear.forEach((k) => ctx.fillRect(cellX(k % 9), cellY(Math.floor(k / 9)), cell, cell));
+    ctx.globalAlpha = 1;
   }
   // 块
   for (let k = 0; k < 81; k++) {
@@ -1005,6 +1026,16 @@ function drawBoard(showGhost) {
     }
     block(x, y, s, 1, colorAt[k], willClear && willClear.has(k));
     if (g.gem[k]) gem(x, y, s, g.gem[k]);
+  }
+  // 技能块：打得动的墨怪套一圈亮光，打不动的打个灰叉（不克它）
+  if (ghost && ghost.p.special === 'skill' && willClear) {
+    const pet = { act: PG.PETS[ghost.p.pet].kind, color: PG.PETS[ghost.p.pet].color };
+    willClear.forEach((k) => {
+      if (g.board[k] !== 3 || !g.mon[k]) return;
+      const x = cellX(k % 9), y = cellY(Math.floor(k / 9));
+      if (PG.isCounter(g.mon[k], pet)) { ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + cell / 2, y + cell / 2, cell * 0.46, 0, Math.PI * 2); ctx.stroke(); }
+      else { ctx.strokeStyle = 'rgba(200,205,215,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + cell * 0.2, y + cell * 0.2); ctx.lineTo(x + cell * 0.8, y + cell * 0.8); ctx.moveTo(x + cell * 0.8, y + cell * 0.2); ctx.lineTo(x + cell * 0.2, y + cell * 0.8); ctx.stroke(); }
+    });
   }
   if (ghost) {
     ghost.p.cells.forEach(([dr, dc], n) => {
@@ -1079,6 +1110,17 @@ function drawLuoshu(r, c, x, y, s) {
 }
 function drawPiece(p, cx, cy, s, alpha, ci, hg) {
   const x0 = cx - (p.w * s) / 2, y0 = cy - (p.h * s) / 2;
+  if (p.special === 'skill') {
+    // 技能块（0.9.8）：宠物颜色的发光块，上面画那只宠物；一眼和普通块分开
+    const col = C.blockColors[PG.PETS[p.pet].color], glow = 0.5 + Math.sin(clock * 6) * 0.3;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = col[1]; ctx.globalAlpha = alpha * glow * 0.45; ctx.beginPath(); ctx.arc(cx, cy, s * 0.95, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = alpha;
+    block(x0, y0, s, alpha, PG.PETS[p.pet].color, true);
+    petIcon(p.pet, cx, cy, s * 0.82, 0, 0);
+    ctx.globalAlpha = 1;
+    return;
+  }
   if (p.special === 'fire') {
     // 火麒麟送的火块：发光的红块 + 一团火苗，一眼和普通块分开
     const glow = 0.5 + Math.sin(clock * 8) * 0.3;
@@ -1096,12 +1138,19 @@ function drawPiece(p, cx, cy, s, alpha, ci, hg) {
 function drawTray() {
   // 托盘
   ctx.fillStyle = COL.bg2; rr(8, L.trayY - 6, W - 16, L.trayH + 6, 14); ctx.fill();
-  for (let i = 0; i < 3; i++) {
+  if (hasPetSlot()) {
+    // 宠物格：一个虚线框，空着时淡淡画出出战宠物的影子；有技能块时框亮起来
+    const c3 = slotCenter(3), w3 = SLOT3W() - 8, h3 = L.trayH - 12, pt = g.team[0], col = C.blockColors[PG.PETS[pt.id].color];
+    ctx.strokeStyle = g.hand[3] ? col[1] : COL.woodLine; ctx.lineWidth = g.hand[3] ? 3 : 2; if (!g.hand[3]) ctx.setLineDash([5, 5]);
+    rr(c3.x - w3 / 2, c3.y - h3 / 2, w3, h3, 10); ctx.stroke(); ctx.setLineDash([]);
+    if (!g.hand[3]) { ctx.globalAlpha = 0.22; petIcon(pt.id, c3.x, c3.y, Math.min(w3, h3) * 0.6, 0, 0); ctx.globalAlpha = 1; }
+  }
+  for (let i = 0; i < 4; i++) {
     const p = g.hand[i];
     if (!p || (drag && drag.slot === i)) continue;
     const c = slotCenter(i);
     const fits = core.anyPlacement(g.board, p);
-    const s = Math.min(L.mini, ((W / 3) - 20) / p.w, (L.trayH - 16) / p.h);
+    const s = i === 3 ? Math.min(L.mini * 1.5, SLOT3W() - 26, L.trayH - 26) : Math.min(L.mini, (slotW() - 20) / p.w, (L.trayH - 16) / p.h);
     drawPiece(p, c.x, c.y + Math.sin(clock * 3 + i) * 1.5, s, fits ? 1 : 0.28, handColor(i), g.handGem[i]);
   }
   if (drag && g.hand[drag.slot]) {
@@ -1702,22 +1751,25 @@ const INTRO = {
   bubble: { title: '泡泡', lines: ['先把块放到泡泡上，', '再消掉那一格，泡泡就破'], row: ['b', 'b', '*', 'b', 'b'], key: 'bubble' },
   // 0.5 宠物线
   monster: { title: '小墨怪', lines: ['它蹲在哪一排，', '把那一排消掉，就抓到它'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
-  pet: { title: '铜雀在积蓄能量', lines: ['它脚下那条是能量：你每消掉一排，它攒一格', '攒够了，它就出手帮你'], pet: 'tongque' },
+  pet: { title: '铜雀攒能量', lines: ['你每消掉一排，它攒一格；攒满了，', '它吐一块技能块到右下角，拖到墨怪旁边'], pet: 'tongque' },
   gold: { title: '金色能让它攒得更快', lines: ['消掉金色的方块，金光飞到铜雀身上，', '每 3 块多攒一格能量'], pet: 'tongque', glow: true },
-  rock: { title: '铁石', lines: ['你消不掉它：只有宠物出手', '射到、炸到，才打得碎'], rockPic: true },
+  rock: { title: '铁石', lines: ['你消不掉它：', '宠物的技能块才打得碎'], rockPic: true },
   boss: { title: '大墨怪', lines: ['它占四格，消不掉；', '它在的那一排每消一次，打它一下'], pet: null, bossPic: true },
-  baozhu: { title: '爆竹鼠出战', lines: ['它会跳下来，', '把最挤的大格啃掉一大块'], pet: 'baozhu' },
-  modou: { title: '墨斗蚕出战', lines: ['它会爬过去吐丝，', '把快满的一排补满、消掉'], pet: 'modou' },
+  baozhu: { title: '爆竹鼠出战', lines: ['它的技能块炸一圈；', '跳跳怪、分身怪、铁石怕它'], pet: 'baozhu' },
+  modou: { title: '墨斗蚕出战', lines: ['它的技能块斜着打一个叉；', '馋嘴怪、墨苔怪怕它'], pet: 'modou' },
   gempiece: { title: '块上的宝石', lines: ['发下来的块上也有宝石：', '放下去，再把那一排消掉'], row: ['b', 'b', 'b', '.', 'b'], key: 'b' },
-  shell: { title: '甲壳怪', lines: ['身上几圈甲：每消一次掉一层，', '甲掉光再消一次就抓到。宠物一下掉两层'], monPic: { t: 'shell', hp: 2 } },
-  eat: { title: '馋嘴怪', lines: ['每隔几手，它啃掉身边一块；', '要啃的那块先亮牙印'], monPic: { t: 'eat', tgt: 1 } },
-  color: { title: '挑色怪', lines: ['那一排里要有它身上的颜色，', '才打得到它（宠物咬它不挑色）'], monPic: { t: 'color', col: 1 } },
-  moss: { title: '墨苔怪', lines: ['每隔几手，它往身边空格长一块墨；', '要长的地方先冒黑泡'], monPic: { t: 'moss' } },
-  bomb: { title: '炸弹怪', lines: ['肚子上的数字每放一块少 1，', '到 0 就往身边溅一圈墨'], monPic: { t: 'bomb', cd: 3 } },
-  split: { title: '分身怪', lines: ['打它一下，它裂成两只小墨怪；', '宠物抓它就不会裂'], monPic: { t: 'split' } },
-  boss2: { title: '大馋嘴', lines: ['每隔几手啃掉身边两块（先亮牙印）；', '啃完在嚼的那一下，打它掉两颗心'], bossPic: 'eat' },
-  boss3: { title: '分身王', lines: ['每挨一下，身边蹦出一只小墨怪；', '小墨怪抓光了它发抖，打它掉两颗心'], bossPic: 'split' },
-  jumper: { title: '跳跳怪', lines: ['每放 3 块它跳一格，', '跳不出它在的那个大格'], jumperPic: true },
+  shell: { title: '甲壳怪', lines: ['每消一次掉一层甲，甲掉光再消就抓到；', '铜雀的技能块一下连甲抓走'], monPic: { t: 'shell', hp: 2 } },
+  eat: { title: '馋嘴怪', lines: ['每隔几手啃掉身边一块（先亮牙印）；', '墨斗蚕的技能块一下抓走它'], monPic: { t: 'eat', tgt: 1 } },
+  color: { title: '挑色怪', lines: ['那一排里要有它身上的颜色才打得到；', '同色的宠物一下抓走它'], monPic: { t: 'color', col: 1 } },
+  moss: { title: '墨苔怪', lines: ['每隔几手往身边长一块墨（先冒黑泡）；', '墨斗蚕的技能块一下抓走它'], monPic: { t: 'moss' } },
+  bomb: { title: '炸弹怪', lines: ['数字每放一块少 1，到 0 溅一圈墨；', '火麒麟的技能块一下拆掉它'], monPic: { t: 'bomb', cd: 3 } },
+  split: { title: '分身怪', lines: ['打它一下，它裂成两只小墨怪；', '爆竹鼠的技能块抓它，不会裂'], monPic: { t: 'split' } },
+  boss2: { title: '大馋嘴', lines: ['每隔几手啃掉身边两块（先亮牙印）；', '墨斗蚕的技能块打它，一下掉 3 颗心'], bossPic: 'eat' },
+  boss3: { title: '分身王', lines: ['每挨一下，身边蹦出一只小墨怪；', '爆竹鼠的技能块打它，一下掉 3 颗心'], bossPic: 'split' },
+  jumper: { title: '跳跳怪', lines: ['每放 3 块它跳一格；', '爆竹鼠炸一圈，它跳不掉'], jumperPic: true },
+  wave: { title: '墨怪一波一波来', lines: ['这一波抓光了，下一波从墨里冒出来；', '你放的块都还在'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
+  qilin: { title: '火麒麟出战', lines: ['它的技能块竖着烧一条；', '炸弹怪怕它'], pet: 'qilin' },
+  steal: { title: '墨怪会偷能量', lines: ['冒紫闪电的墨怪，下一手偷宠物能量；', '克它的宠物不怕偷'], monPic: { t: 'shell', hp: 1 } },
   acts: { title: '让宠物多出手', lines: ['顶上画着几个宠物头像，', '它出手几次才算过关'], pet: null, actsPic: true },
 };
 // 关卡卡片：第几关、难不难、目标、谁出战（被点名换人时演一下换人），点「开打」进关
@@ -1969,8 +2021,10 @@ let petMsg = null; // 地图 / 营地上的一句提示 { text, t }
 const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕', qilin: '麟' };
 // 第 n 级升到 n+1 级要多少经验。经验从哪来：出战打一关（宠物每出手一次 +1，过关再 +3，没过 +1）、喂一颗丹 +2
 // Cc 11-24：「刚拿到宠物直接就升到 5 级……游戏时长会变得太短」→ 门槛提高，铜雀大约要打十几关才够进化
-const EXP_NEED = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 999];
-const DAN_EXP = 2;
+// 0.9.8（Fable 宠物重做第五节）：只有丹能升级，出战不涨经验。升一级要几颗丹：到 5 级共 14 颗，到 10 级再 50 颗，到 15 级再 100 颗。rec.exp = 这一级已经喂了几颗
+const EXP_NEED = [0, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 999];
+const DAN_EXP = 1;
+const LV_CAP = 15;
 function petNodeLabel(i) { return String(i + 1); }
 const CHAPTER_NAMES = ['第一章 · 工坊后院', '第二章 · 水车坊', '第三章 · 染坊'];
 const chapterName = (i) => CHAPTER_NAMES[Math.min(CHAPTER_NAMES.length - 1, Math.floor(i / 10))];
@@ -2059,7 +2113,7 @@ function newEvolution(id, levelIdx) {
 }
 function startPet(st) {
   startCommon();
-  timeline = []; ghosts = []; petRuns = []; beams = []; colBolts = []; petInk = []; // 上一关没演完的动画清掉，免得新盘面上闪一下
+  timeline = []; ghosts = []; petRuns = []; beams = []; colBolts = []; petInk = []; drainInk = []; // 上一关没演完的动画清掉，免得新盘面上闪一下
   for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
   petFx = { pop: {}, caption: null, banner: st.line ? { text: st.line, t: clock + 0.3 } : null, bossHit: -9, evolveFlash: -9 };
   if (st.intro && !save.introSeen[st.intro]) { introKind = st.intro; mode = 'intro'; }
@@ -2075,7 +2129,9 @@ function drawPetBar() {
     const p = petPos(n), d = PG.PETS[pt.id];
     const pop = petFx.pop[pt.id] ? Math.max(0, 0.3 - (clock - petFx.pop[pt.id])) / 0.3 : 0;
     const max = PG.energyMax(g, pt);
-    const full = pt.energy >= max - 1 && pt.energy > 0;
+    const full = !g.hand[3] && pt.energy >= max - 1 && pt.energy > 0;
+    const dAge = petFx.drained && petFx.drained[pt.id] !== undefined ? clock - petFx.drained[pt.id] : 9; // 刚被偷了能量：头像抖、能量条闪红
+    if (dAge < 0.5) { p.x += Math.sin(clock * 60) * 4 * (1 - dAge * 2); ctx.fillStyle = 'rgba(226,85,59,' + (0.5 - dAge) + ')'; ctx.beginPath(); ctx.arc(p.x, p.y, 30, 0, Math.PI * 2); ctx.fill(); }
     if (full) { ctx.strokeStyle = 'rgba(243,210,122,' + (0.4 + Math.sin(clock * 8) * 0.3) + ')'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, 28, 0, Math.PI * 2); ctx.stroke(); }
     if (petOut(pt.id)) { ctx.strokeStyle = COL.woodLine; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
     else petIcon(pt.id, p.x, p.y, 46, pt.lv, pop);
@@ -2083,7 +2139,7 @@ function drawPetBar() {
     const bw = 64, seg = (bw - (max - 1) * 3) / max, by = p.y + 29;
     for (let k = 0; k < max; k++) {
       ctx.fillStyle = COL.ink; rr(p.x - bw / 2 + k * (seg + 3) - 1, by - 1, seg + 2, 9, 3); ctx.fill();
-      ctx.fillStyle = k < pt.energy ? C.blockColors[d.color][1] : COL.woodDark; rr(p.x - bw / 2 + k * (seg + 3), by, seg, 7, 3); ctx.fill();
+      ctx.fillStyle = k < Math.min(max, pt.energy) ? C.blockColors[d.color][1] : COL.woodDark; rr(p.x - bw / 2 + k * (seg + 3), by, seg, 7, 3); ctx.fill();
     }
     buttons.push({ id: 'pet' + n, x: p.x - 28, y: p.y - 28, w: 56, h: 56, fn: () => { petFx.caption = { text: d.name + ' ' + pt.lv + ' 级：' + PG.petDesc(pt.id, pt.lv), t: clock }; } });
   });
@@ -2174,8 +2230,9 @@ function drawPetCaption() {
 }
 function juicePets(ev, colorsBefore) {
   // 先照原来的一套：放下弹一下、消掉的碎掉、收到的东西飞向顶上
-  juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo, streak: ev.streak, beat: ev.beat, collected: ev.collected });
+  juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? 4 : 1), collected: ev.collected });
   if (ev.fire) { const c = boxCenter(ev.fire.box); rings.push({ t: clock, big: false, at: c }); flash = 0.25; P.sound('combo3', 0.7); shake = Math.max(shake, 8); }
+  juicePK(ev);
   // 同色的块化成光点飞到宠物身上
   ev.sparks.forEach((sp) => {
     const n = g.team.findIndex((p) => p.id === sp.id), to = petPos(n);
@@ -2221,8 +2278,7 @@ function juicePets(ev, colorsBefore) {
     (ev.rocks || []).forEach((k) => { if (!cells.includes(k)) cells.push(k); });
     let pts = cells.map((k) => ({ x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2 }));
     if (act.kind === 'gift') {
-      const slot = g.hand.findIndex((x) => x && x.special === 'fire');
-      pts = [slotCenter(Math.max(0, slot))];
+      pts = [slotCenter(3)];
     }
     if (!pts.length) pts = [{ x: L.bx + L.board / 2, y: L.by + L.board / 2 }];
     // 动作照它是什么东西：鸟飞过去一路啄（fly）、鼠跑过去一路啃（gnaw）、蚕爬过去一路吐丝补满再一起消（spin）、麒麟原地吐一颗火球进托盘（spit）
@@ -2249,6 +2305,28 @@ function juicePets(ev, colorsBefore) {
 // 宠物跳出来啃格子：起跳（抛物线）→ 沿着要啃的格子一格格走、嘴一张一合 → 跳回头像的位置
 let petRuns = [];
 let petInk = []; // 大墨怪吐的墨团（飞行中）
+let drainInk = []; // 墨怪冲宠物喷的墨团（0.9.8）
+// 怪和宠物 PK 的画面（0.9.8，照 ../九宫消_宠物系统重做_20261125.md 第十三节）：技能块炸开、克住了、打不动、偷能量、下一波
+function juicePK(ev) {
+  const at = (k) => ({ x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2 });
+  const burst = (k, col, n, sp, delay) => { const c = at(k); for (let i = 0; i < n; i++) { const a2 = Math.random() * Math.PI * 2, v = (sp || 100) * (0.6 + Math.random() * 0.8); fx.push({ kind: 'shard', x: c.x, y: c.y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 90, t: clock + (delay || 0), life: 0.55, s: 3 + Math.random() * 4, col }); } };
+  if (ev.skill) {
+    const col = C.blockColors[PG.PETS[ev.skill.pet].color][1];
+    ev.skill.cells.forEach((k, j) => burst(k, col, 3, 110, j * 0.015));
+    rings.push({ t: clock, big: false, at: at(ev.r * 9 + ev.c) });
+    flash = Math.max(flash, 0.15); shake = Math.max(shake, 6); P.sound('combo3', 0.7); P.vibrate(true);
+  }
+  (ev.counter || []).forEach((c) => { burst(c.k, COL.brassLight, 18, 220); burst(c.k, '#ffffff', 6, 140); flash = Math.max(flash, 0.3); P.sound('combo4', 0.8); }); // 克住了：金光炸开
+  (ev.petMiss || []).forEach((m) => { petFx.petMiss = petFx.petMiss || {}; petFx.petMiss[m.k] = clock; burst(m.k, '#9aa0b0', 5, 70); P.sound('deny', 0.5); }); // 打不动：灰光挡住
+  (ev.drain || []).forEach((d, j) => {
+    const n = Math.max(0, g.team.findIndex((p) => p.id === d.id));
+    const from = g.board[d.from] === 4 ? { x: cellX(d.from % 9) + L.cell, y: cellY(Math.floor(d.from / 9)) + L.cell } : at(d.from);
+    drainInk.push({ from, to: petPos(n), t: clock + 0.15 + j * 0.12, id: d.id, bomb: d.kind === 'bomb' });
+  });
+  // 第一次被偷能量：演完喷墨，出一张说明卡（只出一次）
+  if (ev.drain && ev.drain.length && !save.introSeen.steal) timeline.push({ t: clock + 1.2, fn: () => { if (mode === 'play' && !g.over && !save.introSeen.steal) { introKind = 'steal'; mode = 'intro'; } } });
+  if (ev.wave) { ev.wave.cells.forEach((k, j) => burst(k, '#3b3150', 10, 120, 0.1 + j * 0.04)); flash = Math.max(flash, 0.2); shake = Math.max(shake, 5); timeline.push({ t: clock + 0.1, fn: () => P.sound('combo2', 0.6) }); }
+}
 function petRunPos(run) {
   const tt = clock - run.t0;
   const arc = (a, b, k, h) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k - Math.sin(k * Math.PI) * h });
@@ -2319,6 +2397,15 @@ drawPetBoard = function () {
     else block(x, y, L.cell, 1, gh.ci);
     return true;
   });
+  // 墨怪冲宠物喷的墨团（0.9.8）：从墨怪飞到宠物头像，落到就抖一下、能量条闪红
+  drainInk = drainInk.filter((m) => { if (clock - m.t >= 0.5) { petFx.drained = petFx.drained || {}; petFx.drained[m.id] = clock; P.sound('pick', 0.6); P.vibrate(false); return false; } return true; });
+  drainInk.forEach((m) => {
+    if (clock < m.t) return;
+    const a = (clock - m.t) / 0.5, x = m.from.x + (m.to.x - m.from.x) * a, y = m.from.y + (m.to.y - m.from.y) * a - Math.sin(a * Math.PI) * 60;
+    const r0 = m.bomb ? 12 : 8;
+    ctx.fillStyle = '#2a2236'; ctx.beginPath(); ctx.arc(x, y, r0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c58ae0'; ctx.beginPath(); ctx.arc(x - 2, y - 2, r0 * 0.35, 0, Math.PI * 2); ctx.fill();
+  });
   // 墨团飞过去
   petInk = petInk.filter((m) => clock - m.t < 0.45);
   petInk.forEach((m) => {
@@ -2353,24 +2440,8 @@ function settlePet() {
   const st = g.stage;
   const r = { won: g.won, reason: g.reason, near: g.nearMiss(), caught: g.caught, gift: null, evolved: null, dan: 0, danAuto: 0, exp: [] };
   const petReplay = !st.evolve && petIdx < save.petStage; // 这关以前过过
-  // 出战的宠物涨经验：每出手一次 +1，过关 +3（没过 +1）。加场借来的宠物不算
-  if (!st.evolve && !st.bonus) g.team.forEach((pt) => {
-    const rec = save.pets[pt.id];
-    if (!rec) return;
-    const before = { lv: rec.lv, exp: rec.exp };
-    // 出手经验最多算 5 次；已经过了的关重打，经验减半（免得刷最容易的关练级）
-    let gain = Math.min(5, g.petActsTotal[pt.id] || 0) + (g.won ? 3 : 1);
-    if (petReplay) gain = Math.max(1, Math.floor(gain / 2));
-    const x2 = !!(st.only && g.won && !petReplay && ownedOf(st.only) === pt.id); // 专属关第一次过：点名的那只经验加倍
-    if (x2) gain *= 2;
-    addExp(rec, gain);
-    r.exp.push({ id: pt.id, before, after: { lv: rec.lv, exp: rec.exp }, gain, x2 });
-  });
-  // 抓到的墨怪自动炼成丹，两只一颗，单出来的一只留到下一关（输了也算）。
-  // 0.9.3 Cc 11-24：「炼丹系统真的很蠢……给我的选项是伪选项……要不就自动炼丹，我选择为哪个宠物升级也就算了」
+  // 0.9.8：出战不涨经验，只有丹能升级（Fable 宠物重做第五节：「我派的是老鼠，却是铜雀进化了」这种事不再有）。抓到的墨怪只记个数
   save.gourd += g.caught;
-  const autoDan = Math.floor(save.gourd / 2);
-  save.dan += autoDan; save.gourd -= autoDan * 2; r.danAuto = autoDan;
   if (g.won) {
     if (st.evolve) {
       // 进化：换成新宠物，等级和经验带过去
@@ -2386,9 +2457,12 @@ function settlePet() {
       save.petStage = Math.max(save.petStage, petIdx + 1);
       if (st.gift && !save.pets[st.gift]) { save.pets[st.gift] = { lv: 1, exp: 0 }; save.petOrder.push(st.gift); r.gift = st.gift; if (!save.activePet) save.activePet = st.gift; }
     }
-    // 过关送一颗丹：拿到宠物以后、第一次过这关才送
-    if (save.petOrder.length && !petReplay) { save.dan += 1; r.dan = 1; }
-    if (st.only && !petReplay) { save.dan += 1; r.dan += 1; } // 专属关第一次过：多送 1 颗丹
+    // 掉丹（0.9.8，第一次过这关才掉）：头目关 3 颗、难关 2 颗；普通关六成会掉 1 颗，连着两关没掉、第三关一定掉
+    if (save.petOrder.length && !petReplay && !st.evolve) {
+      let n = st.goal.boss ? 3 : st.hard ? 2 : 0;
+      if (!n) { save.danDry = save.danDry || 0; if (save.danDry >= 2 || Math.random() < 0.6) { n = 1; save.danDry = 0; } else save.danDry++; }
+      save.dan += n; r.dan = n;
+    }
   }
   // 同一关连输几次（专属关连输两次，结算页给「借一只再来」）
   if (!st.evolve) { save.loss = save.loss || {}; if (g.won) delete save.loss[petIdx]; else save.loss[petIdx] = (save.loss[petIdx] || 0) + 1; }
@@ -2475,7 +2549,7 @@ function drawPetOver() {
   });
   // 抓到的怪收进葫芦
   if (r.caught) {
-    const msg = '抓到 ' + r.caught + ' 只墨怪 · 得 ' + (r.danAuto + r.dan) + ' 颗丹';
+    const msg = '抓到 ' + r.caught + ' 只墨怪' + (r.dan ? ' · 掉了 ' + r.dan + ' 颗丹' : r.won && save.petOrder.length && !(g._settleInfo && g._settleInfo.petReplay) ? ' · 这关没掉丹' : '');
     ctx.font = 'normal 15px "PingFang SC", sans-serif';
     const tw = ctx.measureText(msg).width;
     gourdIcon(W / 2 - tw / 2 - 4, y + 12, 18);
@@ -2524,7 +2598,7 @@ function drawCamp() {
   // 丹：打关自动炼好（两只墨怪一颗），这里只看有多少、喂给谁
   gourdIcon(gx0 + 38, y + gh / 2 + 2, 38);
   text(save.dan + ' 颗丹', gx0 + 76, y + gh * 0.38, 20, COL.brassLight, 'left');
-  text('打关抓的墨怪会自动炼成丹（两只一颗）', gx0 + 76, y + gh * 0.7, 11, COL.dim, 'left', 'normal');
+  text('过关有机会掉丹：头目关 3 颗、难关 2 颗', gx0 + 76, y + gh * 0.7, 11, COL.dim, 'left', 'normal');
   y = rPt.y;
   // 底下：出发按钮、下一关卡
   const btnY = rGo.y, nextY = rNx.y;
@@ -2548,7 +2622,7 @@ function drawCamp() {
     text(line2, tx, cy + 39 * f, fs, COL.brassLight, 'left', 'normal');
     // 经验：数字写在条的上面，不再塞进条里
     const need = EXP_NEED[rec.lv] || 999, canEvolve = d.evo && rec.lv >= d.evoLv;
-    text(canEvolve ? '可以进化了！' : '经验 ' + rec.exp + ' / ' + need + (d.evo ? ' · ' + d.evoLv + ' 级进化' : ''), tx, cy + 58 * f, 11, canEvolve ? TH.jade : COL.dim, 'left', 'normal');
+    text(canEvolve ? '可以进化了！' : '丹 ' + rec.exp + ' / ' + need + (d.evo ? ' · ' + d.evoLv + ' 级进化' : ''), tx, cy + 58 * f, 11, canEvolve ? TH.jade : COL.dim, 'left', 'normal');
     ctx.fillStyle = TH.line; rr(tx, cy + 70 * f, rw, 8, 4); ctx.fill();
     ctx.fillStyle = TH.jade; rr(tx, cy + 70 * f, Math.max(6, rw * Math.min(1, rec.exp / need)), 8, 4); ctx.fill();
     const bx2 = cx + cw - 12 - 84;
@@ -2586,15 +2660,15 @@ function drawCamp() {
 function addExp(rec, n) {
   rec.exp += n;
   let up = 0;
-  while (rec.lv < 10 && rec.exp >= EXP_NEED[rec.lv]) { rec.exp -= EXP_NEED[rec.lv]; rec.lv++; up++; }
+  while (rec.lv < LV_CAP && rec.exp >= EXP_NEED[rec.lv]) { rec.exp -= EXP_NEED[rec.lv]; rec.lv++; up++; }
   return up;
 }
 // 升一级要几颗丹（0.9.3：一下升一级，学 AFK Arena 的「升级」按钮；不再一颗一颗喂）
-const danToLevel = (id) => { const rec = save.pets[id]; return rec && rec.lv < 10 ? Math.ceil((EXP_NEED[rec.lv] - rec.exp) / DAN_EXP) : Infinity; };
+const danToLevel = (id) => { const rec = save.pets[id]; return rec && rec.lv < LV_CAP ? Math.ceil((EXP_NEED[rec.lv] - rec.exp) / DAN_EXP) : Infinity; };
 const canLevelAny = () => save.petOrder.some((id) => { const d = PG.PETS[id], rec = save.pets[id]; return (d.evo && rec.lv >= d.evoLv) || (!(d.evo && rec.lv >= d.evoLv) && save.dan >= danToLevel(id)); });
 function levelUpPet(id) {
   const rec = save.pets[id], cost = danToLevel(id);
-  if (save.dan < cost) { petMsg = { text: '还差 ' + (cost - save.dan) + ' 颗丹：去打关抓墨怪', t: clock }; return; }
+  if (save.dan < cost) { petMsg = { text: '还差 ' + (cost - save.dan) + ' 颗丹：去打关，过关有机会掉丹', t: clock }; return; }
   save.dan -= cost;
   addExp(rec, cost * DAN_EXP);
   petFx.pop[id] = clock;

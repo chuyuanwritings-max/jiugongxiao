@@ -2028,7 +2028,7 @@ const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
-const VERSION = '0.9.7'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.8'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -2411,7 +2411,19 @@ function blob(cx, cy, r, fill, shade, hi) {
   }
 }
 // m：墨怪状态（没有就当小墨怪）；k：它在哪格（-1 = 说明卡上的示意）
+// 墨怪外面再加两样（0.9.8 怪和宠物 PK）：瞪着宠物时头上冒紫闪电（下一手要喷墨偷能量）；被不克它的技能块打到，一圈灰光挡住、抖一下
 function drawMon(m, k, cx, cy, r) {
+  const missAge = k >= 0 && petFx.petMiss && petFx.petMiss[k] !== undefined ? clock - petFx.petMiss[k] : 9;
+  const sh = missAge < 0.35 ? Math.sin(clock * 70) * 3 : 0;
+  drawMonBody(m, k, cx + sh, cy, r);
+  if (missAge < 0.5) { ctx.strokeStyle = 'rgba(190,195,210,' + (1 - missAge * 2) + ')'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, r * (1.05 + missAge * 0.6), 0, Math.PI * 2); ctx.stroke(); }
+  if (k >= 0 && m && m.tgt === -1 && PG.RULES.pester[m.t]) {
+    const bx = cx + r * 0.55, by = cy - r * 1.05, s2 = r * (0.5 + Math.abs(Math.sin(clock * 9)) * 0.12);
+    ctx.fillStyle = '#c58ae0'; ctx.strokeStyle = COL.ink; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(bx + s2 * 0.2, by - s2); ctx.lineTo(bx - s2 * 0.45, by + s2 * 0.1); ctx.lineTo(bx, by + s2 * 0.1); ctx.lineTo(bx - s2 * 0.2, by + s2); ctx.lineTo(bx + s2 * 0.45, by - s2 * 0.1); ctx.lineTo(bx, by - s2 * 0.1); ctx.closePath(); ctx.stroke(); ctx.fill();
+  }
+}
+function drawMonBody(m, k, cx, cy, r) {
   const t = m ? m.t : 'ink';
   const since = (tab) => (petFx[tab] && petFx[tab][k] !== undefined ? clock - petFx[tab][k] : 9);
   if (t === 'shell') {
@@ -2565,9 +2577,15 @@ const cellX = (c) => L.bx + c * L.cell;
 const cellY = (r) => L.by + r * L.cell;
 
 // ---------- 拖块 ----------
+// 0.9.8：有宠物的关，托盘右边多一格「宠物格」（技能块放这儿）；前三格挤一挤
+const hasPetSlot = () => !!(g && g.pets && g.team && g.team.length);
+const SLOT3W = () => (hasPetSlot() ? (W - 16) * 0.24 : 0); // 宠物格多宽
+const slotW = () => (W - SLOT3W() - (hasPetSlot() ? 8 : 0)) / 3;
 function slotCenter(i) {
-  return { x: (W / 3) * (i + 0.5), y: L.trayY + L.trayH / 2 };
+  if (i === 3) return { x: W - 8 - SLOT3W() / 2, y: L.trayY + L.trayH / 2 };
+  return { x: slotW() * (i + 0.5), y: L.trayY + L.trayH / 2 };
 }
+function slotAt(x) { if (hasPetSlot() && x > W - 8 - SLOT3W() - 4) return 3; return Math.max(0, Math.min(2, Math.floor(x / slotW()))); }
 // 手指在 (x, y) 时，块落在哪一格（左上角）
 function snap(p, x, y) {
   const left = x - (p.w * L.cell) / 2;
@@ -2580,6 +2598,7 @@ function fingerFor(p, r, c) {
 }
 // 如果放下去会消掉哪些格
 function previewClear(p, r, c) {
+  if (p.special === 'skill') return new Set(g.skillCells(p, r, c));
   const b = g.board.slice();
   for (const [dr, dc] of p.cells) b[(r + dr) * 9 + c + dc] = 1;
   const set = new Set();
@@ -2602,7 +2621,7 @@ function onTouch(type, id, x, y) {
     const b = hitButton(x, y);
     if (b) { downBtn = b.id; return; }
     if (mode === 'play' && !g.over && !(g.siege && (g.phase !== 'play' || siegeBusy())) && y > L.trayY - 20) {
-      const i = Math.max(0, Math.min(2, Math.floor(x / (W / 3))));
+      const i = slotAt(x);
       if (g.hand[i]) {
         drag = { slot: i, x, y, id };
         P.sound('pick', 0.5);
@@ -2989,7 +3008,9 @@ function drawBoard(showGhost) {
   }
   if (willClear && willClear.size) {
     ctx.fillStyle = 'rgba(243,210,122,' + (0.22 + Math.sin(clock * 10) * 0.08) + ')';
+    if (ghost && ghost.p.special === 'skill') { const sc = C.blockColors[PG.PETS[ghost.p.pet].color][1]; ctx.fillStyle = sc; ctx.globalAlpha = 0.4 + Math.sin(clock * 10) * 0.12; }
     willClear.forEach((k) => ctx.fillRect(cellX(k % 9), cellY(Math.floor(k / 9)), cell, cell));
+    ctx.globalAlpha = 1;
   }
   // 块
   for (let k = 0; k < 81; k++) {
@@ -3025,6 +3046,16 @@ function drawBoard(showGhost) {
     }
     block(x, y, s, 1, colorAt[k], willClear && willClear.has(k));
     if (g.gem[k]) gem(x, y, s, g.gem[k]);
+  }
+  // 技能块：打得动的墨怪套一圈亮光，打不动的打个灰叉（不克它）
+  if (ghost && ghost.p.special === 'skill' && willClear) {
+    const pet = { act: PG.PETS[ghost.p.pet].kind, color: PG.PETS[ghost.p.pet].color };
+    willClear.forEach((k) => {
+      if (g.board[k] !== 3 || !g.mon[k]) return;
+      const x = cellX(k % 9), y = cellY(Math.floor(k / 9));
+      if (PG.isCounter(g.mon[k], pet)) { ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + cell / 2, y + cell / 2, cell * 0.46, 0, Math.PI * 2); ctx.stroke(); }
+      else { ctx.strokeStyle = 'rgba(200,205,215,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + cell * 0.2, y + cell * 0.2); ctx.lineTo(x + cell * 0.8, y + cell * 0.8); ctx.moveTo(x + cell * 0.8, y + cell * 0.2); ctx.lineTo(x + cell * 0.2, y + cell * 0.8); ctx.stroke(); }
+    });
   }
   if (ghost) {
     ghost.p.cells.forEach(([dr, dc], n) => {
@@ -3099,6 +3130,17 @@ function drawLuoshu(r, c, x, y, s) {
 }
 function drawPiece(p, cx, cy, s, alpha, ci, hg) {
   const x0 = cx - (p.w * s) / 2, y0 = cy - (p.h * s) / 2;
+  if (p.special === 'skill') {
+    // 技能块（0.9.8）：宠物颜色的发光块，上面画那只宠物；一眼和普通块分开
+    const col = C.blockColors[PG.PETS[p.pet].color], glow = 0.5 + Math.sin(clock * 6) * 0.3;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = col[1]; ctx.globalAlpha = alpha * glow * 0.45; ctx.beginPath(); ctx.arc(cx, cy, s * 0.95, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = alpha;
+    block(x0, y0, s, alpha, PG.PETS[p.pet].color, true);
+    petIcon(p.pet, cx, cy, s * 0.82, 0, 0);
+    ctx.globalAlpha = 1;
+    return;
+  }
   if (p.special === 'fire') {
     // 火麒麟送的火块：发光的红块 + 一团火苗，一眼和普通块分开
     const glow = 0.5 + Math.sin(clock * 8) * 0.3;
@@ -3116,12 +3158,19 @@ function drawPiece(p, cx, cy, s, alpha, ci, hg) {
 function drawTray() {
   // 托盘
   ctx.fillStyle = COL.bg2; rr(8, L.trayY - 6, W - 16, L.trayH + 6, 14); ctx.fill();
-  for (let i = 0; i < 3; i++) {
+  if (hasPetSlot()) {
+    // 宠物格：一个虚线框，空着时淡淡画出出战宠物的影子；有技能块时框亮起来
+    const c3 = slotCenter(3), w3 = SLOT3W() - 8, h3 = L.trayH - 12, pt = g.team[0], col = C.blockColors[PG.PETS[pt.id].color];
+    ctx.strokeStyle = g.hand[3] ? col[1] : COL.woodLine; ctx.lineWidth = g.hand[3] ? 3 : 2; if (!g.hand[3]) ctx.setLineDash([5, 5]);
+    rr(c3.x - w3 / 2, c3.y - h3 / 2, w3, h3, 10); ctx.stroke(); ctx.setLineDash([]);
+    if (!g.hand[3]) { ctx.globalAlpha = 0.22; petIcon(pt.id, c3.x, c3.y, Math.min(w3, h3) * 0.6, 0, 0); ctx.globalAlpha = 1; }
+  }
+  for (let i = 0; i < 4; i++) {
     const p = g.hand[i];
     if (!p || (drag && drag.slot === i)) continue;
     const c = slotCenter(i);
     const fits = core.anyPlacement(g.board, p);
-    const s = Math.min(L.mini, ((W / 3) - 20) / p.w, (L.trayH - 16) / p.h);
+    const s = i === 3 ? Math.min(L.mini * 1.5, SLOT3W() - 26, L.trayH - 26) : Math.min(L.mini, (slotW() - 20) / p.w, (L.trayH - 16) / p.h);
     drawPiece(p, c.x, c.y + Math.sin(clock * 3 + i) * 1.5, s, fits ? 1 : 0.28, handColor(i), g.handGem[i]);
   }
   if (drag && g.hand[drag.slot]) {
@@ -3722,22 +3771,25 @@ const INTRO = {
   bubble: { title: '泡泡', lines: ['先把块放到泡泡上，', '再消掉那一格，泡泡就破'], row: ['b', 'b', '*', 'b', 'b'], key: 'bubble' },
   // 0.5 宠物线
   monster: { title: '小墨怪', lines: ['它蹲在哪一排，', '把那一排消掉，就抓到它'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
-  pet: { title: '铜雀在积蓄能量', lines: ['它脚下那条是能量：你每消掉一排，它攒一格', '攒够了，它就出手帮你'], pet: 'tongque' },
+  pet: { title: '铜雀攒能量', lines: ['你每消掉一排，它攒一格；攒满了，', '它吐一块技能块到右下角，拖到墨怪旁边'], pet: 'tongque' },
   gold: { title: '金色能让它攒得更快', lines: ['消掉金色的方块，金光飞到铜雀身上，', '每 3 块多攒一格能量'], pet: 'tongque', glow: true },
-  rock: { title: '铁石', lines: ['你消不掉它：只有宠物出手', '射到、炸到，才打得碎'], rockPic: true },
+  rock: { title: '铁石', lines: ['你消不掉它：', '宠物的技能块才打得碎'], rockPic: true },
   boss: { title: '大墨怪', lines: ['它占四格，消不掉；', '它在的那一排每消一次，打它一下'], pet: null, bossPic: true },
-  baozhu: { title: '爆竹鼠出战', lines: ['它会跳下来，', '把最挤的大格啃掉一大块'], pet: 'baozhu' },
-  modou: { title: '墨斗蚕出战', lines: ['它会爬过去吐丝，', '把快满的一排补满、消掉'], pet: 'modou' },
+  baozhu: { title: '爆竹鼠出战', lines: ['它的技能块炸一圈；', '跳跳怪、分身怪、铁石怕它'], pet: 'baozhu' },
+  modou: { title: '墨斗蚕出战', lines: ['它的技能块斜着打一个叉；', '馋嘴怪、墨苔怪怕它'], pet: 'modou' },
   gempiece: { title: '块上的宝石', lines: ['发下来的块上也有宝石：', '放下去，再把那一排消掉'], row: ['b', 'b', 'b', '.', 'b'], key: 'b' },
-  shell: { title: '甲壳怪', lines: ['身上几圈甲：每消一次掉一层，', '甲掉光再消一次就抓到。宠物一下掉两层'], monPic: { t: 'shell', hp: 2 } },
-  eat: { title: '馋嘴怪', lines: ['每隔几手，它啃掉身边一块；', '要啃的那块先亮牙印'], monPic: { t: 'eat', tgt: 1 } },
-  color: { title: '挑色怪', lines: ['那一排里要有它身上的颜色，', '才打得到它（宠物咬它不挑色）'], monPic: { t: 'color', col: 1 } },
-  moss: { title: '墨苔怪', lines: ['每隔几手，它往身边空格长一块墨；', '要长的地方先冒黑泡'], monPic: { t: 'moss' } },
-  bomb: { title: '炸弹怪', lines: ['肚子上的数字每放一块少 1，', '到 0 就往身边溅一圈墨'], monPic: { t: 'bomb', cd: 3 } },
-  split: { title: '分身怪', lines: ['打它一下，它裂成两只小墨怪；', '宠物抓它就不会裂'], monPic: { t: 'split' } },
-  boss2: { title: '大馋嘴', lines: ['每隔几手啃掉身边两块（先亮牙印）；', '啃完在嚼的那一下，打它掉两颗心'], bossPic: 'eat' },
-  boss3: { title: '分身王', lines: ['每挨一下，身边蹦出一只小墨怪；', '小墨怪抓光了它发抖，打它掉两颗心'], bossPic: 'split' },
-  jumper: { title: '跳跳怪', lines: ['每放 3 块它跳一格，', '跳不出它在的那个大格'], jumperPic: true },
+  shell: { title: '甲壳怪', lines: ['每消一次掉一层甲，甲掉光再消就抓到；', '铜雀的技能块一下连甲抓走'], monPic: { t: 'shell', hp: 2 } },
+  eat: { title: '馋嘴怪', lines: ['每隔几手啃掉身边一块（先亮牙印）；', '墨斗蚕的技能块一下抓走它'], monPic: { t: 'eat', tgt: 1 } },
+  color: { title: '挑色怪', lines: ['那一排里要有它身上的颜色才打得到；', '同色的宠物一下抓走它'], monPic: { t: 'color', col: 1 } },
+  moss: { title: '墨苔怪', lines: ['每隔几手往身边长一块墨（先冒黑泡）；', '墨斗蚕的技能块一下抓走它'], monPic: { t: 'moss' } },
+  bomb: { title: '炸弹怪', lines: ['数字每放一块少 1，到 0 溅一圈墨；', '火麒麟的技能块一下拆掉它'], monPic: { t: 'bomb', cd: 3 } },
+  split: { title: '分身怪', lines: ['打它一下，它裂成两只小墨怪；', '爆竹鼠的技能块抓它，不会裂'], monPic: { t: 'split' } },
+  boss2: { title: '大馋嘴', lines: ['每隔几手啃掉身边两块（先亮牙印）；', '墨斗蚕的技能块打它，一下掉 3 颗心'], bossPic: 'eat' },
+  boss3: { title: '分身王', lines: ['每挨一下，身边蹦出一只小墨怪；', '爆竹鼠的技能块打它，一下掉 3 颗心'], bossPic: 'split' },
+  jumper: { title: '跳跳怪', lines: ['每放 3 块它跳一格；', '爆竹鼠炸一圈，它跳不掉'], jumperPic: true },
+  wave: { title: '墨怪一波一波来', lines: ['这一波抓光了，下一波从墨里冒出来；', '你放的块都还在'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
+  qilin: { title: '火麒麟出战', lines: ['它的技能块竖着烧一条；', '炸弹怪怕它'], pet: 'qilin' },
+  steal: { title: '墨怪会偷能量', lines: ['冒紫闪电的墨怪，下一手偷宠物能量；', '克它的宠物不怕偷'], monPic: { t: 'shell', hp: 1 } },
   acts: { title: '让宠物多出手', lines: ['顶上画着几个宠物头像，', '它出手几次才算过关'], pet: null, actsPic: true },
 };
 // 关卡卡片：第几关、难不难、目标、谁出战（被点名换人时演一下换人），点「开打」进关
@@ -3989,8 +4041,10 @@ let petMsg = null; // 地图 / 营地上的一句提示 { text, t }
 const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕', qilin: '麟' };
 // 第 n 级升到 n+1 级要多少经验。经验从哪来：出战打一关（宠物每出手一次 +1，过关再 +3，没过 +1）、喂一颗丹 +2
 // Cc 11-24：「刚拿到宠物直接就升到 5 级……游戏时长会变得太短」→ 门槛提高，铜雀大约要打十几关才够进化
-const EXP_NEED = [0, 10, 15, 20, 25, 30, 35, 40, 45, 50, 999];
-const DAN_EXP = 2;
+// 0.9.8（Fable 宠物重做第五节）：只有丹能升级，出战不涨经验。升一级要几颗丹：到 5 级共 14 颗，到 10 级再 50 颗，到 15 级再 100 颗。rec.exp = 这一级已经喂了几颗
+const EXP_NEED = [0, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 999];
+const DAN_EXP = 1;
+const LV_CAP = 15;
 function petNodeLabel(i) { return String(i + 1); }
 const CHAPTER_NAMES = ['第一章 · 工坊后院', '第二章 · 水车坊', '第三章 · 染坊'];
 const chapterName = (i) => CHAPTER_NAMES[Math.min(CHAPTER_NAMES.length - 1, Math.floor(i / 10))];
@@ -4079,7 +4133,7 @@ function newEvolution(id, levelIdx) {
 }
 function startPet(st) {
   startCommon();
-  timeline = []; ghosts = []; petRuns = []; beams = []; colBolts = []; petInk = []; // 上一关没演完的动画清掉，免得新盘面上闪一下
+  timeline = []; ghosts = []; petRuns = []; beams = []; colBolts = []; petInk = []; drainInk = []; // 上一关没演完的动画清掉，免得新盘面上闪一下
   for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
   petFx = { pop: {}, caption: null, banner: st.line ? { text: st.line, t: clock + 0.3 } : null, bossHit: -9, evolveFlash: -9 };
   if (st.intro && !save.introSeen[st.intro]) { introKind = st.intro; mode = 'intro'; }
@@ -4095,7 +4149,9 @@ function drawPetBar() {
     const p = petPos(n), d = PG.PETS[pt.id];
     const pop = petFx.pop[pt.id] ? Math.max(0, 0.3 - (clock - petFx.pop[pt.id])) / 0.3 : 0;
     const max = PG.energyMax(g, pt);
-    const full = pt.energy >= max - 1 && pt.energy > 0;
+    const full = !g.hand[3] && pt.energy >= max - 1 && pt.energy > 0;
+    const dAge = petFx.drained && petFx.drained[pt.id] !== undefined ? clock - petFx.drained[pt.id] : 9; // 刚被偷了能量：头像抖、能量条闪红
+    if (dAge < 0.5) { p.x += Math.sin(clock * 60) * 4 * (1 - dAge * 2); ctx.fillStyle = 'rgba(226,85,59,' + (0.5 - dAge) + ')'; ctx.beginPath(); ctx.arc(p.x, p.y, 30, 0, Math.PI * 2); ctx.fill(); }
     if (full) { ctx.strokeStyle = 'rgba(243,210,122,' + (0.4 + Math.sin(clock * 8) * 0.3) + ')'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, 28, 0, Math.PI * 2); ctx.stroke(); }
     if (petOut(pt.id)) { ctx.strokeStyle = COL.woodLine; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(p.x, p.y, 22, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
     else petIcon(pt.id, p.x, p.y, 46, pt.lv, pop);
@@ -4103,7 +4159,7 @@ function drawPetBar() {
     const bw = 64, seg = (bw - (max - 1) * 3) / max, by = p.y + 29;
     for (let k = 0; k < max; k++) {
       ctx.fillStyle = COL.ink; rr(p.x - bw / 2 + k * (seg + 3) - 1, by - 1, seg + 2, 9, 3); ctx.fill();
-      ctx.fillStyle = k < pt.energy ? C.blockColors[d.color][1] : COL.woodDark; rr(p.x - bw / 2 + k * (seg + 3), by, seg, 7, 3); ctx.fill();
+      ctx.fillStyle = k < Math.min(max, pt.energy) ? C.blockColors[d.color][1] : COL.woodDark; rr(p.x - bw / 2 + k * (seg + 3), by, seg, 7, 3); ctx.fill();
     }
     buttons.push({ id: 'pet' + n, x: p.x - 28, y: p.y - 28, w: 56, h: 56, fn: () => { petFx.caption = { text: d.name + ' ' + pt.lv + ' 级：' + PG.petDesc(pt.id, pt.lv), t: clock }; } });
   });
@@ -4194,8 +4250,9 @@ function drawPetCaption() {
 }
 function juicePets(ev, colorsBefore) {
   // 先照原来的一套：放下弹一下、消掉的碎掉、收到的东西飞向顶上
-  juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo, streak: ev.streak, beat: ev.beat, collected: ev.collected });
+  juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? 4 : 1), collected: ev.collected });
   if (ev.fire) { const c = boxCenter(ev.fire.box); rings.push({ t: clock, big: false, at: c }); flash = 0.25; P.sound('combo3', 0.7); shake = Math.max(shake, 8); }
+  juicePK(ev);
   // 同色的块化成光点飞到宠物身上
   ev.sparks.forEach((sp) => {
     const n = g.team.findIndex((p) => p.id === sp.id), to = petPos(n);
@@ -4241,8 +4298,7 @@ function juicePets(ev, colorsBefore) {
     (ev.rocks || []).forEach((k) => { if (!cells.includes(k)) cells.push(k); });
     let pts = cells.map((k) => ({ x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2 }));
     if (act.kind === 'gift') {
-      const slot = g.hand.findIndex((x) => x && x.special === 'fire');
-      pts = [slotCenter(Math.max(0, slot))];
+      pts = [slotCenter(3)];
     }
     if (!pts.length) pts = [{ x: L.bx + L.board / 2, y: L.by + L.board / 2 }];
     // 动作照它是什么东西：鸟飞过去一路啄（fly）、鼠跑过去一路啃（gnaw）、蚕爬过去一路吐丝补满再一起消（spin）、麒麟原地吐一颗火球进托盘（spit）
@@ -4269,6 +4325,28 @@ function juicePets(ev, colorsBefore) {
 // 宠物跳出来啃格子：起跳（抛物线）→ 沿着要啃的格子一格格走、嘴一张一合 → 跳回头像的位置
 let petRuns = [];
 let petInk = []; // 大墨怪吐的墨团（飞行中）
+let drainInk = []; // 墨怪冲宠物喷的墨团（0.9.8）
+// 怪和宠物 PK 的画面（0.9.8，照 ../九宫消_宠物系统重做_20261125.md 第十三节）：技能块炸开、克住了、打不动、偷能量、下一波
+function juicePK(ev) {
+  const at = (k) => ({ x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2 });
+  const burst = (k, col, n, sp, delay) => { const c = at(k); for (let i = 0; i < n; i++) { const a2 = Math.random() * Math.PI * 2, v = (sp || 100) * (0.6 + Math.random() * 0.8); fx.push({ kind: 'shard', x: c.x, y: c.y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 90, t: clock + (delay || 0), life: 0.55, s: 3 + Math.random() * 4, col }); } };
+  if (ev.skill) {
+    const col = C.blockColors[PG.PETS[ev.skill.pet].color][1];
+    ev.skill.cells.forEach((k, j) => burst(k, col, 3, 110, j * 0.015));
+    rings.push({ t: clock, big: false, at: at(ev.r * 9 + ev.c) });
+    flash = Math.max(flash, 0.15); shake = Math.max(shake, 6); P.sound('combo3', 0.7); P.vibrate(true);
+  }
+  (ev.counter || []).forEach((c) => { burst(c.k, COL.brassLight, 18, 220); burst(c.k, '#ffffff', 6, 140); flash = Math.max(flash, 0.3); P.sound('combo4', 0.8); }); // 克住了：金光炸开
+  (ev.petMiss || []).forEach((m) => { petFx.petMiss = petFx.petMiss || {}; petFx.petMiss[m.k] = clock; burst(m.k, '#9aa0b0', 5, 70); P.sound('deny', 0.5); }); // 打不动：灰光挡住
+  (ev.drain || []).forEach((d, j) => {
+    const n = Math.max(0, g.team.findIndex((p) => p.id === d.id));
+    const from = g.board[d.from] === 4 ? { x: cellX(d.from % 9) + L.cell, y: cellY(Math.floor(d.from / 9)) + L.cell } : at(d.from);
+    drainInk.push({ from, to: petPos(n), t: clock + 0.15 + j * 0.12, id: d.id, bomb: d.kind === 'bomb' });
+  });
+  // 第一次被偷能量：演完喷墨，出一张说明卡（只出一次）
+  if (ev.drain && ev.drain.length && !save.introSeen.steal) timeline.push({ t: clock + 1.2, fn: () => { if (mode === 'play' && !g.over && !save.introSeen.steal) { introKind = 'steal'; mode = 'intro'; } } });
+  if (ev.wave) { ev.wave.cells.forEach((k, j) => burst(k, '#3b3150', 10, 120, 0.1 + j * 0.04)); flash = Math.max(flash, 0.2); shake = Math.max(shake, 5); timeline.push({ t: clock + 0.1, fn: () => P.sound('combo2', 0.6) }); }
+}
 function petRunPos(run) {
   const tt = clock - run.t0;
   const arc = (a, b, k, h) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k - Math.sin(k * Math.PI) * h });
@@ -4339,6 +4417,15 @@ drawPetBoard = function () {
     else block(x, y, L.cell, 1, gh.ci);
     return true;
   });
+  // 墨怪冲宠物喷的墨团（0.9.8）：从墨怪飞到宠物头像，落到就抖一下、能量条闪红
+  drainInk = drainInk.filter((m) => { if (clock - m.t >= 0.5) { petFx.drained = petFx.drained || {}; petFx.drained[m.id] = clock; P.sound('pick', 0.6); P.vibrate(false); return false; } return true; });
+  drainInk.forEach((m) => {
+    if (clock < m.t) return;
+    const a = (clock - m.t) / 0.5, x = m.from.x + (m.to.x - m.from.x) * a, y = m.from.y + (m.to.y - m.from.y) * a - Math.sin(a * Math.PI) * 60;
+    const r0 = m.bomb ? 12 : 8;
+    ctx.fillStyle = '#2a2236'; ctx.beginPath(); ctx.arc(x, y, r0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c58ae0'; ctx.beginPath(); ctx.arc(x - 2, y - 2, r0 * 0.35, 0, Math.PI * 2); ctx.fill();
+  });
   // 墨团飞过去
   petInk = petInk.filter((m) => clock - m.t < 0.45);
   petInk.forEach((m) => {
@@ -4373,24 +4460,8 @@ function settlePet() {
   const st = g.stage;
   const r = { won: g.won, reason: g.reason, near: g.nearMiss(), caught: g.caught, gift: null, evolved: null, dan: 0, danAuto: 0, exp: [] };
   const petReplay = !st.evolve && petIdx < save.petStage; // 这关以前过过
-  // 出战的宠物涨经验：每出手一次 +1，过关 +3（没过 +1）。加场借来的宠物不算
-  if (!st.evolve && !st.bonus) g.team.forEach((pt) => {
-    const rec = save.pets[pt.id];
-    if (!rec) return;
-    const before = { lv: rec.lv, exp: rec.exp };
-    // 出手经验最多算 5 次；已经过了的关重打，经验减半（免得刷最容易的关练级）
-    let gain = Math.min(5, g.petActsTotal[pt.id] || 0) + (g.won ? 3 : 1);
-    if (petReplay) gain = Math.max(1, Math.floor(gain / 2));
-    const x2 = !!(st.only && g.won && !petReplay && ownedOf(st.only) === pt.id); // 专属关第一次过：点名的那只经验加倍
-    if (x2) gain *= 2;
-    addExp(rec, gain);
-    r.exp.push({ id: pt.id, before, after: { lv: rec.lv, exp: rec.exp }, gain, x2 });
-  });
-  // 抓到的墨怪自动炼成丹，两只一颗，单出来的一只留到下一关（输了也算）。
-  // 0.9.3 Cc 11-24：「炼丹系统真的很蠢……给我的选项是伪选项……要不就自动炼丹，我选择为哪个宠物升级也就算了」
+  // 0.9.8：出战不涨经验，只有丹能升级（Fable 宠物重做第五节：「我派的是老鼠，却是铜雀进化了」这种事不再有）。抓到的墨怪只记个数
   save.gourd += g.caught;
-  const autoDan = Math.floor(save.gourd / 2);
-  save.dan += autoDan; save.gourd -= autoDan * 2; r.danAuto = autoDan;
   if (g.won) {
     if (st.evolve) {
       // 进化：换成新宠物，等级和经验带过去
@@ -4406,9 +4477,12 @@ function settlePet() {
       save.petStage = Math.max(save.petStage, petIdx + 1);
       if (st.gift && !save.pets[st.gift]) { save.pets[st.gift] = { lv: 1, exp: 0 }; save.petOrder.push(st.gift); r.gift = st.gift; if (!save.activePet) save.activePet = st.gift; }
     }
-    // 过关送一颗丹：拿到宠物以后、第一次过这关才送
-    if (save.petOrder.length && !petReplay) { save.dan += 1; r.dan = 1; }
-    if (st.only && !petReplay) { save.dan += 1; r.dan += 1; } // 专属关第一次过：多送 1 颗丹
+    // 掉丹（0.9.8，第一次过这关才掉）：头目关 3 颗、难关 2 颗；普通关六成会掉 1 颗，连着两关没掉、第三关一定掉
+    if (save.petOrder.length && !petReplay && !st.evolve) {
+      let n = st.goal.boss ? 3 : st.hard ? 2 : 0;
+      if (!n) { save.danDry = save.danDry || 0; if (save.danDry >= 2 || Math.random() < 0.6) { n = 1; save.danDry = 0; } else save.danDry++; }
+      save.dan += n; r.dan = n;
+    }
   }
   // 同一关连输几次（专属关连输两次，结算页给「借一只再来」）
   if (!st.evolve) { save.loss = save.loss || {}; if (g.won) delete save.loss[petIdx]; else save.loss[petIdx] = (save.loss[petIdx] || 0) + 1; }
@@ -4495,7 +4569,7 @@ function drawPetOver() {
   });
   // 抓到的怪收进葫芦
   if (r.caught) {
-    const msg = '抓到 ' + r.caught + ' 只墨怪 · 得 ' + (r.danAuto + r.dan) + ' 颗丹';
+    const msg = '抓到 ' + r.caught + ' 只墨怪' + (r.dan ? ' · 掉了 ' + r.dan + ' 颗丹' : r.won && save.petOrder.length && !(g._settleInfo && g._settleInfo.petReplay) ? ' · 这关没掉丹' : '');
     ctx.font = 'normal 15px "PingFang SC", sans-serif';
     const tw = ctx.measureText(msg).width;
     gourdIcon(W / 2 - tw / 2 - 4, y + 12, 18);
@@ -4544,7 +4618,7 @@ function drawCamp() {
   // 丹：打关自动炼好（两只墨怪一颗），这里只看有多少、喂给谁
   gourdIcon(gx0 + 38, y + gh / 2 + 2, 38);
   text(save.dan + ' 颗丹', gx0 + 76, y + gh * 0.38, 20, COL.brassLight, 'left');
-  text('打关抓的墨怪会自动炼成丹（两只一颗）', gx0 + 76, y + gh * 0.7, 11, COL.dim, 'left', 'normal');
+  text('过关有机会掉丹：头目关 3 颗、难关 2 颗', gx0 + 76, y + gh * 0.7, 11, COL.dim, 'left', 'normal');
   y = rPt.y;
   // 底下：出发按钮、下一关卡
   const btnY = rGo.y, nextY = rNx.y;
@@ -4568,7 +4642,7 @@ function drawCamp() {
     text(line2, tx, cy + 39 * f, fs, COL.brassLight, 'left', 'normal');
     // 经验：数字写在条的上面，不再塞进条里
     const need = EXP_NEED[rec.lv] || 999, canEvolve = d.evo && rec.lv >= d.evoLv;
-    text(canEvolve ? '可以进化了！' : '经验 ' + rec.exp + ' / ' + need + (d.evo ? ' · ' + d.evoLv + ' 级进化' : ''), tx, cy + 58 * f, 11, canEvolve ? TH.jade : COL.dim, 'left', 'normal');
+    text(canEvolve ? '可以进化了！' : '丹 ' + rec.exp + ' / ' + need + (d.evo ? ' · ' + d.evoLv + ' 级进化' : ''), tx, cy + 58 * f, 11, canEvolve ? TH.jade : COL.dim, 'left', 'normal');
     ctx.fillStyle = TH.line; rr(tx, cy + 70 * f, rw, 8, 4); ctx.fill();
     ctx.fillStyle = TH.jade; rr(tx, cy + 70 * f, Math.max(6, rw * Math.min(1, rec.exp / need)), 8, 4); ctx.fill();
     const bx2 = cx + cw - 12 - 84;
@@ -4606,15 +4680,15 @@ function drawCamp() {
 function addExp(rec, n) {
   rec.exp += n;
   let up = 0;
-  while (rec.lv < 10 && rec.exp >= EXP_NEED[rec.lv]) { rec.exp -= EXP_NEED[rec.lv]; rec.lv++; up++; }
+  while (rec.lv < LV_CAP && rec.exp >= EXP_NEED[rec.lv]) { rec.exp -= EXP_NEED[rec.lv]; rec.lv++; up++; }
   return up;
 }
 // 升一级要几颗丹（0.9.3：一下升一级，学 AFK Arena 的「升级」按钮；不再一颗一颗喂）
-const danToLevel = (id) => { const rec = save.pets[id]; return rec && rec.lv < 10 ? Math.ceil((EXP_NEED[rec.lv] - rec.exp) / DAN_EXP) : Infinity; };
+const danToLevel = (id) => { const rec = save.pets[id]; return rec && rec.lv < LV_CAP ? Math.ceil((EXP_NEED[rec.lv] - rec.exp) / DAN_EXP) : Infinity; };
 const canLevelAny = () => save.petOrder.some((id) => { const d = PG.PETS[id], rec = save.pets[id]; return (d.evo && rec.lv >= d.evoLv) || (!(d.evo && rec.lv >= d.evoLv) && save.dan >= danToLevel(id)); });
 function levelUpPet(id) {
   const rec = save.pets[id], cost = danToLevel(id);
-  if (save.dan < cost) { petMsg = { text: '还差 ' + (cost - save.dan) + ' 颗丹：去打关抓墨怪', t: clock }; return; }
+  if (save.dan < cost) { petMsg = { text: '还差 ' + (cost - save.dan) + ' 颗丹：去打关，过关有机会掉丹', t: clock }; return; }
   save.dan -= cost;
   addExp(rec, cost * DAN_EXP);
   petFx.pop[id] = clock;
@@ -5216,6 +5290,15 @@ P.exposeForTest('__game', {
 
 });
 __def("js/petgame.js", function (module, exports, require) {
+// 0.9.8：合进 Fable 的「宠物系统重做 · 不限手数版」（报告：../九宫消_宠物系统重做_20261125.md 第十三节；副本 test/fable_counter/petgame_counter.js），再补回 0.9.6 记录器要的统计。
+// 和原版的四处不同：
+//   ① 宠物不再自己出手。能量满了，它吐一块「技能块」到托盘的第 4 格（宠物格，g.hand[3]），你自己拖到盘上，放哪打哪；存着不用也行（最多存一块）。
+//      技能块只打它周围一小片（3–13 格），放下去不算一手、墨怪不动。四只宠物四种形状：铜雀横着啄、火麒麟竖着烧、爆竹鼠炸一圈、墨斗蚕斜着缠。
+//   ② 克制：每种墨怪只有对口的宠物的技能块抓得走（不管几层甲、什么颜色、不分身）；不对口的打不动它，只清得掉旁边的方块。小墨怪谁都抓得走。你自己消，规矩不变。
+//   ③ 所有宠物一个攒法：每消掉一排 / 一个大格攒一格；消掉它颜色的方块每 3 块多攒一格。
+//   ④ 没有手数上限（Cc 11-25 否了）。一关的墨怪分几波冒出来（stage.waves），盘面不清空；输法只有「三块都放不下」。
+//   ⑤ 救命并在宠物身上：堵死时能量条里有东西，它就提前把技能块给你。
+// 上一版（宠物自己出手 + 克制）留在 v1_auto/。
 // 九宫消 + 宠物（0.6）的规则层。设计见 ../九宫消加宠物_设计与调研_20261124.md、检验和改法见 ../九宫消_玩法检验与关卡对照_20261125.md。
 // 拖块、凑满一排或一个大格就消，这个不变。多出来的：
 //   ① 方块的颜色有用了：带谁出战，就多发谁颜色的方块；消掉谁的颜色，就给谁多充能。
@@ -5239,36 +5322,87 @@ const MON = {
   color: { name: '挑色怪' }, moss: { name: '墨苔怪', cd: 3 }, bomb: { name: '炸弹怪', cd: 9 }, split: { name: '分身怪' },
 };
 const MON_CHAR = { m: 'ink', A: 'shell', B: 'shell', C: 'shell', J: 'jump', E: 'eat', G: 'moss', T: 'bomb', S: 'split' };
-const newMon = (t, extra) => Object.assign({ t, hp: 0, col: -1, cd: MON[t].cd || 0, tgt: null }, extra || {});
+const cdOf = (t) => (RULES.pester[t] || MON[t].cd || 0);
+const newMon = (t, extra) => Object.assign({ t, hp: 0, col: -1, cd: cdOf(t), tgt: null }, extra || {});
 const near8 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const a = r + dr, b = c + dc; if (a >= 0 && a < 9 && b >= 0 && b < 9) out.push(a * 9 + b); } return out; };
 const EATABLE = (v) => v === 1 || IS_MON(v);
 
-// 宠物：从弱鸡慢慢变强（energy(lv) 攒满要几格，越练越少；power(lv) 一次能干多少，越练越多）
-// 0.6 按检验报告调：消一排型（铜雀、爆竹鼠）格数调少，一关能出手 3 次上下；放一块型（墨斗蚕、火麒麟）格数调多，免得它们比别人强一大截
+// 宠物：能量满了吐一块技能块。tier（技能块大小）：1–2 级小、3–4 级中、5 级起（进化后）大。energy(lv)：攒满要几格。
+// kind = 克制表里它算哪一路（row 啄 / box 炸 / fill 缠 / gift 烧）；shape = 技能块打哪几格（h 横条 / v 竖条 / sq 一圈 / x 斜叉）
+const tierOf = (lv) => (lv >= 5 ? 3 : lv >= 3 ? 2 : 1);
 const PETS = {
-  tongque: { name: '铜雀', color: 0, charge: 'clear', act: 'row', energy: (lv) => [0, 4, 4, 3, 3, 3][Math.min(5, lv)], power: (lv) => [0, 3, 5, 7, 9, 9, 9, 9, 9, 9, 9][lv], lines: 1, evo: 'jinchique', evoLv: 5, good: '铁甲怪' },
-  jinchique: { name: '金翅雀', color: 0, charge: 'clear', act: 'row', energy: () => 3, power: () => 9, lines: 2, good: '铁甲怪' },
-  baozhu: { name: '爆竹鼠', color: 1, charge: 'clear', act: 'box', energy: (lv) => [0, 5, 5, 4, 4, 3][Math.min(5, lv)], power: (lv) => [0, 4, 6, 9, 9, 9, 9, 9, 9, 9, 9][lv], good: '跳跳怪、铁石' },
-  modou: { name: '墨斗蚕', color: 2, charge: 'place', act: 'fill', energy: (lv) => Math.max(6, 10 - (lv - 1)), power: (lv) => Math.min(3, lv), good: '墨块、机关匣' }, // power = 能补差几格的一排
-  qilin: { name: '火麒麟', color: 5, charge: 'place', act: 'gift', energy: (lv) => Math.max(7, 12 - (lv - 1)), power: (lv) => (lv >= 3 ? 9 : 5) }, // 火球：5 = 炸十字 5 格；9 = 炸整个大格
+  tongque: { name: '铜雀', color: 0, charge: 'clear', act: 'gift', kind: 'row', shape: 'h', energy: (lv) => (lv >= 4 ? 2 : 3), power: tierOf, evo: 'jinchique', evoLv: 5 },
+  jinchique: { name: '金翅雀', color: 0, charge: 'clear', act: 'gift', kind: 'row', shape: 'h', energy: () => 2, power: () => 3 },
+  baozhu: { name: '爆竹鼠', color: 1, charge: 'clear', act: 'gift', kind: 'box', shape: 'sq', energy: (lv) => (lv >= 4 ? 3 : 4), power: tierOf, evoLv: 5 },
+  modou: { name: '墨斗蚕', color: 2, charge: 'clear', act: 'gift', kind: 'fill', shape: 'x', energy: (lv) => (lv >= 4 ? 2 : 3), power: tierOf, evoLv: 5 },
+  qilin: { name: '火麒麟', color: 5, charge: 'clear', act: 'gift', kind: 'gift', shape: 'v', energy: (lv) => (lv >= 4 ? 2 : 3), power: tierOf, evoLv: 5 },
 };
-// 每只宠物这一级的本事：只写它干什么，动词照它是什么东西来（雀啄、金翅俯冲、鼠啃、蚕吐丝、麒麟吐火球）
-function petDesc(id, lv) {
-  const d = PETS[id], pw = d.power(lv || 1);
-  if (id === 'tongque') return pw >= 9 ? '啄掉最满的一整排' : '啄掉最满那排的 ' + pw + ' 格';
-  if (id === 'jinchique') return '俯冲扫掉最满的两排';
-  if (id === 'baozhu') return pw >= 9 ? '啃空最挤的大格' : '啃掉最挤大格的 ' + pw + ' 格';
-  if (id === 'modou') return '吐丝补满只差 ' + pw + ' 格的一排';
-  if (id === 'qilin') return pw >= 9 ? '吐火球给你：放哪炸空哪个大格' : '吐火球给你：放哪炸哪（十字）';
-  return '';
+// 技能块放在 (r, c)，打到哪几格（含它自己那格）
+function skillCells(shape, tier, r, c) {
+  const out = [[0, 0]];
+  const n = tier; // 伸出去几格（横条、竖条多伸一格：5 / 7 / 9 格；一圈和斜叉：5 / 9 / 13 格）
+  if (shape === 'h') for (let d = 1; d <= n + 1; d++) out.push([0, -d], [0, d]);
+  else if (shape === 'v') for (let d = 1; d <= n + 1; d++) out.push([-d, 0], [d, 0]);
+  else if (shape === 'x') for (let d = 1; d <= n; d++) out.push([-d, -d], [-d, d], [d, -d], [d, d]);
+  else if (shape === 'sq') {
+    out.push([-1, 0], [1, 0], [0, -1], [0, 1]);
+    if (tier >= 2) out.push([-1, -1], [-1, 1], [1, -1], [1, 1]);
+    if (tier >= 3) out.push([-2, 0], [2, 0], [0, -2], [0, 2]);
+  }
+  return out.map(([dr, dc]) => [r + dr, c + dc]).filter(([a, b]) => a >= 0 && a < 9 && b >= 0 && b < 9).map(([a, b]) => a * 9 + b);
 }
-const CHARGE_TAG = { clear: '消一排 +1', place: '放一块 +1' };
+const SKILL_VERB = { h: '横着啄', v: '竖着烧', sq: '炸', x: '斜着缠' };
+// 每只宠物这一级的本事（一行字）
+function petDesc(id, lv) {
+  const d = PETS[id], t = d.power(lv || 1), n = skillCells(d.shape, t, 4, 4).length;
+  return '技能块' + SKILL_VERB[d.shape] + ' ' + n + ' 格';
+}
+const CHARGE_TAG = { clear: '消一排 +1', place: '消一排 +1' };
 const CHARGE_TEXT = { clear: '每消掉一排，攒一格能量', place: '每放一块，攒一格能量' };
-const FIRE = { id: 'fire', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'fire', power: 9 };
-const fireOf = (pw) => (pw >= 9 ? FIRE : Object.assign({}, FIRE, { power: 5 }));
+// ---------- 克制（Cc 11-25 定 A：「带对的宠物」要真的要紧）----------
+// 每种墨怪只怕一只宠物；小墨怪谁都怕。对口的技能块一下抓走（不管几层甲、什么颜色、不分身、跳不掉）；
+// 不对口的打不动它（它缩一下躲过去），只清得掉它身边的方块。你自己消，规矩和原来一样。
+//   row 铜雀 / 金翅雀  box 爆竹鼠  fill 墨斗蚕  gift 火麒麟
+const RULES = {
+  nemesis: { shell: 'row', eat: 'fill', jump: 'box', split: 'box', moss: 'fill', bomb: 'gift' }, // 挑色怪：和它同色的宠物
+  bossWeak: { spit: null, eat: 'fill', split: 'box' }, // 头目怕谁（null = 谁咬都掉 1 颗心）
+  bossWeakDmg: 3,    // 对口的宠物咬头目一口掉几颗心
+  bossOtherDmg: 1,   // 别的宠物咬一口掉几颗心（和原来一样）
+  pester: { shell: 3, jump: 3, color: 3, split: 3 }, // 这几种墨怪活着的时候，每隔几手冲宠物喷一口墨：偷走 steal 格能量（先瞪宠物一手；它的克星不怕）。墨苔怪长墨时、馋嘴怪啃块时也偷。
+  steal: 2,          // 墨怪对宠物使坏：馋嘴怪 / 大馋嘴每啃一口，偷走宠物几格能量（它的克星墨斗蚕不怕）
+  bombDrain: true,   // 炸弹怪炸开时，把宠物的能量炸光（它的克星火麒麟不怕）
+  rescue: 'any',     // 救命：三块都放不下、宠物格空着时，宠物提前把技能块给你、能量清空。'any' = 能量条里有一格就救；'half' = 攒到一半以上才救
+  rockNemesis: 'box', rockDmg: 2, // 爆竹鼠一口啃穿两层铁石，别的宠物一次一层
+};
+// 这只宠物（pet = { act, color }）是不是这只墨怪的克星
+function isCounter(m, pet) {
+  if (!m || !pet) return false;
+  if (m.t === 'ink') return true;
+  if (m.t === 'color') return pet.color === m.col;
+  return RULES.nemesis[m.t] === pet.act;
+}
+const petOf = (id) => ({ act: PETS[id].kind, color: PETS[id].color, id });
+// 这一关带谁最顺：数一数盘上的东西各怕谁（给关卡表的 best、章页「带它最顺」「先练谁」用）
+function bestPetFor(st) {
+  const sc = { row: 0, box: 0, fill: 0, gift: 0 }, colSc = {};
+  st.board.forEach((row) => row.split('').forEach((ch) => {
+    const t = MON_CHAR[ch];
+    if (t && t !== 'ink') { const a = RULES.nemesis[t]; sc[a] += t === 'shell' ? (ch === 'A' ? 1 : ch === 'B' ? 2 : 3) : 2; }
+    else if (ch >= '0' && ch <= '6') colSc[+ch] = (colSc[+ch] || 0) + 2;
+    else if (ch === 'R') sc[RULES.rockNemesis] += 1; else if (ch === 'Q') sc[RULES.rockNemesis] += 2;
+    else if (ch === 'M') sc.fill += 2;
+  }));
+  if (st.goal.boss) { const a = RULES.bossWeak[st.bossKind || 'spit']; if (a) sc[a] += 10; }
+  const ids = ['tongque', 'baozhu', 'modou', 'qilin'];
+  const score = (id) => sc[PETS[id].kind] + (colSc[PETS[id].color] || 0);
+  const out = ids.map((id) => ({ id, n: score(id) })).sort((x, y) => y.n - x.n);
+  return out[0].n > 0 ? out : [];
+}
+const FIRE = { id: 'skill', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'skill' }; // 名字留着给 main.js；现在每只宠物的技能块都是这个模子
+const skillPiece = (pt) => Object.assign({}, FIRE, { pet: pt.id, tier: PETS[pt.id].power(pt.lv) });
 const petDef = (p) => PETS[p.id];
 function energyMax(g, p) {
-  if (g.stage.fastCharge) return 3; // 第 4 关：铜雀充得特别快，让人一眼看到它在帮忙
+  if (g.stage.fastCharge) return 3; // 登场关：充得特别快，让人一眼看到它在帮忙
   return petDef(p).energy(p.lv);
 }
 const crossCells = (r, c) => [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]].map(([dr, dc]) => [r + dr, c + dc]).filter(([a, b]) => a >= 0 && a < 9 && b >= 0 && b < 9).map(([a, b]) => a * 9 + b);
@@ -5283,28 +5417,51 @@ function createPetGame(opts) {
     pets: true,
     color: new Array(81).fill(0),
     rockHp: new Array(81).fill(0),
-    handColor: [0, 0, 0],
+    handColor: [0, 0, 0, 0],
     team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: 0 })),
-    bigHp: 0, bigCells: [], boss: null, giftPending: 0,
+    bigHp: 0, bigCells: [], boss: null, skillUses: 0,
     jumpPlan: {}, // 跳跳怪：下一手要跳到哪（先探头）
     mon: new Array(81).fill(null), // 墨怪的种类和状态
     spawnQ: [], // 分身怪 / 分身王：这一手打完以后要蹦出来的小墨怪（从哪格旁边）
     monStats: { cracks: 0, eats: 0, moss: 0, bombs: 0, spawns: 0, colorMiss: 0 }, // 这一关墨怪干了几回（测试和以后的统计用）
-    playStats: { clearMoves: 0, dry: 0, maxDry: 0, bossByPlayer: 0, bossByPet: 0, units: 0, firstClear: 0, firstGoal: 0, goalsByPet: 0, goalsByPlayer: 0 }, // 0.9.6 记录器：第几手第一次消 / 第一次碰到目标、目标谁完成的 // 手感统计：几手有消、最长几手没消、头目的心谁打掉的
+    playStats: { clearMoves: 0, dry: 0, maxDry: 0, bossByPlayer: 0, bossByPet: 0, units: 0, firstClear: 0, firstGoal: 0, goalsByPet: 0, goalsByPlayer: 0 }, // 0.9.6 记录器：第几手第一次消 / 第一次碰到目标、目标谁完成的； // 手感统计：几手有消、最长几手没消、头目的心谁打掉的
     evLit: new Set(), evColor: st.evolve ? PETS[st.evolve.pet].color : null,
     caught: 0, petActsTotal: {},
   });
   // 盘面字符：m 小墨怪；A/B/C 甲壳怪 1/2/3 层；J 跳跳怪；E 馋嘴怪；G 墨苔怪；T 炸弹怪；S 分身怪；0–6 挑色怪（那种颜色）；
   //           K 头目（2×2）；R 铁石；Q 两层铁石
+  // 把一个字符摆到盘上的第 k 格（墨怪 / 铁石）；摆了返回 true
+  function putChar(b, ch, k) {
+    if (MON_CHAR[ch]) { b[k] = 3; g.mon[k] = newMon(MON_CHAR[ch], { hp: ch === 'A' ? 1 : ch === 'B' ? 2 : ch === 'C' ? 3 : 0 }); return true; }
+    if (ch >= '0' && ch <= '6') { b[k] = 3; g.mon[k] = newMon('color', { col: +ch }); return true; }
+    if (ch === 'R') { b[k] = 5; g.rockHp[k] = 1; return true; }
+    if (ch === 'Q') { b[k] = 5; g.rockHp[k] = 2; return true; }
+    return false;
+  }
   st.board.forEach((row, r) => row.split('').forEach((ch, c) => {
     const k = r * 9 + c;
-    if (MON_CHAR[ch]) { g.board[k] = 3; g.mon[k] = newMon(MON_CHAR[ch], { hp: ch === 'A' ? 1 : ch === 'B' ? 2 : ch === 'C' ? 3 : 0 }); }
-    else if (ch >= '0' && ch <= '6') { g.board[k] = 3; g.mon[k] = newMon('color', { col: +ch }); }
-    else if (ch === 'K') { g.board[k] = 4; g.bigCells.push(k); }
-    else if (ch === 'R') { g.board[k] = 5; g.rockHp[k] = 1; }
-    else if (ch === 'Q') { g.board[k] = 5; g.rockHp[k] = 2; }
+    if (!putChar(g.board, ch, k) && ch === 'K') { g.board[k] = 4; g.bigCells.push(k); }
     if (g.board[k] === 1) g.color[k] = -1;
   }));
+  // 一波一波冒出来（stage.waves）：盘上的墨怪抓光了（要打铁石的关，铁石也打光了），下一波墨怪从墨里冒出来。盘面不清空：你放的块、墨块都还在。
+  // 每一波写成一张 9×9 的小图，只认里面的墨怪和铁石；那一格被占了，就冒在离它最近的空格。没有手数上限，也没有倒计时：输法只有「三块都放不下」。
+  const isMonCh = (ch) => !!MON_CHAR[ch] || (ch >= '0' && ch <= '6');
+  g.waveQ = (st.waves || []).map((w) => w.slice());
+  g.waveNo = 1; g.waveTotal = 1 + g.waveQ.length;
+  const waveMonCount = () => g.waveQ.reduce((a, w) => a + w.join('').split('').filter(isMonCh).length, 0);
+  function nextWave(b, ev) {
+    if (!g.waveQ.length || g.mon.some(Boolean)) return;
+    if ('rock' in g.got && b.some((v) => v === 5)) return; // 要打铁石的关：这张盘的铁石也打光了才换
+    const w = g.waveQ.shift(); g.waveNo++;
+    const dropped = [];
+    w.forEach((row, r) => row.split('').forEach((ch, c) => {
+      if (!isMonCh(ch) && ch !== 'R' && ch !== 'Q') return;
+      let k = r * 9 + c;
+      if (b[k] !== 0) { let best = -1, bd = 99; for (let x = 0; x < 81; x++) { if (b[x] !== 0) continue; const d = Math.abs(Math.floor(x / 9) - r) + Math.abs((x % 9) - c); if (d < bd) { bd = d; best = x; } } k = best; }
+      if (k >= 0 && putChar(b, ch, k)) dropped.push(k);
+    }));
+    ev.wave = { no: g.waveNo, of: g.waveTotal, cells: dropped };
+  }
   if (g.bigCells.length) {
     g.bigHp = st.bigHp || 3;
     g.boss = { kind: st.bossKind || 'spit', hp: g.bigHp, max: g.bigHp, phase: 1, count: 0, nextSpit: null, eatPlan: null, jumpTo: null, stun: false, angry: !!st.bossAngry };
@@ -5322,29 +5479,43 @@ function createPetGame(opts) {
     for (const x of ws) { if ((t -= x.w) <= 0) return x.ci; }
     return ws[0].ci;
   };
+  // 托盘第 4 格 = 宠物格：技能块放这儿，发新块、换一组都不动它
+  const colorsOfHand = () => g.hand.map((p) => (p && p.special ? PETS[p.pet].color : g.pickColor()));
   const baseDeal = g.deal;
-  g.deal = () => { baseDeal(); g.handColor = g.hand.map(() => g.pickColor()); giveGift(); };
-  // 换一组：火球留着不换
+  g.deal = () => { const sk = g.hand[3] || null; baseDeal(); g.hand[3] = sk; g.handGem[3] = null; g.handColor = colorsOfHand(); };
   const baseReroll = g.reroll;
-  g.reroll = () => {
-    const keep = g.hand.map((p) => (p && p.special ? p : null));
-    baseReroll();
-    g.hand = g.hand.map((p, i) => keep[i] || p);
-    g.handColor = g.hand.map((p) => (p && p.special ? 5 : g.pickColor()));
-  };
-  function giveGift() {
-    while (g.giftPending > 0) {
-      const slot = g.hand.findIndex((x) => !x);
-      if (slot < 0) break;
-      g.hand[slot] = fireOf(g.giftPower || 9); g.handColor[slot] = 5; if (g.handGem) g.handGem[slot] = null; g.giftPending--;
+  g.reroll = () => { const sk = g.hand[3] || null; g.hand.length = 3; baseReroll(); g.hand[3] = sk; g.handGem[3] = null; g.handColor = colorsOfHand(); };
+  g.hand[3] = null; g.handGem[3] = null;
+  g.handColor = colorsOfHand();
+  // 能量满了、宠物格空着：吐一块技能块（能量多出来的留着）。宠物格占着就先憋着。
+  function giveSkill(ev) {
+    for (const pt of g.team) {
+      if (g.hand[3] || pt.energy < energyMax(g, pt)) continue;
+      pt.energy -= energyMax(g, pt);
+      g.hand[3] = skillPiece(pt); g.handColor[3] = petDef(pt).color;
+      if (ev) ev.petActs.push({ id: pt.id, kind: 'gift', lines: [], boxes: [], cells: [] });
     }
   }
-  g.handColor = g.hand.map(() => g.pickColor());
+  // 墨怪偷 / 炸宠物的能量（m = 动手的那只墨怪）：不是它克星的宠物才中招。炸弹怪炸光，别的偷 RULES.steal 格。
+  function drainPets(m, k, ev) {
+    for (const pt of g.team) {
+      if (isCounter(m, petOf(pt.id)) || pt.energy <= 0) continue;
+      if (m.t === 'bomb' ? !RULES.bombDrain : !RULES.steal) continue;
+      const n = m.t === 'bomb' ? pt.energy : Math.min(pt.energy, RULES.steal);
+      pt.energy -= n; g.monStats.drained = (g.monStats.drained || 0) + n; (ev.drain = ev.drain || []).push({ from: k, id: pt.id, n, kind: m.t });
+    }
+  }
 
   // 墨怪挨一下：抓到了返回 true。byPet：宠物下的手（伤害加倍、不挑颜色、不分身）；colorOk(k, col)：消掉的那一排里有没有这种颜色
-  function hitMon(k, ev, byPet, colorOk) {
+  function hitMon(k, ev, byPet, colorOk, pet) {
     const m = g.mon[k];
     if (!m) return true;
+    if (byPet && pet) {
+      // 克制：对口的一下抓走（ev.counter：画「克」的特效）；不对口的打不动（ev.petMiss：它缩一下、灰火花）
+      if (isCounter(m, pet)) { if (m.t !== 'ink') { (ev.counter = ev.counter || []).push({ k, t: m.t, by: pet.id }); g.monStats.counter = (g.monStats.counter || 0) + 1; } return true; }
+      (ev.petMiss = ev.petMiss || []).push({ k, t: m.t, by: pet.id }); g.monStats.petMiss = (g.monStats.petMiss || 0) + 1;
+      return false;
+    }
     if (m.t === 'shell' && m.hp > 0) {
       const dmg = byPet ? 2 : 1;
       if (m.hp >= dmg) { m.hp -= dmg; g.monStats.cracks++; (ev.shellCrack = ev.shellCrack || []).push({ k, left: m.hp, n: dmg }); return false; }
@@ -5354,12 +5525,12 @@ function createPetGame(opts) {
     return true;
   }
   // 清掉一批格子
-  function clearCells(b, cells, ev, byPet, colorOk) {
+  function clearCells(b, cells, ev, byPet, colorOk, pet) {
     for (const k of cells) {
       const v = b[k];
       if (v === 0 || v === 2 || v === 4 || v === 5) continue;
       if (IS_MON(v)) {
-        if (!hitMon(k, ev, byPet, colorOk)) continue;
+        if (!hitMon(k, ev, byPet, colorOk, pet)) continue;
         if (byPet) g.playStats.goalsByPet++; else g.playStats.goalsByPlayer++;
         if ('monster' in g.got) g.got.monster++; g.caught++; ev.collected.push({ k, what: 'monster', t: g.mon[k] ? g.mon[k].t : 'ink', col: g.mon[k] ? g.mon[k].col : -1 }); delete g.jumpPlan[k]; g.mon[k] = null;
       }
@@ -5369,11 +5540,15 @@ function createPetGame(opts) {
     }
   }
   // 一次「消掉」（一排 / 一个大格）碰到了机关匣或大墨怪
-  function unitTouches(b, cells, ev, byPet) {
+  function unitTouches(b, cells, ev, byPet, pet) {
     if ('box' in g.got && cells.some((k) => b[k] === 2)) { g.got.box++; ev.collected.push({ k: cells.find((k) => b[k] === 2), what: 'box' }); }
     if (g.boss && g.bigHp > 0 && cells.some((k) => b[k] === 4) && !(byPet && ev.petBossDone)) {
       if (byPet) ev.petBossDone = true; // 0.9：宠物出手一次最多咬头目一口（金翅雀一次扫两排，原来能咬两口）
-      const dmg = ev.stunHit && !byPet ? 2 : 1; // 0.9：它刚动完手正晕着时你打中它，一下掉 2 颗心；宠物咬只掉 1 颗（量出来宠物替你打掉了大半的心）
+      const weak = RULES.bossWeak[g.boss.kind];
+      // 克制：头目怕的那只宠物咬一口掉 2 颗心，别的宠物咬一口 1 颗（和原来一样）；你自己打：它晕着 2 颗，平时 1 颗（没变）
+      const dmg = byPet ? (weak && pet && pet.act === weak ? RULES.bossWeakDmg : RULES.bossOtherDmg) : ev.stunHit ? 2 : 1;
+      if (byPet && dmg > 1) (ev.counter = ev.counter || []).push({ k: g.bigCells[0], t: 'boss', by: pet && pet.id });
+      // 原来的注释：0.9：它刚动完手正晕着时你打中它，一下掉 2 颗心；宠物咬只掉 1 颗（量出来宠物替你打掉了大半的心）
       g.bigHp = Math.max(0, g.bigHp - dmg);
       g.boss.hp = g.bigHp;
       ev.bigHits.push({ k: g.bigCells[0], dmg });
@@ -5388,101 +5563,55 @@ function createPetGame(opts) {
       }
     }
   }
-  const lineCells = (axis, i) => UNITS[axis === 'row' ? i : axis === 'col' ? 9 + i : 18 + i];
-  const fillCount = (b, cells) => cells.filter((k) => EATABLE(b[k])).length;
   const rockLeft = () => 'rock' in g.got && g.got.rock < st.goal.rock;
-  // 宠物挑地方：越满越好；铁石（铁石关）、铁甲怪、跳跳怪、大墨怪加分
-  const lineScore = (b, cells) => fillCount(b, cells)
-    + (rockLeft() ? cells.filter((k) => b[k] === 5).length * 5 : 0)
-    + cells.reduce((a, k) => a + (b[k] === 3 && g.mon[k] ? monWeight(g.mon[k]) : 0), 0)
-    + (g.bigHp > 0 && cells.some((k) => b[k] === 4) ? 4 : 0);
-  // 宠物挑地方时，各种墨怪值多少：会还手的、甲厚的、快爆的先打
-  function monWeight(m) { return m.t === 'shell' ? 2 + m.hp : m.t === 'bomb' ? (m.cd <= 3 ? 6 : 3) : m.t === 'eat' || m.t === 'moss' ? 3 : m.t === 'color' ? 3 : m.t === 'jump' ? 2 : 1; }
-  function breakRocks(b, cells, ev) {
+  function breakRocks(b, cells, ev, pet) {
     for (const k of cells) {
       if (b[k] !== 5) continue;
-      if (g.rockHp[k] > 1) { g.rockHp[k]--; (ev.rockCrack = ev.rockCrack || []).push(k); continue; } // 两层：先裂
+      const dmg = pet && pet.act === RULES.rockNemesis ? RULES.rockDmg : 1;
+      if (g.rockHp[k] > dmg) { g.rockHp[k] -= dmg; (ev.rockCrack = ev.rockCrack || []).push(k); continue; } // 两层：先裂
       b[k] = 0; g.rockHp[k] = 0;
       if ('rock' in g.got) g.got.rock++;
       g.playStats.goalsByPet++; // 铁石只有宠物打得碎
       ev.collected.push({ k, what: 'rock' }); (ev.rocks = ev.rocks || []).push(k);
     }
   }
-  // 一排 / 一个大格里先啃哪几格：铁石 > 铁甲怪 > 跳跳怪 > 小墨怪 > 带宝石的 > 普通块
-  function pickBites(b, cells, n) {
-    const pri = (k) => (b[k] === 5 ? (rockLeft() ? 5 : 0.5) : b[k] === 3 ? 3 + (g.mon[k] ? monWeight(g.mon[k]) / 10 : 0) : g.gem[k] ? 2 : b[k] === 1 ? 1 : 0);
-    return cells.filter((k) => pri(k) > 0).sort((x, y) => pri(y) - pri(x)).slice(0, n);
+  // 救命（并在宠物身上，没有另外的计数）：三块都放不下、宠物格空着的时候，能量条里只要有东西，宠物就提前把技能块给你，能量清空。
+  // 技能块只有一格，永远放得下；放下去清掉周围一小片，腾出地方。能量是空的就救不了：所以平时多消几排，就是在给自己攒命。
+  function rescue(ev) {
+    if (!g.stuck() || g.hand[3] || !g.team.length) return;
+    const ok = (x) => (RULES.rescue === 'half' ? x.energy * 2 >= energyMax(g, x) : x.energy >= 1);
+    const pt = g.team.filter(ok).sort((x, y) => y.energy / energyMax(g, y) - x.energy / energyMax(g, x))[0];
+    if (pt) pt.energy = 0;
+    if (!pt) return;
+    g.hand[3] = skillPiece(pt); g.handColor[3] = petDef(pt).color; ev.rescue = pt.id;
+    ev.petActs.push({ id: pt.id, kind: 'gift', lines: [], boxes: [], cells: [], rescue: true });
   }
-  // 这只宠物现在能下手的地方（按好坏排）；空 = 没地方下手，先憋着
-  function targets(b, p) {
-    const d = petDef(p), pw = d.power(p.lv);
-    if (d.act === 'row') {
-      const out = [];
-      for (let i = 0; i < 9; i++) for (const axis of ['row', 'col']) { const n = lineScore(b, lineCells(axis, i)); if (n > 0) out.push({ axis, i, n }); }
-      return out.sort((x, y) => y.n - x.n);
-    }
-    if (d.act === 'box') {
-      const out = [];
-      for (let bx = 0; bx < 9; bx++) { const n = lineScore(b, lineCells('box', bx)); if (n > 0) out.push({ axis: 'box', i: bx, n }); }
-      return out.sort((x, y) => y.n - x.n);
-    }
-    if (d.act === 'fill') {
-      const out = [];
-      for (const axis of ['row', 'col']) for (let i = 0; i < 9; i++) {
-        const cells = lineCells(axis, i), e = cells.filter((k) => !b[k]).length;
-        if (e >= 1 && e <= pw) out.push({ axis, i, n: 10 - e + cells.filter((k) => b[k] === 5 || IS_MON(b[k]) || g.color[k] === -2).length * 2 });
-      }
-      return out.sort((x, y) => y.n - x.n);
-    }
-    return [{ axis: 'gift' }];
-  }
-  // 宠物出手（在 b 上改）。tg 不给就挑最好的；返回 null = 没地方下手
-  function petAct(b, p, ev, tgList) {
-    const d = petDef(p), pw = d.power(p.lv);
-    const list = tgList || targets(b, p);
-    if (!list.length) return null;
-    const act = { id: p.id, kind: d.act, lines: [], boxes: [], cells: [] };
-    ev.petBossDone = false;
-    const bite = (cells) => {
-      const eat = pw >= 9 ? cells.filter((k) => EATABLE(b[k]) || b[k] === 5) : pickBites(b, cells, pw);
-      if (pw >= 9 || cells.some((k) => b[k] === 4)) unitTouches(b, pw >= 9 ? cells : cells.filter((k) => b[k] === 4), ev, true);
-      breakRocks(b, eat, ev);
-      act.cells.push(...eat.filter((k) => EATABLE(b[k]) || (ev.rocks || []).includes(k) || (ev.rockCrack || []).includes(k)));
-      clearCells(b, eat.filter((k) => EATABLE(b[k])), ev, true);
-    };
-    if (d.act === 'row') {
-      for (const L of list.slice(0, d.lines || 1)) { bite(lineCells(L.axis, L.i)); act.lines.push({ axis: L.axis, idx: L.i }); }
-    } else if (d.act === 'box') {
-      const L = list[0]; bite(lineCells('box', L.i)); act.boxes.push(L.i);
-    } else if (d.act === 'fill') {
-      const L = list[0], cells = lineCells(L.axis, L.i);
-      const filled = cells.filter((k) => !b[k]);
-      filled.forEach((k) => { b[k] = 1; g.color[k] = 2; });
-      unitTouches(b, cells, ev, true);
-      breakRocks(b, cells, ev); // 丝把铁石勒碎（带错宠物只是慢，不会死局）
-      act.cells.push(...cells.filter((k) => EATABLE(b[k])));
-      clearCells(b, cells, ev, true);
-      act.lines.push({ axis: L.axis, idx: L.i, filled });
-    } else if (d.act === 'gift') {
-      g.giftPending++;
-      g.giftPower = pw;
-    }
+  // 放技能块：打它周围那一小片。不算一手，墨怪不动，不发新块。
+  function useSkill(i, r, c) {
+    const p = g.hand[i], pet = petOf(p.pet), cells = skillCells(PETS[p.pet].shape, p.tier, r, c);
+    const b = g.board.slice();
+    const ev = { piece: p, r, c, placed: [], units: [], cells: [], collected: [], bigHits: [], petActs: [], energy: {}, sparks: [], fire: null, gained: 0, win: false, stunHit: false, skill: { pet: p.pet, tier: p.tier, cells } };
+    breakRocks(b, cells, ev, pet);
+    if (cells.some((k) => b[k] === 4)) unitTouches(b, cells, ev, true, pet);
+    const before = cells.filter((k) => EATABLE(b[k]));
+    const c0 = g.caught;
+    clearCells(b, cells, ev, true, null, pet);
+    g.skillCaught = (g.skillCaught || 0) + g.caught - c0; // 统计：技能块抓走了几只
+    ev.cells = before.filter((k) => b[k] === 0);
+    g.hand[i] = null; g.skillUses++;
     if ('acts' in g.got) g.got.acts++;
-    return act;
-  }
-  // 救场：把能下手的地方挨个试，挑「啃完以后手上有块放得下」的那一处
-  function rescueTarget(p) {
-    const list = targets(g.board, p).slice(0, 10);
-    for (const t of list) {
-      const b2 = g.board.slice();
-      const dummy = { collected: [], bigHits: [] };
-      const save = { got: JSON.stringify(g.got), bigHp: g.bigHp, rockHp: g.rockHp.slice(), color: g.color.slice(), gift: g.giftPending, caught: g.caught, mon: JSON.stringify(g.mon), spawn: g.spawnQ.length };
-      petAct(b2, p, dummy, [t]);
-      const ok = g.hand.some((pc) => pc && core.anyPlacement(b2, pc));
-      g.got = JSON.parse(save.got); g.bigHp = save.bigHp; if (g.boss) g.boss.hp = save.bigHp; g.rockHp = save.rockHp; g.color = save.color; g.giftPending = save.gift; g.caught = save.caught; g.mon = JSON.parse(save.mon); g.spawnQ.length = save.spawn;
-      if (ok) return [t];
-    }
-    return null;
+    g.petActsTotal[p.pet] = (g.petActsTotal[p.pet] || 0) + 1;
+    while (g.spawnQ.length) { const sp = g.spawnQ.shift(); spawnAround(b, sp.k, sp.n, ev); }
+    nextWave(b, ev);
+    if (!g.playStats.firstGoal && (ev.collected.some((x) => x.what !== 'bubble') || ev.bigHits.length)) g.playStats.firstGoal = Math.max(1, g.moves);
+    g.board = b;
+    ev.gained = ev.cells.length; g.score += ev.gained;
+    syncAll();
+    const left = core.goalLeft(g);
+    if (Object.keys(left).every((k) => left[k] === 0)) { ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
+    rescue(ev);
+    if (g.stuck()) { g.over = true; g.reason = 'stuck'; ev.stuck = true; }
+    return ev;
   }
 
   // ---------- 墨怪的回合（每放一块之后） ----------
@@ -5520,11 +5649,15 @@ function createPetGame(opts) {
     for (let k = 0; k < 81; k++) {
       const m = g.mon[k];
       if (b[k] !== 3 || !m) continue;
-      if (m.t === 'eat' || m.t === 'moss') {
+      if (RULES.pester[m.t] > 0) {
+        // 冲宠物喷墨：先瞪一手（ev.glare），下一手偷能量
+        if (m.tgt !== null) { m.tgt = null; m.cd = RULES.pester[m.t]; drainPets(m, k, ev); }
+        else if (--m.cd <= 0) { m.tgt = -1; (ev.glare = ev.glare || []).push(k); }
+      } else if (m.t === 'eat' || m.t === 'moss') {
         if (m.tgt !== null) {
           const t = m.tgt; m.tgt = null; m.cd = MON[m.t].cd;
-          if (m.t === 'eat' && b[t] === 1) { b[t] = 0; g.color[t] = 0; g.gem[t] = 0; g.monStats.eats++; (ev.eats = ev.eats || []).push({ from: k, k: t }); }
-          if (m.t === 'moss' && b[t] === 0) { inkAt(b, t); g.monStats.moss++; (ev.moss = ev.moss || []).push({ from: k, k: t }); }
+          if (m.t === 'eat' && b[t] === 1) { b[t] = 0; g.color[t] = 0; g.gem[t] = 0; g.monStats.eats++; (ev.eats = ev.eats || []).push({ from: k, k: t }); drainPets(m, k, ev); }
+          if (m.t === 'moss' && b[t] === 0) { inkAt(b, t); g.monStats.moss++; (ev.moss = ev.moss || []).push({ from: k, k: t }); drainPets(m, k, ev); }
         } else if (--m.cd <= 0) {
           const opts2 = near8(k).filter((x) => (m.t === 'eat' ? b[x] === 1 : b[x] === 0));
           if (!opts2.length) { m.cd = 1; continue; }
@@ -5536,7 +5669,7 @@ function createPetGame(opts) {
           const ring1 = near8(k).filter((x) => b[x] === 0), ring2 = [...new Set(ring1.flatMap(near8))].filter((x) => b[x] === 0 && !ring1.includes(x));
           const cells = ring1.concat(ring2).slice(0, 6);
           cells.forEach((x) => inkAt(b, x));
-          (ev.bombs = ev.bombs || []).push({ k, cells }); g.monStats.bombs++;
+          (ev.bombs = ev.bombs || []).push({ k, cells }); g.monStats.bombs++; drainPets(m, k, ev);
           m.cd = MON.bomb.cd;
         }
       }
@@ -5577,7 +5710,7 @@ function createPetGame(opts) {
       if (bs.eatPlan) {
         const got = bs.eatPlan.filter((k) => b[k] === 1);
         got.forEach((k) => { b[k] = 0; g.color[k] = 0; g.gem[k] = 0; });
-        if (got.length) { ev.bossEats = got; g.monStats.eats += got.length; }
+        if (got.length) { ev.bossEats = got; g.monStats.eats += got.length; drainPets({ t: 'eat' }, g.bigCells[0], ev); }
         bs.eatPlan = null; bs.stun = true; return;
       }
       bs.stun = false;
@@ -5602,11 +5735,12 @@ function createPetGame(opts) {
   }
 
   // 目标「抓光盘上的墨怪」：all = 1 表示抓光了；monLeft = 还剩几只（顶上显示这个数）
-  function syncAll() { g.monLeft = g.mon.filter(Boolean).length + g.spawnQ.length; if ('all' in g.got) g.got.all = g.monLeft ? 0 : 1; }
+  function syncAll() { g.monLeft = g.mon.filter(Boolean).length + g.spawnQ.length + waveMonCount(); if ('all' in g.got) g.got.all = g.monLeft ? 0 : 1; }
   syncAll();
   g.place = (i, r, c) => {
     const p = g.hand[i];
     if (!p || g.over || !core.canPlace(g.board, p, r, c)) return null;
+    if (p.special === 'skill') return useSkill(i, r, c);
     const ci = g.handColor[i];
     const b = g.board.slice();
     const placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc);
@@ -5636,39 +5770,22 @@ function createPetGame(opts) {
       const colorOk = (k, col) => units.some((u) => UNITS[u].includes(k) && UNITS[u].some((x) => b0[x] === 1 && g.color[x] === col));
       clearCells(b, [...set], ev, false, colorOk);
     }
-    // 火球：9 = 炸空整个大格；5 = 炸十字（放下的那格 + 上下左右）
-    if (p.special === 'fire') {
-      const bx = core.boxOf(r, c);
-      const big = (p.power || 9) >= 9;
-      const cells = big ? UNITS[18 + bx] : crossCells(r, c);
-      breakRocks(b, cells, ev);
-      if (big || cells.some((k) => b[k] === 4)) unitTouches(b, cells, ev, true);
-      const hit = cells.filter((k) => EATABLE(b[k]));
-      clearedCells = clearedCells.concat(hit);
-      clearCells(b, cells, ev, true); // 火球是麒麟给的，算宠物下手
-      ev.fire = { box: bx, cells: hit, small: !big, r, c };
-      if (big) units.push(18 + bx);
-    }
     ev.units = units; ev.cells = clearedCells;
     const ps = g.playStats; ps.units += units.length;
     if (units.length) { ps.clearMoves++; ps.dry = 0; if (!ps.firstClear) ps.firstClear = g.moves; } else { ps.dry++; ps.maxDry = Math.max(ps.maxDry, ps.dry); }
-    // 2. 积蓄能量（多出来的留到下一次）
+    // 2. 积蓄能量：每消一排 / 一个大格 +1；消掉它颜色的方块每 3 块再 +1。宠物格里已经有技能块时，最多攒到满。
     for (const pt of g.team) {
       const mine = clearedCells.filter((k) => colorsBefore[k] === petDef(pt).color);
-      const gain = (petDef(pt).charge === 'place' ? 1 : units.length) + Math.floor(mine.length / 3);
+      const gain = units.length + Math.floor(mine.length / 3);
       if (gain) { pt.energy = Math.min(energyMax(g, pt) * 2 - 1, pt.energy + gain); ev.energy[pt.id] = gain; }
       if (mine.length) ev.sparks.push({ id: pt.id, cells: mine });
     }
-    // 3. 能量满的宠物出手；没地方下手就憋着，能量留满
-    for (const pt of g.team) {
-      if (pt.energy >= energyMax(g, pt)) {
-        const act = petAct(b, pt, ev);
-        if (act) { pt.energy -= energyMax(g, pt); ev.petActs.push(act); g.petActsTotal[pt.id] = (g.petActsTotal[pt.id] || 0) + 1; }
-      }
-    }
-    if (!g.playStats.firstGoal && ev.collected.some((c) => c.what !== 'bubble') || (!g.playStats.firstGoal && ev.bigHits.length)) g.playStats.firstGoal = g.moves;
+    // 3. 能量满了：吐技能块到宠物格
+    giveSkill(ev);
+    if (!g.playStats.firstGoal && (ev.collected.some((x) => x.what !== 'bubble') || ev.bigHits.length)) g.playStats.firstGoal = Math.max(1, g.moves);
     // 4. 分身：这一手打中的分身怪 / 分身王，现在蹦出小墨怪
     while (g.spawnQ.length) { const sp = g.spawnQ.shift(); spawnAround(b, sp.k, sp.n, ev); }
+    nextWave(b, ev); // 这一波抓光了：下一波掉下来（刚掉下来的这一手不动）
     // 5. 墨怪的回合（过关就不动了）
     syncAll();
     let left = core.goalLeft(g);
@@ -5687,40 +5804,15 @@ function createPetGame(opts) {
     syncAll();
     left = core.goalLeft(g);
     if (done()) { ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
-    if (!g.hand.some(Boolean)) g.deal();
-    else giveGift();
-    // 雪中送炭：快堵死了，攒到一半以上的宠物提前出手，挑「啃完你手上的块放得下」的地方
-    if (g.stuck()) {
-      const helpers = g.team.filter((pt) => pt.energy * 2 >= energyMax(g, pt)).sort((x, y) => y.energy / energyMax(g, y) - x.energy / energyMax(g, x));
-      for (const pt of helpers) {
-        if (!g.stuck()) break;
-        if (petDef(pt).act === 'gift') {
-          const slot = g.hand.findIndex((x, k) => x && !g.fits(k));
-          if (slot >= 0) { g.hand[slot] = fireOf(petDef(pt).power(pt.lv)); g.handColor[slot] = 5; if (g.handGem) g.handGem[slot] = null; }
-          pt.energy = 0;
-          ev.petActs.push({ id: pt.id, kind: 'gift', lines: [], boxes: [], cells: [], rescue: true });
-        } else {
-          const tg = rescueTarget(pt);
-          if (!tg) continue;
-          const b2 = g.board.slice();
-          const act = petAct(b2, pt, ev, tg);
-          g.board = b2;
-          pt.energy = 0;
-          act.rescue = true;
-          ev.petActs.push(act);
-        }
-        g.petActsTotal[pt.id] = (g.petActsTotal[pt.id] || 0) + 1;
-        ev.rescue = pt.id;
-      }
-      syncAll();
-      left = core.goalLeft(g);
-      if (done()) { ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
-    }
+    if (!g.hand.slice(0, 3).some(Boolean)) g.deal();
+    rescue(ev);
     if (g.stuck()) { g.over = true; g.reason = 'stuck'; ev.stuck = true; }
     return ev;
   };
   // 宠物下一次要下手的地方（能量差 1 格时画面亮出来）
-  g.petTarget = (pt) => { const t = targets(g.board, pt)[0]; return t && t.axis !== 'gift' ? t : null; };
+  g.petTarget = () => null; // 技能块由你自己放，没有「它要下手的地方」了
+  g.skillCells = (pc, r, c) => skillCells(PETS[pc.pet].shape, pc.tier, r, c); // 拖着技能块时，画面照这个亮出它会打到哪几格
+  g.skillBest = () => skillBest(g);
   // 「差一点」（0.9.4，检验报告 C10 / E3）：头目按打掉了几颗心算、抓光关按抓了几只算（原来按「打死了没有」算，头目、抓光关永远不说差一点）；门槛从七成收到八成
   // 离过关还有多远：0–1（头目按心、抓光按抓了几只、其余按目标数；冲分按分数）
   g.progressFrac = () => {
@@ -5751,7 +5843,7 @@ function bestMove(g, skill) {
   const left = core.goalLeft(g);
   const cands = [];
   g.hand.forEach((p, i) => {
-    if (!p) return;
+    if (!p || p.special) return;
     for (const [r, c] of core.placements(g.board, p)) {
       const placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc);
       let v, board;
@@ -5798,7 +5890,7 @@ function bestMove(g, skill) {
   cands.sort((a, b) => b.v - a.v);
   const top = cands.slice(0, 10);
   for (const m of top) {
-    const rest = g.hand.filter((p, k) => p && k !== m.i);
+    const rest = g.hand.filter((p, k) => p && !p.special && k !== m.i);
     if (rest.length && !core.solvable(m.board, rest)) m.v -= 100;
   }
   top.sort((a, b) => b.v - a.v);
@@ -5811,183 +5903,300 @@ function simulate(opts) {
   const g = createPetGame(o);
   let guard = 0;
   while (!g.over && guard++ < 400) {
+    if (useSkillIfGood(g)) continue;
     const m = bestMove(g, o.skill);
-    if (!m) break;
+    if (!m) { if (g.hand[3]) { const s = skillBest(g); if (s && g.place(3, s.r, s.c)) continue; } break; }
     g.elapsed += o.secPerMove(g);
     g.place(m.i, m.r, m.c);
   }
   return g;
 }
 
-module.exports = { petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+// 机器人放技能块：挑打得到最多「它打得动的东西」的那一格。v ≥ 100 = 至少打到一样正经东西（它克的墨怪 / 小墨怪 / 铁石 / 头目）
+function skillBest(g) {
+  const p = g.hand[3];
+  if (!p) return null;
+  const pet = petOf(p.pet), left = core.goalLeft(g), wantMon = left.monster > 0 || left.all > 0;
+  let best = null;
+  for (let k = 0; k < 81; k++) {
+    if (g.board[k] !== 0) continue;
+    const r = Math.floor(k / 9), c = k % 9, cells = skillCells(PETS[p.pet].shape, p.tier, r, c);
+    let v = 0, touchBoss = false;
+    for (const x of cells) {
+      const bv = g.board[x];
+      if (bv === 3 && g.mon[x]) v += isCounter(g.mon[x], pet) ? (wantMon ? 100 : 30) + (g.mon[x].t !== 'ink' ? 20 : 0) : 0;
+      else if (bv === 5) v += left.rock > 0 ? 100 : 3;
+      else if (bv === 4) touchBoss = true;
+      else if (bv === 1) v += (g.gem[x] && left[core.GEMS[g.gem[x]].id] > 0 ? 100 : 0) + (g.color[x] === -2 ? 2 : 0.5); // 清掉墨块比清掉自己的块好
+    }
+    if (touchBoss && g.bigHp > 0) v += 100 * (g.boss && RULES.bossWeak[g.boss.kind] === pet.act ? RULES.bossWeakDmg : RULES.bossOtherDmg);
+    if (!best || v > best.v) best = { r, c, v };
+  }
+  return best;
+}
+// 有正经东西可打就用；三块都放不下，也用（清地方）
+function useSkillIfGood(g) {
+  if (!g.hand[3] || g.over) return false;
+  const s = skillBest(g);
+  if (!s) return false;
+  const fits = [0, 1, 2].some((i) => g.fits(i));
+  if (s.v >= 100 || !fits) return !!g.place(3, s.r, s.c);
+  return false;
+}
+module.exports = { RULES, isCounter, bestPetFor, skillCells, skillBest, useSkillIfGood, tierOf, petDesc, CHARGE_TAG, CHARGE_TEXT, PETS, FIRE, COLOR_NAME, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
 
 });
 __def("js/petlevels.js", function (module, exports, require) {
-// 九宫消 + 宠物：30 关关卡表，Fable 重调版（2026-11-24）。格式和 js/petlevels.js 一样，可以直接替换。
-// 报告：../../九宫消_关卡难度与收集物设计_20261124.md。量数的工具：test/fable_measure.js（单关）、test/campaign_fable.js（从头打到尾）。
+// 0.9.8 起用这张表（从 test/petlevels_counter.js 拷来；第 5 关去掉了限手数的说明卡）。九宫消 + 宠物：30 关关卡表，「宠物系统重做」版（Fable 2026-11-25）。格式和 js/petlevels.js 一样（导出 evolveStage），多了一个字段：waves。
+// 报告：../../九宫消_宠物系统重做_20261125.md。要和规则层副本一起用：test/fable_counter/petgame_counter.js（Kira 合进 js/petgame.js）。
+// 这张表是 test/fable_counter/build_levels.js 生成的（配方在那个文件里；改配方、重跑就出新表，手数上限由机器人量出来）。不要手改这个文件。
 //
-// 这一版改的是「一关打几手」和「收集物怎么出现」，不动规则代码：
-//   ① 每关的手数（「一般人」机器人量的）：第 1 关 8–10 手；教新东西 / 新宠物登场的关 10–14 手；普通关 12–20 手；难关 16–24 手；超难关 20–28 手；头目 24–32 手。
-//      爽关（第 16 关）故意短：8 手左右抓 12 只。
-//   ② 开局尽量有一两排只差 2–3 格：头 3 手左右就能「咔」地消一次，不干放。（第 5、8、18、23、25、28 关还差一点，平均第 4–5 手才第一次消。）
-//   ③ 收集物「阶梯」着摆：第一个蹲在只差 2 格的排上（马上收到），后面的排越来越空；有的一排蹲两个（一下收两个，爽）。
-//      不再把三个目标全放在「只差 2 格」的排上（原来第 2 关 3 手打完、第 3 关 4 手、第 7 关 5 手，就是这个原因）。
-//   ④ 宝石：第一次出现（第 2 关）全摆在盘上；第 6 关起一半摆在盘上、一半长在发下来的块上（gemRate），学 Woodoku 旅程第 4 关。
-//   ⑤ 墨怪、机关匣、铁石、头目：开局全在盘上（它们是「敌人 / 机关」，一眼得看见要打谁）。
+// 和原来的表比：
+//   ① 铜雀第 1 关过关就送，第 2 关上场（原来第 3 关送、第 4 关上场）。
+//   ② 每关变长：一关的墨怪分 2–3 波冒出来（waves）。这一波抓光了，下一波从墨里冒出来；盘面不清空。聪明玩家一关 25–50 手。
+//   ③ 没有手数上限、没有倒计时。输法只有「三块都放不下」。带错宠物会输，是因为墨怪活着就偷宠物的能量（它的克星不怕）：带错的宠物攒不出技能块，帮不上忙也救不了命。
+//   ④ 每关主打一只宠物的克制对象（规则层的克制表）：甲壳怪、金色挑色怪 → 铜雀；跳跳怪、分身怪、红色挑色怪、铁石、分身王 → 爆竹鼠；
+//      馋嘴怪、墨苔怪、绿色挑色怪、大馋嘴 → 墨斗蚕；炸弹怪、橙色挑色怪 → 火麒麟；小墨怪谁都行。
+//   ⑤ 点名的关 8 关：第 2、11、13、14、17、21、23、27 关（新宠物登场、老宠物回场、新墨怪第一次出场）。难关、超难关、头目关都不点名。
 //
-// 字段说明照抄 js/petlevels.js：
-// d：发大块的多少（0 全是小块，越大大块越多）；luck：发的三块「保证都放得下」的机会（不写 = 1）。
-// board：. 空  # 预放的块  b g o p v 带宝石的块  M 机关匣  * 泡泡  m 小墨怪  A/B/C 甲壳怪 1/2/3 层  J 跳跳怪  E 馋嘴怪  G 墨苔怪  T 炸弹怪  S 分身怪
-//        0–6 挑色怪（那种颜色：0 金 1 红 2 绿 3 蓝 5 橙）  K 头目（2×2）  R 铁石  Q 两层铁石
-// goal：score 分 / b g … 宝石 / box 机关匣 / bubble 泡泡 / monster 墨怪（各种都算，分身出来的也算）/ boss 头目 / rock 铁石 / acts 宠物出手几次 / evolve 进化
-// gemRate：发下来的每一块带一颗宝石的机会（只发还缺的那种；盘上已经够数就不再发）。
-// bossKind：头目是谁：spit 大墨怪（吐墨，默认）/ eat 大馋嘴（啃块）/ split 分身王（挨一下蹦小墨怪）
-// only：专属关，点名要这只宠物；lend：第一次打借你几级的；fastCharge：第一次打充得特别快（3 格就满）
-// best：这关带谁最顺；一关只写 best 或 only 其中一个。team 只给进化关用。
-// hard：1 难 / 2 超难；gift：过关送哪只；intro：第一次出现的新东西
-//
-// 每关注释里的「一般人 N 手」= 六成的手奔着目标放、四成随手放的机器人，赢的那局平均几手；「盯目标 N 手」= 每一手都奔着目标的机器人，是真人认真打的下限。
+// 字段：
+// d：发大块的多少；luck：发的三块「保证都放得下」的机会（不写 = 1）。
+// board：. 空  # 预放的块  b g o p v 带宝石的块  M 机关匣  m 小墨怪  A/B/C 甲壳怪 1/2/3 层  J 跳跳怪  E 馋嘴怪  G 墨苔怪  T 炸弹怪  S 分身怪
+//        0–6 挑色怪（0 金 1 红 2 绿 3 蓝 5 橙）  K 头目（2×2）  R 铁石  Q 两层铁石
+// waves：后面几波（写成 9×9 的小图，只认里面的墨怪和铁石；那格被占了就冒在最近的空格）。盘上的墨怪（要打铁石的关还有铁石）清光了，下一波才出来。
+// goal：score 分 / b g 宝石 / box 机关匣 / monster 墨怪（几张盘加起来）/ boss 头目 / rock 铁石（几张盘加起来）/ all 抓光（每张盘都抓光）
+// only：点名要这只宠物；lend：第一次打借你几级的；fastCharge：第一次打充得特别快；best：这关带谁对口；hard：1 难 / 2 超难；gift：过关送哪只；intro：第一次出现的新东西
 module.exports = [
-  // ===== 第一章「工坊后院」 =====
-  { // 1 学拖块、消掉。第一组发的是教学那三块（3×3、5 长条、4 长条），第 1 手就能消一个大格。
-    //   原来 75 分；第一组三块就能拿 60 多分，改成 90，多放两三手。一般人 9 手，盯目标 8 手。
-    goal: { score: 90 }, d: 0, colors: [3, 2, 1],
+  // ===== 第一章「工坊后院」：只有铜雀，一样一样学 =====
+  { // 1 学拖块、消掉。盘面没动。过关就送铜雀（原来第 3 关才送）。
+    //    带对口的：一般人 100% 过、平均 11 手；生手 96%。
+    goal: { score: 90 }, d: 0, colors: [3, 2, 1], gift: 'tongque',
     board: ['....#....', '.#.....#.', '.........', '#.......#', '#.......#', '#.......#', '.........', '.#.....#.', '....#....'],
   },
-  { // 2 宝石 5 颗，全摆在盘上（第一次见宝石，先不学「块上也带宝石」）。
-    //   阶梯：中间那排只差 2 格（第 1–2 手就收到第一颗）；上面那排差 3 格、一排两颗；下面那排差 3 格、一排两颗。
-    //   原来 3 颗都在只差 2 格的排上，3–6 手打完。现在一般人 11 手，盯目标 9 手（最快 6 手）。
-    goal: { b: 5 }, d: 0, intro: 'gem', colors: [3, 2, 1],
-    board: ['.........', '.##b.b##.', '.........', '.........', '###b..###', '.........', '.........', 'b##...##b', '.........'],
-  },
-  { // 3 小墨怪 5 只；过关送铜雀。和第 2 关同一个道理，换个摆法：
-    //   上面一排只差 2 格（一只）；中间一排差 3 格（两只）；左下、右下两个大格各只差 1 格（各一只，学「消大格也抓得到」）。
-    //   原来 3 只，4 手打完。现在一般人 11 手，盯目标 9 手；一半的手都有消。
-    goal: { monster: 5 }, d: 0, intro: 'monster', colors: [3, 2, 1], gift: 'tongque',
+  { // 2 铜雀登场（充得特别快）+ 小墨怪：学「能量满了它吐一块技能块，拖到墨怪旁边」。小墨怪自己消也抓得到。
+    //    带对口的：一般人 100% 过、平均 5 手；生手 93%。
+    goal: { monster: 5 }, d: 0, colors: [0, 3, 2], lend: 1, fastCharge: true, intro: 'pet', only: 'tongque',
     board: ['.........', '.........', '###m..###', '.........', '.#m#.#m#.', '.........', '###...###', 'm#.....#m', '###...###'],
   },
-  { // 4 铜雀第一次出战（第一次打充得特别快）。开局三排各差 3–5 格：第 2–3 手就消第一排，铜雀马上开始攒能量。
-    //   原来盘上几乎是空的，平均第 6 手才第一次消，铜雀半天不动。分数 120 → 150。一般人 13 手，铜雀出手 2 次。
-    goal: { score: 150 }, d: 0.08, only: 'tongque', lend: 1, fastCharge: true, intro: 'pet', colors: [0, 3, 2],
-    board: ['.........', '###...###', '.........', '.........', '##.....##', '.........', '.........', '###...###', '.........'],
+  { // 3 宝石 5 颗，全摆在盘上。盘面没动。
+    //    带对口的：一般人 100% 过、平均 7 手；生手 98%。
+    goal: { b: 5 }, d: 0, intro: 'gem', colors: [0, 3, 2],
+    board: ['.........', '.##b.b##.', '.........', '.........', '###b..###', '.........', '.........', 'b##...##b', '.........'],
   },
-  { // 5 金色喂铜雀（有点难）；过关后第一次炼丹、喂。小墨怪 4 → 6 只，散开蹲在空排上，不好一下抓完；
-    //   上下两排只差 3 格，没有墨怪：先消它们把铜雀喂饱，让铜雀去啄墨怪。一般人 16 手，铜雀出手 2–3 次。
-    //   注意：intro 'color' 在 main.js 的 INTRO 表里写了两次（金色喂宠物、挑色怪），后一个把前一个盖掉了，这一关现在弹的是挑色怪的卡。见报告第六节。
-    goal: { monster: 6 }, d: 0.35, luck: 0.5, intro: 'gold', colors: [0, 0, 3, 2], hard: 1, best: 'tongque',
+  { // 4 第一次「一关两张盘」：这张盘的墨怪抓光，换下一张。金色的块喂铜雀。
+    //    带对口的：一般人 96% 过、平均 22 手；生手 81%。
+    goal: { monster: 12 }, d: 0.1, colors: [0, 0, 3, 2], intro: 'wave', best: 'tongque',
     board: ['.........', '###...###', '....m....', '..m...m..', '.........', '..m...m..', '....m....', '###...###', '.........'],
+    waves: [
+      ['.#.....#.', '.#.....#.', '.#.m.m.#.', '.........', '..m...m..', '.........', '.#.m.m.#.', '.#.....#.', '.#.....#.'],
+    ],
   },
-  { // 6 两种宝石各 4 颗（喘气）。这一关学「发下来的块上也带宝石」：盘上先摆 2 蓝 2 绿，另外 4 颗长在发下来的块上（gemRate）。
-    //   自己挑快满的排把带宝石的块放进去，再消掉：比捡现成的多一步「我安排的」。一般人 16 手。
-    //   理想版：加一张说明卡 intro: 'gempiece'（「块上的宝石：放下去，再把那一排消掉」），要 Kira 在 INTRO 表里加一条。
+  { // 5 第一次限手数（给得松）：学「顶上的数字是还剩几手」。三张盘。
+    //    带对口的：一般人 91% 过、平均 23 手；生手 76%。
+    goal: { monster: 12 }, d: 0.15, colors: [0, 3, 2], best: 'tongque',
+    board: ['###...###', '.........', '.m.....m.', '.........', '##m...m##', '.........', '.........', '.........', '###...###'],
+    waves: [
+      ['###...###', '.........', '.........', '.........', '##m...m##', '.........', '.m.....m.', '.........', '###...###'],
+      ['#...#...#', '#.m.#...#', '#...m...#', '.........', '.........', '.........', '#...m...#', '#.m.#...#', '#...#...#'],
+    ],
+  },
+  { // 6 两种宝石各 4 颗，一半长在发下来的块上。盘面没动，不限手数（喘气）。
+    //    带对口的：一般人 100% 过、平均 14 手；生手 94%。
     goal: { b: 4, g: 4 }, d: 0.1, intro: 'gempiece', gemRate: 0.4, colors: [0, 3, 2],
     board: ['.........', '.........', '###b..###', '.........', 'b#.....#g', '.........', '###..g###', '.........', '.........'],
   },
-  { // 7 机关匣：收 3 次（原来 2 次，横竖两排都只差 2 格，5 手打完）。前两次还是很快（横一次、竖一次），
-    //   第三次要把它在的排或大格重新铺满：学到「它不会被消掉，可以一收再收」。一般人 12 手，盯目标 9 手。
+  { // 7 机关匣收 3 次。盘面没动，不限手数。
+    //    带对口的：一般人 100% 过、平均 11 手；生手 93%。
     goal: { box: 3 }, d: 0.05, intro: 'box', colors: [0, 3, 2],
     board: ['....#....', '....#....', '.........', '....#....', '##.#M#.##', '....#....', '.........', '....#....', '....#....'],
   },
-  { // 8 满盘开局（难）：小墨怪 2 → 4 只，分数 200 → 220。一般人 18 手。
-    goal: { score: 220, monster: 4 }, d: 0.4, luck: 0.5, colors: [0, 3, 1], hard: 1,
-    board: ['#..###..#', '#.......#', '.#m#.#m..', '#.......#', '.........', '#.......#', '..m#.#m#.', '#.......#', '#..###..#'],
+  { // 8 满盘开局（难）：三张盘，小墨怪一共 12 只。
+    //    带对口的：一般人 93% 过、平均 23 手；生手 57%。
+    goal: { monster: 12 }, d: 0.25, luck: 0.8, colors: [0, 3, 1], best: 'tongque', hard: 1,
+    board: ['#..###..#', '.........', '.#m#.#m..', '.........', '.........', '.........', '..m#.#m#.', '.........', '#..###..#'],
+    waves: [
+      ['#..###..#', '.........', '..m#.#m#.', '.........', '.........', '.........', '.#m#.#m..', '.........', '#..###..#'],
+      ['#.......#', '..#......', '..m...m..', '#.#...#.#', '#.......#', '#.#...#.#', '..m...m..', '......#..', '#.......#'],
+    ],
   },
-  { // 9 铁石（超难）：你消不掉，只有宠物打得碎。原来 4 块全是两层，要等到第 15 手才第一次看到铁石碎（前面一大段没进展）。
-    //   现在 6 块：上面两块、中间两块是一层的（铜雀第一次出手就碎），下面两块两层。上下各铺一排只差 3 格的，头两手就能消、马上喂鸟。
-    //   一般人 21 手，第 6 手左右碎第一块，铜雀出手 4 次。第一章的超难 = 长 + 非靠宠物不可，不靠憋死人。
-    goal: { rock: 6 }, d: 0.5, luck: 0.4, intro: 'rock', colors: [0, 3, 2], hard: 2, best: 'tongque',
-    board: ['.........', '..R...R..', '###...###', '.........', '...R.R...', '.........', '###...###', '..Q...Q..', '.........'],
+  { // 9 铁石（超难）：你消不掉，只有技能块打得碎。两张盘，每张 4 块铁石 + 4 只小墨怪。
+    //    带对口的：一般人 91% 过、平均 35 手；生手 57%。
+    goal: { monster: 8, rock: 8 }, d: 0.2, luck: 0.8, colors: [0, 3, 2], intro: 'rock', best: 'tongque', hard: 2,
+    board: ['.........', '..R...R..', '###...###', '.m.....m.', '.........', '.m.....m.', '###...###', '..R...R..', '.........'],
+    waves: [
+      ['..#...#..', '..#m.m#..', '.R#...#R.', '.........', '.........', '.........', '.R#...#R.', '..#m.m#..', '..#...#..'],
+    ],
   },
-  { // 10 头目：大墨怪 6 → 10 颗心。原来盯着它打 12 手就倒了，不像头目。现在一般人 24 手、盯目标 19 手，铜雀出手 3–4 次。
-    //    心多了，所以块发得松一点（d 0.4 → 0.2，luck 0.4 → 0.8），生手也能过七成。过关送爆竹鼠。
-    //    注意：10 颗心画成一排有点宽，头目跳到盘边时会画出去，见报告第六节。
-    goal: { boss: 1 }, intro: 'boss', colors: [0, 1, 3], gift: 'baozhu', bigHp: 10, d: 0.2, luck: 0.8, best: 'tongque',
+  { // 10 头目：大墨怪 12 颗心（谁的技能块碰到它都掉 1 颗；你自己消，它晕着掉 2 颗）。过关送爆竹鼠。
+    //    带对口的：一般人 88% 过、平均 26 手；生手 60%。
+    goal: { boss: 1 }, intro: 'boss', colors: [0, 1, 3], gift: 'baozhu', bigHp: 12, d: 0.15, luck: 0.9, best: 'tongque',
     board: ['.........', '.#.....#.', '.........', '.........', '...KK....', '...KK....', '.........', '.#.....#.', '.........'],
   },
-  // ===== 第二章「水车坊」：会跑、会啃你的块的墨怪；甲壳怪一层层加厚 =====
-  { // 11 爆竹鼠出战（第一次打借你 2 级的、充得特别快）。原来 3 块铁石挤在一个大格里，要等十来手它才出手一次，一出手就过关。
-    //    现在 5 块分在两个大格里（3 + 2），它要出手两次；上下各一排只差 3 格，头两手就有消。一般人 12 手，第 6 手左右啃第一口。
-    goal: { rock: 5 }, d: 0.12, only: 'baozhu', lend: 2, fastCharge: true, colors: [1, 0, 3], intro: 'baozhu',
-    board: ['.........', '###...###', '.........', 'R.R......', '.R.......', '......R.R', '.........', '###...###', '.........'],
+  // ===== 第二章「水车坊」：会跑、会啃你的块的墨怪；手上不止一只宠物了，带谁要挑 =====
+  { // 11 爆竹鼠登场（借你 2 级的、充得特别快）：铁石三块一堆，它的爆竹一炸一圈、一下两层。两张盘。
+    //    带对口的：一般人 95% 过、平均 41 手；生手 59%。
+    goal: { monster: 4, rock: 12 }, d: 0.12, lend: 2, fastCharge: true, colors: [1, 0, 3], intro: 'baozhu', only: 'baozhu',
+    board: ['.........', '###...###', 'RR.......', 'R......m.', '.........', '.m......Q', '.......QQ', '###...###', '.........'],
+    waves: [
+      ['.........', '###...###', '.......RR', '.m......R', '.........', 'Q......m.', 'QQ.......', '###...###', '.........'],
+    ],
   },
-  { // 12 甲壳怪（一层甲）：2 → 3 只。上、下两只蹲在只差 2 格的排上（先看到「甲掉了」），中间那只的排差 4 格。一般人 13 手（原来 9 手）。
-    goal: { monster: 3 }, d: 0.12, colors: [0, 3, 2], best: 'tongque', intro: 'shell',
-    board: ['.........', '.........', '##A#..###', '.........', '.##.A.##.', '.........', '###..#A##', '.........', '.........'],
+  { // 12 甲壳怪第一次出场：铜雀的技能块一啄，连甲带怪抓走。三张盘，第三张有两层的。
+    //    带对口的：一般人 89% 过、平均 32 手；生手 55%。带爆竹鼠：一般人 55%、生手 10%。
+    goal: { monster: 9 }, d: 0.27, colors: [0, 3, 2], intro: 'shell', best: 'tongque',
+    board: ['.........', '.........', '##A#..###', '.........', '.##.m.##.', '.........', '###..#A##', '.........', '.........'],
+    waves: [
+      ['.........', '.........', '###..#A##', '.........', '.##.m.##.', '.........', '##A#..###', '.........', '.........'],
+      ['.........', '.........', '###..#A##', '.........', '.##.B.##.', '.........', '##A#..###', '.........', '.........'],
+    ],
   },
-  { // 13 专属关：铜雀（拿到爆竹鼠以后把铜雀叫回来）。3 → 5 只：一排三只两层甲 + 上面一排两只一层甲；最上面铺一排只差 3 格的给它攒能量。
-    //    一般人 17 手，铜雀 / 金翅雀出手 2–3 次。
-    goal: { monster: 5 }, d: 0.1, colors: [0, 3, 2], only: 'tongque',
-    board: ['###...###', '.........', '#.A...A.#', '.........', '#.B.B.B.#', '.........', '#.......#', '.........', '.#.....#.'],
+  { // 13 点名铜雀：甲壳怪三张盘，越来越厚。
+    //    带对口的：一般人 89% 过、平均 33 手；生手 57%。
+    goal: { monster: 15 }, d: 0.1, colors: [0, 3, 2], only: 'tongque',
+    board: ['###...###', '.........', '#.A...A.#', '.........', '#.m.B.m.#', '.........', '#.......#', '.........', '.#.....#.'],
+    waves: [
+      ['.#.....#.', '.........', '#.......#', '.........', '#.m.B.m.#', '.........', '#.A...A.#', '.........', '###...###'],
+      ['###...###', '.........', '#.A...A.#', '.........', '#.A.B.A.#', '.........', '#.......#', '.........', '.#.....#.'],
+    ],
   },
-  { // 14 跳跳怪：3 → 4 只，四个角的大格各一只；它们头顶 / 脚下各有一排只差 3 格的（早点有消）。一般人 18 手。
-    goal: { monster: 4 }, d: 0.15, colors: [1, 0, 3], best: 'baozhu', intro: 'jumper',
-    board: ['.........', '.J.....J.', '###...###', '.........', '.........', '.........', '###...###', '.J.....J.', '.........'],
+  { // 14 点名爆竹鼠：跳跳怪第一次出场，爆竹一炸一圈，它没地方跳。三张盘。
+    //    带对口的：一般人 96% 过、平均 38 手；生手 68%。
+    goal: { monster: 12 }, d: 0.15, colors: [1, 0, 3], intro: 'jumper', only: 'baozhu',
+    board: ['.........', '.J.....m.', '###...###', '.........', '.........', '.........', '###...###', '.m.....J.', '.........'],
+    waves: [
+      ['.........', '.m.....J.', '###...###', '.........', '.........', '.........', '###...###', '.J.....m.', '.........'],
+      ['.........', '.J.....J.', '###...###', '.........', '.........', '.........', '###...###', '.J.....J.', '.........'],
+    ],
   },
-  { // 15 难（组合）：5 → 9 只：三只跳跳怪 + 两只三层甲壳怪 + 四只小墨怪。原来 12 手就完，不像难关。一般人 17 手，爆竹鼠出手 3 次。
-    goal: { monster: 9 }, d: 0.4, luck: 0.4, colors: [1, 0, 3], hard: 1, best: 'baozhu',
-    board: ['##.#.#.##', '#J.....##', '.#..m..#.', '##..J..##', 'm#.C.C.#m', '##.....##', '.#..m..#.', '##.....J#', '##.#.#.##'],
+  { // 15 难（组合）：第一道真选择题。跳跳怪 + 铁石，都归爆竹鼠。两张盘。
+    //    带对口的：一般人 96% 过、平均 43 手；生手 55%。带铜雀：一般人 75%、生手 28%。
+    goal: { monster: 12, rock: 8 }, d: 0.35, luck: 0.8, colors: [1, 0, 3], best: 'baozhu', hard: 1,
+    board: ['.........', '.J.....m.', '###...###', 'R...m...R', 'R#..J..#R', '.........', '###...###', '.m.....J.', '.........'],
+    waves: [
+      ['.........', '.J.....J.', '###...###', 'R...J...R', 'R#..J..#R', '.........', '###...###', '.J.....J.', '.........'],
+    ],
   },
-  { // 16 爽关：8 → 12 只。四排各只差 1 格，中间一竖条插下去一次消两排抓四只；四个角的大格各只差 2 格，再抓两只。
-    //    故意短：一般人 8 手抓 12 只，三分之二的手都有消。过关送墨斗蚕。
-    goal: { monster: 12 }, d: 0.1, colors: [0, 1, 3], gift: 'modou',
+  { // 16 爽关：12 只小墨怪一口气抓，两张盘。带谁都行。过关送墨斗蚕。
+    //    带对口的：一般人 100% 过、平均 22 手；生手 79%。
+    goal: { monster: 24 }, d: 0.1, colors: [0, 1, 3], gift: 'modou',
     board: ['m###.###m', '#m.....m#', '##.....##', '###m.m###', '.........', '###m.m###', '##.....##', '#m.....m#', 'm###.###m'],
+    waves: [
+      ['m###.###m', '#m##.##m#', '#..#.#..#', '#..m.m..#', '.........', '#..m.m..#', '#..#.#..#', '#m##.##m#', 'm###.###m'],
+    ],
   },
-  { // 17 墨斗蚕出战（第一次打借你 2 级的）：机关匣 3 → 4 次。一般人 15 手（原来 11 手）。
-    goal: { box: 4 }, d: 0.15, only: 'modou', lend: 2, colors: [2, 0, 3], intro: 'modou',
-    board: ['.........', '.#.....#.', '##.M..###', '.........', '.........', '.........', '###..M.##', '.#.....#.', '.........'],
+  { // 17 墨斗蚕登场（借你 2 级的、充得特别快）：小墨怪斜着排，它的丝斜着缠，一下缠两只。两张盘。
+    //    带对口的：一般人 93% 过、平均 32 手；生手 51%。
+    goal: { monster: 16 }, d: 0.08, lend: 2, fastCharge: true, colors: [2, 0, 3], intro: 'modou', only: 'modou',
+    board: ['.........', '.m...m...', '###...###', '...m...m.', '.........', '.m...m...', '###...###', '...m...m.', '.........'],
+    waves: [
+      ['.........', '...m...m.', '###...###', '.m...m...', '.........', '...m...m.', '###...###', '.m...m...', '.........'],
+    ],
   },
-  { // 18 馋嘴怪：3 → 5 只（两只馋嘴 + 三只小墨怪）。馋嘴怪旁边多铺几块，它一上来就有东西啃（看得到牙印）。一般人 13 手（原来 10 手）。
-    goal: { monster: 5 }, d: 0.15, colors: [0, 2, 3], best: 'tongque', intro: 'eat',
-    board: ['.........', '.m.....m.', '##E#..#..', '.........', '.#.#m#.#.', '.........', '..#..#E##', '.........', '.........'],
+  { // 18 馋嘴怪第一次出场：归墨斗蚕。三张盘。
+    //    带对口的：一般人 70% 过、平均 34 手；生手 46%。带铜雀：一般人 78%、生手 38%。
+    goal: { monster: 15 }, d: 0.23, colors: [0, 2, 3], intro: 'eat', best: 'modou',
+    board: ['.........', '.m.....m.', '##E#..#..', '.........', '.#.#m#.#.', '.........', '..#..#m##', '.........', '.........'],
+    waves: [
+      ['.........', '.........', '..#..#m##', '.........', '.#.#m#.#.', '.........', '##E#..#..', '.m.....m.', '.........'],
+      ['.........', '.m.....m.', '..#..#2##', '.........', '.#.#m#.#.', '.........', '##m#..#..', '.........', '.........'],
+    ],
   },
-  { // 19 超难（组合）：铁石 4 → 6 块（都两层），墨怪 3 → 5 只。东西多了，所以块发得松一点（d 0.45 → 0.3，luck 0.45 → 0.7）。
-    //    一般人 22 手、赢七成；金翅雀出手 4 次。
-    goal: { rock: 6, monster: 5 }, d: 0.3, luck: 0.7, colors: [0, 3, 1], hard: 2, best: 'tongque',
-    board: ['Q#.....#Q', '##.....##', '...#E#...', '.#m...m#.', 'Q...C...Q', '.#.....#.', '...#E#...', '##.....##', 'Q#.....#Q'],
+  { // 19 超难（组合）：铁石三块一堆（两层）+ 跳跳怪，都归爆竹鼠。两张盘。
+    //    带对口的：一般人 93% 过、平均 34 手；生手 53%。带铜雀：一般人 66%、生手 11%。
+    goal: { monster: 8, rock: 12 }, d: 0.4, luck: 0.8, colors: [1, 0, 3], best: 'baozhu', hard: 2,
+    board: ['QQ...#.#.', 'Q#....J..', '.....#.#.', '.m.......', '....#..m.', '.........', '.#.#.....', '..J...#QQ', '.#.#...#Q'],
+    waves: [
+      ['.#.#...QQ', '..J....#Q', '.#.#.....', '.......m.', '.m..#....', '.........', '.....#.#.', 'QQ#...J..', 'Q#...#.#.'],
+    ],
   },
-  { // 20 头目：大馋嘴 8 → 9 颗心。一般人 28 手。它一直啃你的块，所以这关最长有七八手消不掉东西，偏闷：见报告第五节的建议（规则上改，不是关卡表能改的）。过关送火麒麟。
-    goal: { boss: 1 }, colors: [1, 0, 3], gift: 'qilin', bigHp: 9, d: 0.3, luck: 0.6, bossKind: 'eat', best: 'tongque', intro: 'boss2',
+  { // 20 头目：大馋嘴 16 颗心，怕墨斗蚕（它的技能块碰一下 3 颗心，别的 1 颗）。过关送火麒麟。
+    //    带对口的：一般人 78% 过、平均 28 手；生手 40%。带铜雀：一般人 57%、生手 19%。
+    goal: { boss: 1 }, colors: [1, 0, 3], gift: 'qilin', bigHp: 16, d: 0.35, luck: 0.8, bossKind: 'eat', intro: 'boss2', best: 'modou',
     board: ['.........', '.#.....#.', '.........', '..#...#..', '...KK....', '...KK....', '..#...#..', '.#.....#.', '.........'],
   },
-  // ===== 第三章「染坊」：挑颜色的、长墨的、会爆的、会分身的；越往后组合越多 =====
-  { // 21 挑色怪（红）：3 → 4 只，中间一排两只。一般人 11 手（原来 10 手，盯目标 8 手）。
-    goal: { monster: 4 }, d: 0.12, colors: [1, 0, 3], best: 'baozhu', intro: 'color',
-    board: ['.........', '.........', '##1#..###', '.........', '.#1...1#.', '.........', '###..#1##', '.........', '.........'],
+  // ===== 第三章「染坊」：挑颜色的、长墨的、会爆的、会分身的；四只宠物各有各的活 =====
+  { // 21 火麒麟登场（借你 2 级的、充得特别快）：小墨怪竖着排，它的火竖着烧。两张盘。
+    //    带对口的：一般人 98% 过、平均 24 手；生手 59%。
+    goal: { monster: 12 }, d: 0.1, lend: 2, fastCharge: true, colors: [5, 0, 3], intro: 'qilin', only: 'qilin',
+    board: ['..m......', '.##......', '..m.....#', '.##...m..', '.........', '......m#.', '#....#...', '...###m..', 'm..#.#...'],
+    waves: [
+      ['......m..', '......##.', '#.....m..', '..m...##.', '.........', '.#m......', '...#....#', '..m###...', '...#.#..m'],
+    ],
   },
-  { // 22 组合：蓝色挑色怪 + 两层甲壳怪 + 正中一只小墨怪（4 → 5 只）。最上、最下各一排只差 3 格（原来平均第 5 手才第一次消）。一般人 13 手。
-    goal: { monster: 5 }, d: 0.15, colors: [3, 0, 2], best: 'tongque',
-    board: ['###...###', '.........', '#.3...B.#', '.........', '....m....', '.........', '#.B...3.#', '.........', '###...###'],
+  { // 22 挑色怪（红）第一次出场：归爆竹鼠。三张盘。
+    //    带对口的：一般人 95% 过、平均 24 手；生手 81%。带铜雀：一般人 71%、生手 29%。
+    goal: { monster: 12 }, d: 0.27, colors: [1, 0, 3], intro: 'color', best: 'baozhu',
+    board: ['.........', '.........', '##1#..###', '.........', '.#m...m#.', '.........', '###..#1##', '.........', '.........'],
+    waves: [
+      ['.........', '.........', '###..#1##', '.........', '.#m...m#.', '.........', '##1#..###', '.........', '.........'],
+      ['.........', '.........', '###..#1##', '.........', '.#1...1#.', '.........', '##1#..###', '.........', '.........'],
+    ],
   },
-  { // 23 墨苔怪：2 → 4 只（两只墨苔 + 两只小墨怪），墨苔怪蹲在铺了一半的排上。一般人 14 手（原来 10 手）。
-    goal: { monster: 4 }, d: 0.12, colors: [2, 0, 3], best: 'modou', intro: 'moss',
-    board: ['.........', '.........', '##G#..#..', '.........', '.m.....m.', '.........', '..#..#G##', '.........', '.........'],
+  { // 23 点名墨斗蚕：墨苔怪第一次出场 + 绿色挑色怪。三张盘。
+    //    带对口的：一般人 88% 过、平均 34 手；生手 53%。
+    goal: { monster: 15 }, d: 0.08, colors: [2, 0, 3], intro: 'moss', only: 'modou',
+    board: ['.........', '.........', '##G#..#..', '.........', '.2..m..m.', '.........', '..#..#m##', '.........', '.........'],
+    waves: [
+      ['.........', '.........', '..#..#m##', '.........', '.2..m..m.', '.........', '##G#..#..', '.........', '.........'],
+      ['.........', '.........', '..#..#G##', '.........', '.2..2..2.', '.........', '##2#..#..', '.........', '.........'],
+    ],
   },
-  { // 24 专属关：墨斗蚕。墨苔怪 + 馋嘴怪 + 两只小墨怪（4 → 6 只）。一般人 14 手（原来 9 手）。
-    goal: { monster: 6 }, d: 0.15, colors: [2, 0, 3], only: 'modou',
-    board: ['.........', '.#.....#.', '##G#.#E.#', '.........', '.m..#..m.', '.........', '#.E#.#G##', '.#.....#.', '.........'],
+  { // 24 炸弹怪第一次出场 + 橙色挑色怪：都归火麒麟。三张盘。
+    //    带对口的：一般人 84% 过、平均 33 手；生手 53%。带铜雀：一般人 73%、生手 33%。
+    goal: { monster: 15 }, d: 0.25, colors: [5, 0, 3], intro: 'bomb', best: 'qilin',
+    board: ['.....5...', '.##......', '.#T#....#', '.##......', '.........', '......##.', '#....#T#.', '...###...', 'm..#m#...'],
+    waves: [
+      ['...5.....', '......##.', '#....#T#.', '......##.', '.........', '.##......', '.#T#....#', '...###...', '...#m#..m'],
+      ['5..#5#...', '...###...', '#....#T#.', '......##.', '.........', '.##......', '.#T#....#', '.##......', '.....5...'],
+    ],
   },
-  { // 25 难（组合）：红、绿挑色怪 + 跳跳怪 + 三层甲壳怪。没改：一般人 23 手，正在难关该有的长度里。
-    goal: { monster: 5 }, d: 0.4, luck: 0.5, colors: [1, 2, 0], hard: 1, best: 'baozhu',
-    board: ['##.....##', '#.1...2.#', '.........', '.J.....J.', '....C....', '.........', '.........', '#.......#', '##.....##'],
+  { // 25 难（组合）：铜雀 / 金翅雀的主场。金色挑色怪 + 甲壳怪。三张盘。
+    //    带对口的：一般人 84% 过、平均 34 手；生手 59%。带爆竹鼠：一般人 55%、生手 8%。
+    goal: { monster: 24 }, d: 0.3, luck: 0.9, colors: [0, 3, 1], best: 'tongque', hard: 1,
+    board: ['##.....##', '#.0.m.0.#', '.........', '.A..B..A.', '.........', '.m.....m.', '.........', '#.......#', '##.....##'],
+    waves: [
+      ['##.....##', '#.......#', '.........', '.m.....m.', '.........', '.A..B..A.', '.........', '#.0.m.0.#', '##.....##'],
+      ['##.....##', '#..A.m..#', '.0.......', '.........', '.m.B.....', '.........', '.0.......', '#..A.m..#', '##.....##'],
+    ],
   },
-  { // 26 专属关：火麒麟登场（第一次借你 2 级的）。三只炸弹怪 + 两只落单的小墨怪（3 → 5 只）：落单的那两只正好留给火球去炸。一般人 18 手（原来 11 手）。
-    goal: { monster: 5 }, d: 0.1, colors: [5, 0, 3], only: 'qilin', lend: 2, intro: 'bomb',
-    board: ['.....m...', '.##......', '.#T#....#', '.##......', '.........', '......##.', '#....#T#.', '...###...', 'm..#T#...'],
+  { // 26 墨苔怪 + 馋嘴怪 + 绿色挑色怪：都归墨斗蚕。三张盘。
+    //    带对口的：一般人 69% 过、平均 34 手；生手 36%。带铜雀：一般人 56%、生手 13%。
+    goal: { monster: 24 }, d: 0.2, colors: [2, 0, 3], best: 'modou',
+    board: ['.........', '.#2...m#.', '##G#.#E.#', '.........', '.m..#..2.', '.........', '#.m#.#2##', '.#.....#.', '.........'],
+    waves: [
+      ['.........', '.#m...2#.', '#.E#.#G##', '.........', '.2..#..m.', '.........', '##2#.#m.#', '.#.....#.', '.........'],
+      ['.........', '.#.....#.', '#.m#.#2##', '.........', '.m..#..2.', '.........', '##G#.#E.#', '.#2...m#.', '.........'],
+    ],
   },
-  { // 27 分身怪：没改。一般人 16 手。
-    goal: { all: 1 }, d: 0.12, colors: [1, 0, 3], best: 'baozhu', intro: 'split',
-    board: ['.........', '.........', '##S#..###', '.........', '.........', '.........', '###..#S##', '.........', '.........'],
+  { // 27 点名爆竹鼠：分身怪第一次出场 + 跳跳怪。三张盘。
+    //    带对口的：一般人 99% 过、平均 32 手；生手 81%。
+    goal: { all: 1 }, d: 0.12, colors: [1, 0, 3], intro: 'split', only: 'baozhu',
+    board: ['.........', '.J.......', '##S#..###', '.........', '...#m#...', '.........', '###..#S##', '.........', '.........'],
+    waves: [
+      ['.........', '.......J.', '###..#S##', '.........', '...#m#...', '.........', '##S#..###', '.........', '.........'],
+      ['.........', '.........', '###..#S##', '.........', '...#J#...', '.........', '##S#..###', '.J.......', '.........'],
+    ],
   },
-  { // 28 组合：让宠物出手 6 → 4 次。原来不管谁打都是 34 手上下（蚕每放 6–7 块才出手一次，6 次就是这么多手），是 30 关里最长最闷的一关。现在 23 手。
-    goal: { acts: 4, monster: 3 }, d: 0.15, colors: [2, 5, 3], best: 'modou', intro: 'acts',
-    board: ['#.......#', '.#.....#.', '..#.G.#..', '.........', '....T....', '.........', '..#.m.#..', '.#.....#.', '#.......#'],
+  { // 28 炸弹怪 + 橙色挑色怪：都归火麒麟。三张盘。
+    //    带对口的：一般人 75% 过、平均 28 手；生手 41%。带铜雀：一般人 46%、生手 20%。
+    goal: { monster: 15 }, d: 0.3, colors: [5, 2, 3], best: 'qilin',
+    board: ['#.......#', '.#.....#.', '..#.T.#..', '.........', '.5..m..5.', '.........', '..#.T.#..', '.#.....#.', '#.......#'],
+    waves: [
+      ['#.......#', '.#..5..#.', '..#...#..', '.........', '..T.m.T..', '.........', '..#...#..', '.#..5..#.', '#.......#'],
+      ['#.......#', '.#..5..#.', '..#...#..', '.........', '..T.T.T..', '.........', '..#...#..', '.#..5..#.', '#.......#'],
+    ],
   },
-  { // 29 超难（组合）：两只分身怪 + 三层甲壳怪 + 馋嘴怪；铁石 2 → 4 块（下面两块两层）。块发得松一点（d 0.5 → 0.4，luck 0.3 → 0.5）。一般人 22 手（原来 17 手）、赢八成。
-    goal: { all: 1, rock: 4 }, d: 0.4, luck: 0.5, colors: [0, 1, 3], hard: 2, best: 'tongque',
-    board: ['#.......#', '.R.....R.', '...#S#...', '.#.....#.', '..E...C..', '.#.....#.', '...#S#...', '.Q.....Q.', '#.......#'],
+  { // 29 超难（组合）：分身怪 + 跳跳怪 + 两堆铁石，都归爆竹鼠。两张盘。
+    //    带对口的：一般人 98% 过、平均 36 手；生手 79%。带铜雀：一般人 63%、生手 23%。
+    goal: { all: 1, rock: 12 }, d: 0.4, luck: 0.8, colors: [0, 1, 3], best: 'baozhu', hard: 2,
+    board: ['RR......#', 'R#.......', '...#S#...', '.#.....#.', '..J...J..', '.#.....#.', '...#S#...', '.......#Q', '#......QQ'],
+    waves: [
+      ['#......QQ', '.......#Q', '...#S#...', '.#.....#.', '..1...1..', '.#.....#.', '...#S#...', 'R#.......', 'RR......#'],
+    ],
   },
-  { // 30 头目：分身王 9 → 11 颗心。一般人 29 手（原来 23 手）。
-    goal: { boss: 1 }, colors: [1, 0, 3], bigHp: 11, d: 0.3, luck: 0.6, bossKind: 'split', best: 'tongque', intro: 'boss3',
+  { // 30 头目：分身王 18 颗心，怕爆竹鼠。
+    //    带对口的：一般人 86% 过、平均 23 手；生手 63%。带铜雀：一般人 71%、生手 36%。
+    goal: { boss: 1 }, colors: [1, 0, 3], bigHp: 18, d: 0.35, luck: 0.8, bossKind: 'split', intro: 'boss3', best: 'baozhu',
     board: ['.........', '.#.....#.', '.........', '..#...#..', '...KK....', '...KK....', '..#...#..', '.#.....#.', '.........'],
   },
 ];

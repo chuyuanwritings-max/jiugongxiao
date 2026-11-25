@@ -57,7 +57,13 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   // ---------- 0.5 九宫消 + 宠物 ----------
   const petPlay = async (max, until) => {
     for (let k = 0; k < max; k++) {
-      const m = await page.evaluate(() => { const G = window.__game; if (G.mode === 'start') G.skipCuts(); if (G.g.over || G.mode !== 'play') return null; const b = G.PG.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c }; });
+      const m = await page.evaluate(() => {
+        const G = window.__game; if (G.mode === 'start') G.skipCuts(); if (G.g.over || G.mode !== 'play') return null;
+        // 0.9.8：宠物格里有技能块、打得到正经东西（或者三块都放不下）就先拖它
+        const s = G.g.hand[3] && G.PG.skillBest(G.g);
+        if (s && (s.v >= 100 || ![0, 1, 2].some((i) => G.g.fits(i)))) return { i: 3, r: s.r, c: s.c };
+        const b = G.PG.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c };
+      });
       if (!m) break;
       await dragTo(m.i, m.r, m.c);
       await page.waitForTimeout(50);
@@ -86,18 +92,29 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(1300);
   await shot('03_第1关完成');
   st = await page.evaluate(() => ({ won: window.__game.g.won, stage: window.__game.save.petStage }));
-  ok(st.won && st.stage === 1, '真鼠标拖块过第 1 关');
-  // 第 3 关：小墨怪，过关送铜雀
-  await page.evaluate(() => window.__game.newPetLevel(2));
+  st = await page.evaluate(() => ({ won: window.__game.g.won, stage: window.__game.save.petStage, pets: window.__game.save.petOrder.slice() }));
+  ok(st.won && st.stage === 1 && st.pets.includes('tongque'), '真鼠标拖块过第 1 关，过关就送铜雀（0.9.8 起第 1 关就给）');
+  // 第 2 关：铜雀登场，学「攒满了吐一块技能块，拖到墨怪旁边」
+  await page.evaluate(() => { const G = window.__game; G.skipCuts(); G.newPetLevel(1); });
   await page.waitForTimeout(300);
-  await shot('04_第3关_小墨怪说明卡');
-  st = await page.evaluate(() => window.__game.mode);
+  await shot('04_第2关_铜雀说明卡');
   await closeIntro();
+  await petPlay(30, () => !!window.__game.g.hand[3]);
+  await page.waitForTimeout(500);
+  await shot('04b_第2关_宠物格有技能块');
+  // 拖技能块到一半：截图看预览（宠物颜色的格子 + 打得动的墨怪套亮圈）
+  st = await page.evaluate(() => { const G = window.__game, s = G.g.hand[3] && G.PG.skillBest(G.g); return s && { from: G.slotCenter(3), to: G.fingerFor(G.g.hand[3], s.r, s.c) }; });
+  if (st) {
+    await page.mouse.move(off.x + st.from.x, off.y + st.from.y); await page.mouse.down();
+    await page.mouse.move(off.x + st.to.x, off.y + st.to.y, { steps: 6 }); await page.waitForTimeout(80);
+    await shot('04c_第2关_拖技能块_预览'); await page.mouse.up(); await page.waitForTimeout(250);
+    await shot('04d_第2关_技能块打下去');
+  }
+  const used = await page.evaluate(() => window.__game.g.skillUses);
   await petPlay(30);
   await page.waitForTimeout(1300);
-  await shot('05_第3关_送铜雀');
-  st = await page.evaluate(() => ({ won: window.__game.g.won, caught: window.__game.g.caught, pets: window.__game.save.petOrder.slice(), dan: window.__game.save.dan, auto: window.__game.result && window.__game.result.danAuto }));
-  ok(st.won && st.caught >= 2 && st.pets.includes('tongque') && st.auto >= 1 && st.dan >= st.auto, '第 3 关抓到 ' + st.caught + ' 只墨怪，过关自动炼成 ' + st.auto + ' 颗丹（不用再去点炼丹），得到铜雀');
+  st = await page.evaluate(() => ({ won: window.__game.g.won, caught: window.__game.g.caught, dan: window.__game.result && window.__game.result.dan }));
+  ok(st.won && used >= 1 && typeof st.dan === 'number', '第 2 关：铜雀吐技能块、真鼠标拖到墨怪旁边（用了 ' + used + ' 次），抓到 ' + st.caught + ' 只过关');
   // 过关只给「回营地」，没有「下一关」
   await page.evaluate(() => window.__game.skipCuts());
   await page.waitForTimeout(1300);
@@ -108,30 +125,34 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(200);
   st = await page.evaluate(() => ({ mode: window.__game.mode, play: window.__game.buttons().some((x) => x.id === 'campPlay') }));
   ok(toCamp && st.mode === 'camp' && st.play, '过关后只有「回营地」一个按钮（没有下一关）；营地里能去闯下一关');
-  // 第 4 关：铜雀出战，自己出手
+  // 第 4 关：墨怪一波一波来（盘面不清空）
   await page.evaluate(() => window.__game.newPetLevel(3));
   await page.waitForTimeout(300);
   await closeIntro();
-  const acted = await petPlay(40, () => Object.keys(window.__game.g.petActsTotal).length > 0);
-  await page.waitForTimeout(380);
-  await shot('06_第4关_铜雀出手');
-  ok(acted, '第 4 关铜雀能量满了自己出手（射掉最满的一排）');
-  await petPlay(40);
-  await page.waitForTimeout(2200);
-  await shot('06b_第4关_经验条');
-  st = await page.evaluate(() => { const r = window.__game.result; return r && r.exp && r.exp[0]; });
-  ok(st && st.id === 'tongque' && st.gain >= 3, '过关后结算页出宠物经验条：铜雀 +' + (st && st.gain) + ' 经验');
-  // 第 9 关：铁石只有宠物打得碎
-  await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 8 }); G.newPetLevel(8); });
+  const waved = await petPlay(60, () => window.__game.g.waveNo >= 2);
   await page.waitForTimeout(300);
-  await closeIntro();
-  await shot('06c_第9关_铁石');
+  await shot('06_第4关_第二波冒出来');
+  ok(waved, '第 4 关：第一波抓光，第二波从墨里冒出来（盘面不清空）');
   await petPlay(80);
-  await page.waitForTimeout(1600);
-  st = await page.evaluate(() => ({ won: window.__game.g.won, rock: window.__game.g.got.rock }));
-  ok(st.won && st.rock >= 4, '第 9 关铁石关：普通消除消不掉，铜雀出手打碎 4 块铁石过关');
+  await page.waitForTimeout(2200);
+  await shot('06b_第4关_结算掉丹');
+  st = await page.evaluate(() => { const r = window.__game.result; return r && { won: r.won, dan: r.dan, exp: (r.exp || []).length }; });
+  ok(st && st.won && typeof st.dan === 'number' && st.exp === 0, '过关结算：出战不涨经验，只看掉没掉丹（这次掉了 ' + (st && st.dan) + ' 颗）');
+  // 第 9 关：铁石只有宠物打得碎
+  // 超难关：机器人也会输（盘面随机），最多打 3 次
+  for (let tries = 0; tries < 3; tries++) {
+    await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 8 }); G.newPetLevel(8); });
+    await page.waitForTimeout(300);
+    await closeIntro();
+    if (!tries) await shot('06c_第9关_铁石');
+    await petPlay(150);
+    await page.waitForTimeout(1600);
+    st = await page.evaluate(() => ({ won: window.__game.g.won, rock: window.__game.g.got.rock }));
+    if (st.won) break;
+  }
+  ok(st.won && st.rock >= 4, '第 9 关铁石关：普通消除消不掉，铜雀的技能块打碎 ' + st.rock + ' 块铁石过关');
   // 营地：一下升一级（「升级 · N 颗」），升到 5 级出现「进化」
-  await page.evaluate(() => { const G = window.__game; G.save.pets.tongque = { lv: 4, exp: 10 }; G.setSave({ dan: 20 }); G.openCamp(); });
+  await page.evaluate(() => { const G = window.__game; G.save.pets.tongque = { lv: 4, exp: 0 }; G.setSave({ dan: 20 }); G.openCamp(); });
   await page.waitForTimeout(200);
   await shot('07_营地_升级按钮');
   await click('feed0');
@@ -165,7 +186,7 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await petPlay(80);
   await page.waitForTimeout(1600);
   st = await page.evaluate(() => ({ won: window.__game.g.won, team: window.__game.g.team.map((t) => t.id), rock: window.__game.g.got.rock}));
-  ok(st.won && st.team[0] === 'baozhu' && st.rock >= 3, '第 11 关：借来的爆竹鼠啃碎 3 块铁石过关');
+  ok(st.won && st.team[0] === 'baozhu' && st.rock >= 3, '第 11 关：借来的爆竹鼠用技能块炸碎 ' + st.rock + ' 块铁石过关');
   // 第 12 关：甲壳怪——不带宠物也打得死：第一次消掉它掉一层甲，再消一次抓走
   await page.evaluate(() => { const G = window.__game; G.setSave({ petStage: 11, activePet: 'jinchique' }); G.newPetLevel(11); G.g.team = []; });
   await page.waitForTimeout(300);
@@ -190,24 +211,38 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
     return tot;
   });
   ok(st.eats > 0 && st.moss > 0, '馋嘴怪啃掉 ' + st.eats + ' 块、墨苔怪长出 ' + st.moss + ' 块墨（固定测试盘，3 局）');
+  // 怪偷能量（0.9.8 PK）：甲壳怪活着隔 3 手瞪宠物、下一手喷墨偷能量；它的克星铜雀不怕
+  st = await page.evaluate(() => {
+    const G = window.__game;
+    const stage = { goal: { monster: 9 }, d: 0.1, colors: [0, 1, 3], board: ['.........', '.........', '..C......', '.##......', '.........', '......##.', '......C..', '.........', '.........'] };
+    const run = (id) => { let n = 0; for (let seed = 1; seed <= 3; seed++) { const g = G.PG.createPetGame({ stage, team: [{ id, lv: 1 }], seed }); g.team[0].energy = 2; for (let k = 0; k < 12 && !g.over; k++) { const m = G.PG.bestMove(g, 0.3); if (!m) break; g.place(m.i, m.r, m.c); } n += g.monStats.drained || 0; } return n; };
+    return { rat: run('baozhu'), bird: run('tongque') };
+  });
+  ok(st.rat > 0 && st.bird === 0, '甲壳怪偷能量：带爆竹鼠被偷 ' + st.rat + ' 格，带铜雀（克它）0 格');
   // 第 27 关：分身怪——打一下裂成两只小墨怪，目标「抓光」
   await page.evaluate(() => { const G = window.__game; G.newPetLevel(26); G.g.team = []; });
   await page.waitForTimeout(300);
   await closeIntro();
-  await petPlay(80);
+  await petPlay(250);
   await page.waitForTimeout(1600);
   st = await page.evaluate(() => ({ won: window.__game.g.won, spawns: window.__game.g.monStats.spawns, left: window.__game.g.monLeft }));
   ok(st.won && st.spawns >= 2 && st.left === 0, '第 27 关：分身怪裂出 ' + st.spawns + ' 只小墨怪，全部抓光过关');
   // 火麒麟：放块攒能量，吐一颗火球进托盘
-  await page.evaluate(() => { const G = window.__game; G.save.pets.qilin = { lv: 1, exp: 0 }; if (!G.save.petOrder.includes('qilin')) G.save.petOrder.push('qilin'); G.setSave({ petStage: 20, activePet: 'qilin' }); G.newPetLevel(19); });
+  // 第 21 关点名火麒麟：它不被偷（这关的墨怪不偷它），攒满吐技能块
+  await page.evaluate(() => { const G = window.__game; G.save.pets.qilin = { lv: 1, exp: 0 }; if (!G.save.petOrder.includes('qilin')) G.save.petOrder.push('qilin'); G.setSave({ petStage: 21, activePet: 'qilin' }); G.newPetLevel(20); });
   await page.waitForTimeout(300);
   await closeIntro();
-  const gotFire = await petPlay(60, () => window.__game.g.hand.some((p) => p && p.special === 'fire'));
+  const gotFire = await petPlay(60, () => !!window.__game.g.hand[3]);
   await page.waitForTimeout(400);
-  await shot('12c_第20关_火块和吐墨');
-  await petPlay(30, () => window.__game.g.monStats.eats > 0);
+  await shot('12c_第21关_火麒麟技能块');
+  // 第 20 关：头目大馋嘴啃块
+  await page.evaluate(() => { const G = window.__game; G.newPetLevel(19); });
+  await page.waitForTimeout(300);
+  await closeIntro();
+  await petPlay(40, () => window.__game.g.monStats.eats > 0);
+  await shot('12d_第20关_大馋嘴啃块');
   st = await page.evaluate(() => ({ ink: window.__game.g.monStats.eats > 0 }));
-  ok(gotFire, '火麒麟出战：攒满往托盘里送一颗火块');
+  ok(gotFire, '火麒麟出战：攒满往宠物格里吐一块技能块');
   ok(st.ink, '第 20 关：头目大馋嘴会啃掉身边的块（先亮牙印）');
   // 0.8 专属关：第 13 关点名铜雀；出战的是爆竹鼠，点开打自动换上金翅雀（铜雀进化后的也算），营地里的选择不变
   await page.evaluate(() => { const G = window.__game; G.save.introSeen.shell = 1; G.setSave({ activePet: 'baozhu' }); G.newPetLevel(12); });

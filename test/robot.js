@@ -101,8 +101,9 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await page.waitForTimeout(140);
   await shot('02_第1关_第一下消一宫');
   {
-    const h = (await hlog()).slice(1);
-    ok(h.length >= 2 && h[0].level === 'light' && h.slice(1).some((x) => x.level === 'medium') && !h.slice(1).some((x) => x.level === 'light'), '震动：拿起 light、放下消掉一宫只震一下 medium（' + h.map((x) => x.level).join(',') + '）');
+    await page.waitForTimeout(250);
+    const h = (await hlog()).slice(1), w = h.slice(1, 4);
+    ok(h.length >= 4 && h[0].level === 'light' && w[0].level === 'medium' && w.length === 3 && w[2].t - w[0].t < 260, '震动：拿起 light、放下消掉一宫来一串「嘣嘣嘣」三下（' + h.map((x) => x.level).join(',') + '）');
   }
   const movesBefore = await page.evaluate(() => window.__game.g.moves), logBefore = (await hlog()).length;
   await petPlay(40);

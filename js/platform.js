@@ -198,11 +198,72 @@ function exposeForTest(name, value) {
 }
 
 // 复制一段字到剪贴板（试玩记录给 Kira）
-function copyText(str, ok) {
+// 复制（0.9.11 修：Cc 11-25 在手机网页里点「复制试玩记录」报「复制不了」，玩了半天的记录拿不出来）。
+// 微信内置浏览器、iPhone 的网页经常不给用 navigator.clipboard，所以三层：
+// ① 老办法：藏一个文本框、选中、execCommand('copy')（手指点下去的那一刻同步做，iPhone 也认）；
+// ② 新办法 navigator.clipboard；
+// ③ 都不行：弹一个网页框，里面是全部记录（已全选）和一个真的「复制」按钮，复制不了也能长按「全选 → 拷贝」。
+// 回调 ok(true) = 已复制；ok('box') = 弹了框。
+function legacyCopy(str) {
+  if (typeof document === 'undefined') return false;
+  const ta = document.createElement('textarea');
+  ta.value = str;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;font-size:16px;';
+  document.body.appendChild(ta);
+  let done = false;
   try {
-    if (isWx) { wx.setClipboardData({ data: str, success: () => ok && ok(true), fail: () => ok && ok(false) }); return; }
-    if (navigator.clipboard) navigator.clipboard.writeText(str).then(() => ok && ok(true), () => ok && ok(false));
-    else ok && ok(false);
-  } catch (e) { if (ok) ok(false); }
+    ta.focus(); ta.select(); ta.setSelectionRange(0, str.length);
+    done = document.execCommand('copy');
+  } catch (e) { done = false; }
+  document.body.removeChild(ta);
+  if (typeof window !== 'undefined' && window.getSelection) window.getSelection().removeAllRanges();
+  return done;
+}
+function showCopyBox(str, title) {
+  const old = document.getElementById('copyBox');
+  if (old) old.remove();
+  const box = document.createElement('div');
+  box.id = 'copyBox';
+  box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(8,10,24,0.98);display:flex;flex-direction:column;padding:24px 18px;gap:12px;font-family:"PingFang SC",sans-serif;color:#f3e6c8;';
+  const h = document.createElement('div');
+  h.textContent = title || '试玩记录';
+  h.style.cssText = 'font-size:20px;font-weight:bold;text-align:center;';
+  const tip = document.createElement('div');
+  tip.textContent = '点下面的「复制」；还是不行，就长按框里的字 → 全选 → 拷贝，粘到微信发回来。';
+  tip.style.cssText = 'font-size:14px;line-height:1.5;color:#cfc3a6;';
+  const ta = document.createElement('textarea');
+  ta.id = 'copyBoxText';
+  ta.value = str;
+  ta.readOnly = true;
+  ta.style.cssText = 'flex:1;width:100%;box-sizing:border-box;font-size:12px;border-radius:10px;padding:10px;background:#141a33;color:#e8e2d0;border:1px solid #c99a4a;';
+  ta.addEventListener('focus', () => ta.select());
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:12px;';
+  const mk = (label, bg, fg) => { const b = document.createElement('button'); b.textContent = label; b.style.cssText = 'flex:1;height:52px;font-size:18px;font-weight:bold;border:none;border-radius:12px;background:' + bg + ';color:' + fg + ';'; return b; };
+  const copyBtn = mk('复制', '#d4a64a', '#1b1408'), closeBtn = mk('关闭', '#3a3550', '#f3e6c8');
+  copyBtn.id = 'copyBoxCopy';
+  copyBtn.addEventListener('click', () => {
+    const done = () => { copyBtn.textContent = '已复制 ✓ 粘到微信发回来'; };
+    if (legacyCopy(str)) return done();
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(str).then(done, () => { ta.focus(); ta.select(); copyBtn.textContent = '已全选，请长按 → 拷贝'; });
+    else { ta.focus(); ta.select(); copyBtn.textContent = '已全选，请长按 → 拷贝'; }
+  });
+  closeBtn.addEventListener('click', () => box.remove());
+  row.appendChild(copyBtn); row.appendChild(closeBtn);
+  box.appendChild(h); box.appendChild(tip); box.appendChild(ta); box.appendChild(row);
+  document.body.appendChild(box);
+}
+function copyText(str, ok, title) {
+  const cb = (v) => ok && ok(v);
+  try {
+    if (isWx) { wx.setClipboardData({ data: str, success: () => cb(true), fail: () => cb(false) }); return; }
+    if (legacyCopy(str)) return cb(true);
+    const box = () => { showCopyBox(str, title); cb('box'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(str).then(() => cb(true), box);
+    else box();
+  } catch (e) {
+    try { showCopyBox(str, title); cb('box'); } catch (e2) { cb(false); }
+  }
 }
 module.exports = { copyText, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };

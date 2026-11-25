@@ -8,7 +8,7 @@ const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
-const VERSION = '0.9.10'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.11'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -607,6 +607,13 @@ function hapticFlush() {
   P.vibrate(level);
   if (typeof window !== 'undefined' && window.__hapticLog) window.__hapticLog.push({ t: now, level, mode }); // 机器人测试打桩
 }
+// 消除的「嘣嘣嘣」（0.9.11，Cc 11-25：「当我消掉色块的时候，我需要更大的震动反馈，比如说三声波浪"嘣嘣嘣"之类的。当然不要太腻」）：
+// 三下，隔 80 毫秒，一下比一下轻，像浪退下去。消得越多越重。点、拿、放还是一下 light。
+const CLEAR_WAVE = { line: ['medium', 'medium', 'light'], combo: ['heavy', 'medium', 'medium'], big: ['heavy', 'heavy', 'medium'], gap: 80 };
+function hapticWave(levels) {
+  haptic(levels[0]);
+  levels.slice(1).forEach((lv, i) => setTimeout(() => haptic(lv), CLEAR_WAVE.gap * (i + 1)));
+}
 function hitButton(x, y) {
   for (let i = buttons.length - 1; i >= 0; i--) {
     const b = buttons[i];
@@ -746,7 +753,7 @@ function juice(ev) {
   if (ev.beat === 5) P.sound('five', 0.9), P.sound('combo4', 0.4);
   if (ev.crossbow) P.sound('bolt', 0.6);
   if (ev.newlyLit.length) setTimeout(() => P.sound('lit', 0.6), 120);
-  haptic(ev.win || ev.beat >= 5 ? 'heavy' : 'medium'); // 消掉了：一次只震一下，连消取最重一档
+  hapticWave(ev.win || ev.beat >= 5 ? CLEAR_WAVE.big : ev.beat >= 4 ? CLEAR_WAVE.combo : CLEAR_WAVE.line); // 消掉了：「嘣嘣嘣」三下波浪（Cc 11-25），连消也只来一串、取最重的那串
   // 跳字
   let label = '+' + ev.gained;
   texts.push({ s: label, x: cx, y: cy - 6, t: clock, size: 18 + ev.beat * 4, col: ev.beat >= 4 ? COL.brassLight : COL.text });
@@ -857,7 +864,7 @@ function drawBg() {
 // 旅程的顶栏：返回、第几关、目标计数（还差几个；够了打勾）
 function drawStageHud() {
   const y = L.top;
-  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); timeline = []; if (g.won && g.pets) { CUT.clear(); openCamp(); } else mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账；过了关一律回营地
+  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); else if (!g.over && g.moves > 0) logPlay(true); timeline = []; if (g.won && g.pets) { CUT.clear(); openCamp(); } else mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账；过了关一律回营地
   text(g.pets ? petLevelName() : '第 ' + (stageIdx + 1) + ' 关', W / 2, y + 10, 15, COL.dim, 'center', 'normal');
   const left = g.goalLeft();
   const keys = Object.keys(g.stage.goal);
@@ -890,7 +897,7 @@ function drawHud() {
   if (g.pets) { drawStageHud(); return drawPetBar(); }
   if (g.stage) return drawStageHud();
   const y = L.top;
-  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); timeline = []; if (g.won && g.pets) { CUT.clear(); openCamp(); } else mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账；过了关一律回营地
+  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); else if (!g.over && g.moves > 0) logPlay(true); timeline = []; if (g.won && g.pets) { CUT.clear(); openCamp(); } else mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账；过了关一律回营地
   // 分数
   text(String(Math.round(displayScore)), 80, y + 18, 30, COL.text, 'left');
   text('最高 ' + (g.endless ? save.bestEndless : save.best), 80, y + 46, 13, COL.dim, 'left', 'normal');
@@ -2006,7 +2013,10 @@ let copyMsg = null; // 「复制试玩记录」之后的一句提示
 // 结算页底下也放一个。正式上线把 PLAYTEST 改成 false，结算页的就不出了（设置里的留着）
 const PLAYTEST = true;
 function copyPlayLog() {
-  P.copyText(JSON.stringify({ game: '九宫消', ver: VERSION, log: save.playLog || [] }), (ok) => { copyMsg = { text: ok ? '已复制，粘到微信里发回来就行' : '复制不了：截个图发回来', t: clock }; });
+  const n = (save.playLog || []).length;
+  P.copyText(JSON.stringify({ game: '九宫消', ver: VERSION, log: save.playLog || [] }), (ok) => {
+    copyMsg = { text: ok === true ? '已复制 ' + n + ' 局，粘到微信发回来' : ok === 'box' ? '在弹出的框里复制' : '复制不了，再点一次试试', t: clock };
+  }, '试玩记录（' + n + ' 局）');
 }
 let settingsAsk = 0; // 「重新开始」要点两下：第一下变成「真的清空？」，3 秒内再点才清
 P.setMuted(!!save.muted);
@@ -2251,6 +2261,7 @@ function drawPetCaption() {
   }
 }
 function juicePets(ev, colorsBefore) {
+  if (ev.rescue) g.rescues = (g.rescues || 0) + 1; // 试玩记录：宠物救命几次
   // 先照原来的一套：放下弹一下、消掉的碎掉、收到的东西飞向顶上
   juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? 4 : 1), collected: ev.collected });
   if (ev.fire) { const c = boxCenter(ev.fire.box); rings.push({ t: clock, big: false, at: c }); flash = 0.25; P.sound('combo3', 0.7); shake = Math.max(shake, 8); }
@@ -2495,18 +2506,23 @@ function settlePet() {
   result = r;
   g._settleInfo = { petReplay };
   // 试玩记录器（0.9.6，打磨流程第 0 步）：每打完一局记一行，给难度表的「真人」那一列用。设置里「复制试玩记录」拿走
-  if (!st.evolve) {
-    const ps = g.playStats, pt = g.team[0];
-    save.playLog = save.playLog || [];
-    save.playLog.push({
-      lv: petIdx + 1, won: g.won ? 1 : 0, moves: g.moves, sec: Math.round((P.now() - (g.startMs || P.now())) / 1000),
-      firstClear: ps.firstClear, firstGoal: ps.firstGoal, maxDry: ps.maxDry, prog: Math.round(g.progressFrac() * 100),
-      petActs: Object.values(g.petActsTotal).reduce((a, b) => a + b, 0), petGoals: ps.goalsByPet, myGoals: ps.goalsByPlayer,
-      pet: pt ? pt.id : '', petLv: pt ? pt.lv : 0, ver: VERSION, t: new Date().toISOString().slice(0, 16),
-    });
-    if (save.playLog.length > 400) save.playLog.splice(0, save.playLog.length - 400);
-    persist();
-  }
+  if (!st.evolve) logPlay(false);
+}
+// 试玩记录器：每打完一局记一行（0.9.11 起中途退出也记一行 quit: 1，多记技能块用了几次、宠物救命几次）
+function logPlay(quit) {
+  if (!g || !g.pets || !g.stage || g.stage.evolve || g._logged) return;
+  g._logged = true;
+  const ps = g.playStats, pt = g.team[0];
+  save.playLog = save.playLog || [];
+  save.playLog.push({
+    lv: petIdx + 1, won: g.won ? 1 : 0, quit: quit ? 1 : 0, moves: g.moves, sec: Math.round((P.now() - (g.startMs || P.now())) / 1000),
+    firstClear: ps.firstClear, firstGoal: ps.firstGoal, maxDry: ps.maxDry, prog: Math.round(g.progressFrac() * 100),
+    petActs: Object.values(g.petActsTotal).reduce((a, b) => a + b, 0), petGoals: ps.goalsByPet, myGoals: ps.goalsByPlayer,
+    skills: g.skillUses || 0, rescues: g.rescues || 0, wave: g.waveNo || 0,
+    pet: pt ? pt.id : '', petLv: pt ? pt.lv : 0, ver: VERSION, t: new Date().toISOString().slice(0, 16),
+  });
+  if (save.playLog.length > 400) save.playLog.splice(0, save.playLog.length - 400);
+  persist();
 }
 function showPet() {
   const st = g.stage, r = result, petReplay = g._settleInfo ? g._settleInfo.petReplay : false;

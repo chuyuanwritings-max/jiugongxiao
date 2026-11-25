@@ -143,6 +143,10 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   await shot('05b_过关只回营地');
   st = await page.evaluate(() => window.__game.buttons().map((x) => x.id));
   const toCamp = st.includes('tocamp') && !st.includes('next') && !st.includes('tomap');
+  {
+    const n = await page.evaluate(() => (window.__game.save.playLog || []).length);
+    ok(st.includes('overCopyLog') && n >= 2, '试玩版：结算页底下有「复制试玩记录」（已记 ' + n + ' 局）');
+  }
   await click('tocamp');
   await page.waitForTimeout(200);
   st = await page.evaluate(() => ({ mode: window.__game.mode, play: window.__game.buttons().some((x) => x.id === 'campPlay') }));

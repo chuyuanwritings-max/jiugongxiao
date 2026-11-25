@@ -8,7 +8,7 @@ const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
-const VERSION = '0.9.9'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.10'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -2002,6 +2002,12 @@ function drawHomeButtons(cy) {
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
 let settingsFrom = 'home';
 let copyMsg = null; // 「复制试玩记录」之后的一句提示
+// 试玩版（0.9.10，Cc 11-25：「只要玩完一关，就有位置可以点到这个复制记录。这样的话，我朋友测试完了之后才能把这个记录发给我」）：
+// 结算页底下也放一个。正式上线把 PLAYTEST 改成 false，结算页的就不出了（设置里的留着）
+const PLAYTEST = true;
+function copyPlayLog() {
+  P.copyText(JSON.stringify({ game: '九宫消', ver: VERSION, log: save.playLog || [] }), (ok) => { copyMsg = { text: ok ? '已复制，粘到微信里发回来就行' : '复制不了：截个图发回来', t: clock }; });
+}
 let settingsAsk = 0; // 「重新开始」要点两下：第一下变成「真的清空？」，3 秒内再点才清
 P.setMuted(!!save.muted);
 function drawSettings() {
@@ -2025,9 +2031,7 @@ function drawSettings() {
   text(asking ? '宠物、关卡、葫芦、金币全部清空，回到第 1 关' : '清空所有进度，从第 1 关重新玩', W / 2, y + 80, 14, asking ? COL.red : COL.dim, 'center', 'normal');
   // 试玩记录：复制出来贴给 Kira（难度表的「真人」那一列）
   const nLog = (save.playLog || []).length;
-  button('setCopyLog', bx, H - 168, bw, 44, copyMsg && clock - copyMsg.t < 2.5 ? copyMsg.text : '复制试玩记录（' + nLog + ' 局）', { kind: 'sub', size: 13, fn: () => {
-    P.copyText(JSON.stringify({ game: '九宫消', ver: VERSION, log: save.playLog || [] }), (ok) => { copyMsg = { text: ok ? '已复制，粘贴给 Kira 就行' : '复制不了：截个图给 Kira', t: clock }; });
-  } });
+  button('setCopyLog', bx, H - 168, bw, 44, copyMsg && clock - copyMsg.t < 2.5 ? copyMsg.text : '复制试玩记录（' + nLog + ' 局）', { kind: 'sub', size: 13, fn: copyPlayLog });
   button('setBack', bx, H - 100, bw, 60, settingsFrom === 'map' ? '回地图' : '回主菜单', { size: 24, fn: () => { mode = settingsFrom; } });
 }
 
@@ -2590,6 +2594,10 @@ function drawPetOver() {
       button('revive', bx, by + 70, bw * 0.6 - 6, 44, '清空正中间', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { g.revive(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
       button('tomap', bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
     } else button('tomap', bx, by + 70, bw, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+  }
+  if (PLAYTEST) { // 面板底下，一关打完就点得到
+    const nLog = (save.playLog || []).length;
+    button('overCopyLog', bx, Math.min(H - 56, py + ph + 14), bw, 44, copyMsg && clock - copyMsg.t < 2.5 ? copyMsg.text : '复制试玩记录（' + nLog + ' 局），发回来', { kind: 'sub', size: 15, hot: true, fn: copyPlayLog });
   }
 }
 // 葫芦：两个圆叠起来，腰上一根红绳

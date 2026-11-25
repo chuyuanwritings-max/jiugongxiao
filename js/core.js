@@ -162,8 +162,8 @@ function createGame(opts) {
   g.deal = () => {
     g.deals++;
     if (o.tutorial && g.deals === 1) {
-      // 第一组：3×3 正好填满一宫；5 + 4 放一行就消
-      g.hand = [PIECES.sq3, PIECES['5h'], PIECES['4h']];
+      // 第一组：3×3 正好填满一宫；5 + 4 放一行就消。关卡可以自己定第一手（st.tutHand，0.9.12：宠物第 1 关的盘面是两排缺口，配 5 格、4 格长条）
+      g.hand = (st && st.tutHand ? st.tutHand : ['sq3', '5h', '4h']).map((id) => PIECES[id]);
     } else {
       // luck（0.9）：这一关发的三块「保证都放得下」的机会。普通关 1（一定放得下）；难关、超难关、头目关调低，手熟的人也会被逼到（照 0.9 从头打到尾的测量）
       const guarantee = g.endless ? g.rand() < Math.max(0.5, 1 - g.moves / 200) : st && st.luck !== undefined ? g.rand() < st.luck : true;

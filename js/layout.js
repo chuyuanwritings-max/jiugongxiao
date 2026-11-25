@@ -18,8 +18,8 @@ const DEFS = {
   'map.play': { name: '继续大按钮', screen: 'map', x: 16, y: 710, w: 358, h: 58, ax: 's', ay: 'b' },
   'map.bar': { name: '底栏图标（营地 / 画册 / 经典拼画）', screen: 'map', x: 16, y: 780, w: 358, h: 56, ax: 's', ay: 'b' },
   // 营地
-  'camp.gourd': { name: '葫芦卡', screen: 'camp', x: 16, y: 88, w: 358, h: 84, ax: 's', ay: 't' },
-  'camp.pets': { name: '宠物卡（一只一张）', screen: 'camp', x: 16, y: 184, w: 358, h: 500, ax: 's', ay: 't' },
+  'camp.gourd': { name: '宠物园（上沿）', screen: 'camp', x: 16, y: 88, w: 358, h: 84, ax: 's', ay: 't' },
+  'camp.pets': { name: '宠物园（下沿）', screen: 'camp', x: 16, y: 184, w: 358, h: 500, ax: 's', ay: 't' },
   'camp.next': { name: '下一关卡', screen: 'camp', x: 16, y: 696, w: 358, h: 56, ax: 's', ay: 'b' },
   'camp.go': { name: '出发大按钮', screen: 'camp', x: 16, y: 764, w: 358, h: 56, ax: 's', ay: 'b' },
 };

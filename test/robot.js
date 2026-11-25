@@ -107,9 +107,10 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
     const h2 = await hlog();
     ok(h1.length === 1 && h1[0].level === 'light' && h2.length === 1, '震动：拿起方块震一下轻的，拖回托盘没放成不震（' + h2.map((x) => x.level).join(',') + '）');
   }
-  // 0.9.12 新的第 1 关盘面：先摆一排只差最左一格，手上第 1 块换成 1 格，保证这一手消一排
-  await page.evaluate(() => { const G = window.__game, g = G.g; for (let c = 1; c < 9; c++) { g.board[72 + c] = 1; g.color[72 + c] = 0; } g.hand[0] = G.core.PIECES['1']; });
-  await dragTo(0, 8, 0);
+  // 照新手引导的手指拖（不改盘面——0.9.12 就是因为测试改了盘面，没发现引导让人把 3×3 拖进堵着的中宫）
+  const tut = await page.evaluate(() => { const G = window.__game, t = G.tutorialTarget(); return t && { r: t.r, c: t.c, n: t.n, ok: G.core.canPlace(G.g.board, G.g.hand[0], t.r, t.c), id: G.g.hand[0].id }; });
+  ok(tut && tut.ok && tut.n >= 1, '第 1 关新手引导：手指演示的那一手放得下、而且能消一排（' + (tut && tut.id) + ' 放到 ' + (tut && tut.r) + ',' + (tut && tut.c) + '，消 ' + (tut && tut.n) + ' 排）');
+  await dragTo(0, tut.r, tut.c);
   await page.waitForTimeout(140);
   await shot('02_第1关_第一下消一宫');
   {
@@ -193,14 +194,17 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   // 营地：一下升一级（「升级 · N 颗」），升到 5 级出现「进化」
   await page.evaluate(() => { const G = window.__game; G.save.pets.tongque = { lv: 4, exp: 0 }; G.setSave({ dan: 20 }); G.openCamp(); });
   await page.waitForTimeout(200);
-  await shot('07_营地_升级按钮');
-  await click('feed0');
+  // 0.9.13 宠物园：点宠物 → 气泡里点丹图标升级 → 够 5 级气泡里出「进化」
+  await click('gpet_tongque');
   await page.waitForTimeout(300);
-  await shot('08_营地_可以进化');
+  await shot('07_宠物园_点宠物出气泡');
+  await click('feedG');
+  await page.waitForTimeout(700);
+  await shot('08_宠物园_可以进化');
   st = await page.evaluate(() => ({ lv: window.__game.save.pets.tongque.lv, btn: window.__game.buttons().map((b) => b.id) }));
-  ok(st.lv >= 5 && st.btn.includes('evolve0'), '营地：点「升级 · N 颗」一下升一级，铜雀到 5 级，出现「进化」');
+  ok(st.lv >= 5 && st.btn.includes('evolveG'), '宠物园：点铜雀冒气泡，点丹图标升一级，到 5 级出现「进化」');
   // 进化关
-  await click('evolve0');
+  await click('evolveG');
   await page.waitForTimeout(400);
   await shot('09_进化关');
   await petPlay(60);

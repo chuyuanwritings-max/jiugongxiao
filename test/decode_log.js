@@ -10,7 +10,7 @@ const zlib = require('zlib');
 
 const NAMES = {
   o: '开游戏', h: '切到后台', s: '回到前台', i: '停手', m: '换页面', b: '点按钮', L: '开一关', E: '一关打完', q: '中途退出',
-  p: '拿起', d: '放下', x: '没放成', k: '用技能块', r: '宠物救命', n: '被偷能量', w: '下一波',
+  p: '拿起', d: '放下', x: '没放成', k: '用技能块', r: '宠物救命', n: '被偷能量', w: '下一波', S: '记一下', X: '出错',
 };
 const MODES = { home: '主菜单', map: '章页', camp: '营地', play: '关里', over: '结算', settings: '设置', intro: '说明卡', cut: '过场', start: '进关卡片', ad: '广告', album: '画册', share: '分享' };
 
@@ -73,6 +73,20 @@ function summarize(d) {
   const breaks = {};
   ev.forEach((e) => { if (e.code === 'm') page = MODES[e.data[0]] || e.data[0]; if (e.code === 'h' || e.code === 'i') breaks[page] = (breaks[page] || 0) + 1; });
   out.push('- 歇下来（切后台或停手）时在哪一页：' + Object.entries(breaks).map(([k, v]) => k + ' ' + v + ' 次').join('、'));
+  const errs = ev.filter((e) => e.code === 'X');
+  if (errs.length) { out.push(''); out.push('## 出错（' + errs.length + ' 次）——Kira 修 bug 用'); errs.forEach((e) => out.push('- ' + fmtT(e.t) + ' · ' + e.data[0] + ' · 第 ' + e.data[4] + ' 关 · ' + (MODES[e.data[3]] || e.data[3]) + '：' + e.data[1] + (e.data[2] ? '\n  `' + e.data[2] + '`' : ''))); }
+  // 「记一下」：测试员点左下角那支笔时的现场（盘面：. 空、0–6 方块颜色、~ 墨块、m 小墨怪、S 甲壳、J 跳跳、E 馋嘴、C 挑色、O 墨苔、K 炸弹、P 分身、B 头目、R 铁石、X 机关匣）
+  const snaps = ev.filter((e) => e.code === 'S');
+  if (snaps.length) {
+    out.push(''); out.push('## 记一下（' + snaps.length + ' 个）');
+    snaps.forEach((e, n) => {
+      const s = e.data[0] || {};
+      out.push(''); out.push(`### ${n + 1}. ${fmtT(e.t)} · ${MODES[s.mode] || s.mode}${s.lv ? ' · 第 ' + s.lv + ' 关 · 第 ' + s.moves + ' 手 · 第 ' + s.wave + ' 波' : ''}`);
+      if (s.note) out.push('备注：「' + s.note + '」');
+      if (s.board) { out.push('```'); s.board.forEach((r) => out.push(r.split('').join(' '))); out.push('```'); out.push('手上：' + s.hand.join(' ') + ' · 宠物格：' + s.skill + (s.next ? ' · 下一批：' + s.next.join(' ') : '') + ' · ' + (s.pets || []).join('；') + ' · 还差：' + JSON.stringify(s.left)); }
+      if (s.save) out.push('存档：到第 ' + s.save.stage + ' 关、丹 ' + s.save.dan + '、' + s.save.pets + (s.save.loss ? '、这关连输 ' + s.save.loss + ' 次' : ''));
+    });
+  }
   return out.join('\n') + '\n';
 }
 

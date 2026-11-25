@@ -5,6 +5,7 @@ module.exports = [
   "goal": {
    "score": 120
   },
+  "tutHand": ["5h", "4h", "sq3"],
   "d": 0,
   "colors": [
    3,

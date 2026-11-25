@@ -266,6 +266,21 @@ function copyText(str, ok, title) {
     try { showCopyBox(str, title); cb('box'); } catch (e2) { cb(false); }
   }
 }
+// 让玩家打一句话（试玩「记一下」用）：微信用可输入的弹窗，网页用 prompt。取消或不写 → cb('')
+function askText(title, hint, cb) {
+  try {
+    if (isWx && wx.showModal) { wx.showModal({ title, editable: true, placeholderText: hint, confirmText: '记下', success: (r) => cb(r.confirm ? r.content || '' : null), fail: () => cb('') }); return; }
+    if (typeof window !== 'undefined' && window.prompt) { const r = window.prompt(title + '\n' + hint, ''); cb(r === null ? null : r); return; }
+  } catch (e) { /* 拿不到输入就当没写 */ }
+  cb('');
+}
+// 全局报错（试玩记录用）：微信 wx.onError，网页 window error
+function onError(cb) {
+  try {
+    if (isWx && wx.onError) { wx.onError((r) => cb((r && r.message) || String(r))); return; }
+    if (typeof window !== 'undefined') window.addEventListener('error', (e) => cb(e.message || String(e)));
+  } catch (e) { /* 拿不到就不记 */ }
+}
 // 切到后台 / 回到前台（试玩记录用）：微信 wx.onHide / onShow，网页 visibilitychange
 function onVisibility(cb) {
   try {
@@ -276,4 +291,4 @@ function onVisibility(cb) {
     }
   } catch (e) { /* 拿不到就不记 */ }
 }
-module.exports = { onVisibility, copyText, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+module.exports = { onError, askText, onVisibility, copyText, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };

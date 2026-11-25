@@ -57,7 +57,7 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   // ---------- 0.5 九宫消 + 宠物 ----------
   const petPlay = async (max, until) => {
     for (let k = 0; k < max; k++) {
-      const m = await page.evaluate(() => { const G = window.__game; if (G.g.over || G.mode !== 'play') return null; const b = G.PG.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c }; });
+      const m = await page.evaluate(() => { const G = window.__game; if (G.mode === 'start') G.skipCuts(); if (G.g.over || G.mode !== 'play') return null; const b = G.PG.bestMove(G.g, 1); return b && { i: b.i, r: b.r, c: b.c }; });
       if (!m) break;
       await dragTo(m.i, m.r, m.c);
       await page.waitForTimeout(50);

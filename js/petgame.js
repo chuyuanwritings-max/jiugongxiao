@@ -142,7 +142,7 @@ function createPetGame(opts) {
       if (v === 0 || v === 2 || v === 4 || v === 5) continue;
       if (IS_MON(v)) {
         if (!hitMon(k, ev, byPet, colorOk)) continue;
-        if ('monster' in g.got) g.got.monster++; g.caught++; ev.collected.push({ k, what: 'monster', t: g.mon[k] ? g.mon[k].t : 'ink' }); delete g.jumpPlan[k]; g.mon[k] = null;
+        if ('monster' in g.got) g.got.monster++; g.caught++; ev.collected.push({ k, what: 'monster', t: g.mon[k] ? g.mon[k].t : 'ink', col: g.mon[k] ? g.mon[k].col : -1 }); delete g.jumpPlan[k]; g.mon[k] = null;
       }
       if (g.gem[k]) { const id = core.GEMS[g.gem[k]].id; if (id in g.got) { g.got[id]++; ev.collected.push({ k, what: id }); } g.gem[k] = 0; }
       if (g.bubble[k]) { g.bubble[k] = 0; if ('bubble' in g.got) { g.got.bubble++; ev.collected.push({ k, what: 'bubble' }); } }

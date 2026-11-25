@@ -72,7 +72,7 @@ function createPetGame(opts) {
     mon: new Array(81).fill(null), // 墨怪的种类和状态
     spawnQ: [], // 分身怪 / 分身王：这一手打完以后要蹦出来的小墨怪（从哪格旁边）
     monStats: { cracks: 0, eats: 0, moss: 0, bombs: 0, spawns: 0, colorMiss: 0 }, // 这一关墨怪干了几回（测试和以后的统计用）
-    playStats: { clearMoves: 0, dry: 0, maxDry: 0, bossByPlayer: 0, bossByPet: 0, units: 0 }, // 手感统计：几手有消、最长几手没消、头目的心谁打掉的
+    playStats: { clearMoves: 0, dry: 0, maxDry: 0, bossByPlayer: 0, bossByPet: 0, units: 0, firstClear: 0, firstGoal: 0, goalsByPet: 0, goalsByPlayer: 0 }, // 0.9.6 记录器：第几手第一次消 / 第一次碰到目标、目标谁完成的 // 手感统计：几手有消、最长几手没消、头目的心谁打掉的
     evLit: new Set(), evColor: st.evolve ? PETS[st.evolve.pet].color : null,
     caught: 0, petActsTotal: {},
   });
@@ -142,6 +142,7 @@ function createPetGame(opts) {
       if (v === 0 || v === 2 || v === 4 || v === 5) continue;
       if (IS_MON(v)) {
         if (!hitMon(k, ev, byPet, colorOk)) continue;
+        if (byPet) g.playStats.goalsByPet++; else g.playStats.goalsByPlayer++;
         if ('monster' in g.got) g.got.monster++; g.caught++; ev.collected.push({ k, what: 'monster', t: g.mon[k] ? g.mon[k].t : 'ink', col: g.mon[k] ? g.mon[k].col : -1 }); delete g.jumpPlan[k]; g.mon[k] = null;
       }
       if (g.gem[k]) { const id = core.GEMS[g.gem[k]].id; if (id in g.got) { g.got[id]++; ev.collected.push({ k, what: id }); } g.gem[k] = 0; }
@@ -158,7 +159,7 @@ function createPetGame(opts) {
       g.bigHp = Math.max(0, g.bigHp - dmg);
       g.boss.hp = g.bigHp;
       ev.bigHits.push({ k: g.bigCells[0], dmg });
-      if (byPet) g.playStats.bossByPet += dmg; else g.playStats.bossByPlayer += dmg;
+      if (byPet) { g.playStats.bossByPet += dmg; g.playStats.goalsByPet += dmg; } else { g.playStats.bossByPlayer += dmg; g.playStats.goalsByPlayer += dmg; }
       if (g.boss.kind === 'split' && g.bigHp > 0) g.spawnQ.push({ k: g.bigCells[0], n: 1, from: 'boss' }); // 分身王：挨一下蹦一只小墨怪
       if (g.bigHp === 0) {
         g.bigCells.forEach((k) => (b[k] = 0));
@@ -185,6 +186,7 @@ function createPetGame(opts) {
       if (g.rockHp[k] > 1) { g.rockHp[k]--; (ev.rockCrack = ev.rockCrack || []).push(k); continue; } // 两层：先裂
       b[k] = 0; g.rockHp[k] = 0;
       if ('rock' in g.got) g.got.rock++;
+      g.playStats.goalsByPet++; // 铁石只有宠物打得碎
       ev.collected.push({ k, what: 'rock' }); (ev.rocks = ev.rocks || []).push(k);
     }
   }
@@ -431,7 +433,7 @@ function createPetGame(opts) {
     }
     ev.units = units; ev.cells = clearedCells;
     const ps = g.playStats; ps.units += units.length;
-    if (units.length) { ps.clearMoves++; ps.dry = 0; } else { ps.dry++; ps.maxDry = Math.max(ps.maxDry, ps.dry); }
+    if (units.length) { ps.clearMoves++; ps.dry = 0; if (!ps.firstClear) ps.firstClear = g.moves; } else { ps.dry++; ps.maxDry = Math.max(ps.maxDry, ps.dry); }
     // 2. 积蓄能量（多出来的留到下一次）
     for (const pt of g.team) {
       const mine = clearedCells.filter((k) => colorsBefore[k] === petDef(pt).color);
@@ -446,6 +448,7 @@ function createPetGame(opts) {
         if (act) { pt.energy -= energyMax(g, pt); ev.petActs.push(act); g.petActsTotal[pt.id] = (g.petActsTotal[pt.id] || 0) + 1; }
       }
     }
+    if (!g.playStats.firstGoal && ev.collected.some((c) => c.what !== 'bubble') || (!g.playStats.firstGoal && ev.bigHits.length)) g.playStats.firstGoal = g.moves;
     // 4. 分身：这一手打中的分身怪 / 分身王，现在蹦出小墨怪
     while (g.spawnQ.length) { const sp = g.spawnQ.shift(); spawnAround(b, sp.k, sp.n, ev); }
     // 5. 墨怪的回合（过关就不动了）
@@ -501,6 +504,16 @@ function createPetGame(opts) {
   // 宠物下一次要下手的地方（能量差 1 格时画面亮出来）
   g.petTarget = (pt) => { const t = targets(g.board, pt)[0]; return t && t.axis !== 'gift' ? t : null; };
   // 「差一点」（0.9.4，检验报告 C10 / E3）：头目按打掉了几颗心算、抓光关按抓了几只算（原来按「打死了没有」算，头目、抓光关永远不说差一点）；门槛从七成收到八成
+  // 离过关还有多远：0–1（头目按心、抓光按抓了几只、其余按目标数；冲分按分数）
+  g.progressFrac = () => {
+    let need = 0, have = 0;
+    for (const k in st.goal) {
+      if (k === 'boss' && g.boss) { need += g.boss.max; have += g.boss.max - g.bigHp; continue; }
+      if (k === 'all') { const tot = g.caught + (g.monLeft || 0); need += tot; have += g.caught; continue; }
+      const n = st.goal[k]; need += n; have += Math.min(n, k === 'score' ? g.score : g.got[k] || 0);
+    }
+    return need ? have / need : 0;
+  };
   g.nearMiss = () => !g.won && (() => {
     let need = 0, have = 0;
     for (const k in st.goal) {

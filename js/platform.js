@@ -192,4 +192,12 @@ function exposeForTest(name, value) {
   if (!isWx && typeof window !== 'undefined') window[name] = value;
 }
 
-module.exports = { isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+// 复制一段字到剪贴板（试玩记录给 Kira）
+function copyText(str, ok) {
+  try {
+    if (isWx) { wx.setClipboardData({ data: str, success: () => ok && ok(true), fail: () => ok && ok(false) }); return; }
+    if (navigator.clipboard) navigator.clipboard.writeText(str).then(() => ok && ok(true), () => ok && ok(false));
+    else ok && ok(false);
+  } catch (e) { if (ok) ok(false); }
+}
+module.exports = { copyText, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };

@@ -1,0 +1,1829 @@
+[
+ {
+  "lv": 1,
+  "tier": "第 1 关",
+  "line": {
+   "name": "第 1 关",
+   "moves": [
+    8,
+    10
+   ],
+   "win": [
+    100,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 100,
+   "moves": 11.525,
+   "firstClear": 4.66,
+   "dry90": 7,
+   "near": null,
+   "petShare": 0,
+   "acts": 0
+  },
+  "raw": {
+   "win": 98,
+   "moves": 13.102564102564102,
+   "firstClear": 6.115,
+   "dry90": 9,
+   "near": 20,
+   "petShare": 0,
+   "acts": 0
+  },
+  "seek": {
+   "win": 100,
+   "moves": 10.605,
+   "firstClear": 4.18,
+   "dry90": 6,
+   "near": null,
+   "petShare": 0,
+   "acts": 0
+  },
+  "noPet": null,
+  "petMatter": null,
+  "real": null,
+  "bad": [
+   "几手",
+   "第一次消",
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 2,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 100,
+   "moves": 11.435,
+   "firstClear": 1.325,
+   "dry90": 8,
+   "near": null,
+   "petShare": 0,
+   "acts": 0
+  },
+  "raw": {
+   "win": 90,
+   "moves": 15.206703910614525,
+   "firstClear": 2.035,
+   "dry90": 9,
+   "near": 43,
+   "petShare": 0,
+   "acts": 0
+  },
+  "seek": {
+   "win": 100,
+   "moves": 9.235,
+   "firstClear": 1.02,
+   "dry90": 6,
+   "near": null,
+   "petShare": 0,
+   "acts": 0
+  },
+  "noPet": null,
+  "petMatter": null,
+  "real": null,
+  "bad": [
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 3,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 100,
+   "moves": 10.85427135678392,
+   "firstClear": 1.07,
+   "dry90": 6,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "raw": {
+   "win": 89,
+   "moves": 15.242937853107344,
+   "firstClear": 1.62,
+   "dry90": 8,
+   "near": 57,
+   "petShare": 0,
+   "acts": 0
+  },
+  "seek": {
+   "win": 100,
+   "moves": 8.61,
+   "firstClear": 1.01,
+   "dry90": 4,
+   "near": null,
+   "petShare": 0,
+   "acts": 0
+  },
+  "noPet": null,
+  "petMatter": null,
+  "real": null,
+  "bad": [],
+  "lamp": "黄"
+ },
+ {
+  "lv": 4,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 100,
+   "moves": 13.565,
+   "firstClear": 2.565,
+   "dry90": 7,
+   "near": null,
+   "petShare": 0,
+   "acts": 2.215
+  },
+  "raw": {
+   "win": 100,
+   "moves": 15.487437185929648,
+   "firstClear": 3.19,
+   "dry90": 9,
+   "near": 0,
+   "petShare": 0,
+   "acts": 2.105
+  },
+  "seek": {
+   "win": 100,
+   "moves": 12.935,
+   "firstClear": 2.095,
+   "dry90": 6,
+   "near": null,
+   "petShare": 0,
+   "acts": 2.27
+  },
+  "noPet": {
+   "win": 100,
+   "moves": 14.815,
+   "firstClear": 2.565,
+   "dry90": 6,
+   "near": null,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 0,
+  "real": null,
+  "bad": [
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 5,
+  "tier": "难",
+  "line": {
+   "name": "难",
+   "moves": [
+    16,
+    24
+   ],
+   "win": [
+    55,
+    70
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 95,
+   "moves": 15.873015873015873,
+   "firstClear": 4.405,
+   "dry90": 8,
+   "near": 27,
+   "petShare": 37,
+   "acts": 2.52
+  },
+  "raw": {
+   "win": 82,
+   "moves": 18.533742331288344,
+   "firstClear": 5.29,
+   "dry90": 9,
+   "near": 24,
+   "petShare": 45,
+   "acts": 2.57
+  },
+  "seek": {
+   "win": 98,
+   "moves": 13.561224489795919,
+   "firstClear": 4.58,
+   "dry90": 7,
+   "near": 25,
+   "petShare": 27,
+   "acts": 2.37
+  },
+  "noPet": {
+   "win": 87,
+   "moves": 19.913793103448278,
+   "firstClear": 4.405,
+   "dry90": 8,
+   "near": 15,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 8,
+  "real": null,
+  "bad": [
+   "几手",
+   "一次过",
+   "第一次消",
+   "最闷",
+   "差一点"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 6,
+  "tier": "喘气 / 爽关",
+  "line": {
+   "name": "喘气 / 爽关",
+   "moves": [
+    8,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 4,
+   "near": null
+  },
+  "avg": {
+   "win": 100,
+   "moves": 16.08,
+   "firstClear": 1.345,
+   "dry90": 8,
+   "near": null,
+   "petShare": 0,
+   "acts": 2.595
+  },
+  "raw": {
+   "win": 95,
+   "moves": 20.9,
+   "firstClear": 1.855,
+   "dry90": 12,
+   "near": 20,
+   "petShare": 0,
+   "acts": 2.895
+  },
+  "seek": {
+   "win": 100,
+   "moves": 13.255,
+   "firstClear": 1.165,
+   "dry90": 6,
+   "near": null,
+   "petShare": 0,
+   "acts": 2.365
+  },
+  "noPet": {
+   "win": 100,
+   "moves": 18.231155778894472,
+   "firstClear": 1.345,
+   "dry90": 7,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 0,
+  "real": null,
+  "bad": [
+   "几手",
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 7,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 100,
+   "moves": 12.291457286432161,
+   "firstClear": 2.74,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 0,
+   "acts": 1.505
+  },
+  "raw": {
+   "win": 92,
+   "moves": 17.497267759562842,
+   "firstClear": 3.73,
+   "dry90": 9,
+   "near": 0,
+   "petShare": 0,
+   "acts": 2
+  },
+  "seek": {
+   "win": 100,
+   "moves": 9.1,
+   "firstClear": 2.165,
+   "dry90": 6,
+   "near": null,
+   "petShare": 0,
+   "acts": 1.24
+  },
+  "noPet": {
+   "win": 99,
+   "moves": 11.939086294416244,
+   "firstClear": 2.74,
+   "dry90": 7,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 1,
+  "real": null,
+  "bad": [
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 8,
+  "tier": "难",
+  "line": {
+   "name": "难",
+   "moves": [
+    16,
+    24
+   ],
+   "win": [
+    55,
+    70
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 89,
+   "moves": 17.55056179775281,
+   "firstClear": 4.145,
+   "dry90": 7,
+   "near": 5,
+   "petShare": 66,
+   "acts": 3.015
+  },
+  "raw": {
+   "win": 64,
+   "moves": 19.6875,
+   "firstClear": 4.85,
+   "dry90": 8,
+   "near": 8,
+   "petShare": 70,
+   "acts": 2.435
+  },
+  "seek": {
+   "win": 97,
+   "moves": 16.556701030927837,
+   "firstClear": 3.745,
+   "dry90": 6,
+   "near": 0,
+   "petShare": 54,
+   "acts": 3.295
+  },
+  "noPet": {
+   "win": 63,
+   "moves": 25,
+   "firstClear": 4.145,
+   "dry90": 7,
+   "near": 39,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 26,
+  "real": null,
+  "bad": [
+   "一次过",
+   "第一次消",
+   "最闷",
+   "差一点",
+   "宠物干的"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 9,
+  "tier": "超难",
+  "line": {
+   "name": "超难",
+   "moves": [
+    20,
+    28
+   ],
+   "win": [
+    35,
+    50
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 96,
+   "moves": 20.53125,
+   "firstClear": 1.92,
+   "dry90": 8,
+   "near": 13,
+   "petShare": 100,
+   "acts": 4.14
+  },
+  "raw": {
+   "win": 79,
+   "moves": 22.449367088607595,
+   "firstClear": 2.57,
+   "dry90": 9,
+   "near": 5,
+   "petShare": 100,
+   "acts": 3.675
+  },
+  "seek": {
+   "win": 100,
+   "moves": 18.678391959798994,
+   "firstClear": 1.61,
+   "dry90": 7,
+   "near": 0,
+   "petShare": 100,
+   "acts": 4.12
+  },
+  "noPet": {
+   "win": 0,
+   "moves": 0,
+   "firstClear": 1.92,
+   "dry90": 7,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 96,
+  "real": null,
+  "bad": [
+   "一次过",
+   "最闷",
+   "差一点",
+   "宠物干的"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 10,
+  "tier": "头目",
+  "line": {
+   "name": "头目",
+   "moves": [
+    24,
+    32
+   ],
+   "win": [
+    55,
+    70
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 91,
+   "moves": 23.668508287292816,
+   "firstClear": 3.475,
+   "dry90": 8,
+   "near": 16,
+   "petShare": 32,
+   "acts": 3.69
+  },
+  "raw": {
+   "win": 70,
+   "moves": 28.65,
+   "firstClear": 5.285,
+   "dry90": 9,
+   "near": 17,
+   "petShare": 42,
+   "acts": 4.035
+  },
+  "seek": {
+   "win": 100,
+   "moves": 19.015075376884422,
+   "firstClear": 2.545,
+   "dry90": 6,
+   "near": 100,
+   "petShare": 26,
+   "acts": 3.24
+  },
+  "noPet": {
+   "win": 68,
+   "moves": 30.562962962962963,
+   "firstClear": 3.475,
+   "dry90": 7,
+   "near": 28,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 23,
+  "real": null,
+  "bad": [
+   "几手",
+   "一次过",
+   "最闷",
+   "差一点"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 11,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 100,
+   "moves": 11.7,
+   "firstClear": 2.95,
+   "dry90": 6,
+   "near": null,
+   "petShare": 100,
+   "acts": 2
+  },
+  "raw": {
+   "win": 98,
+   "moves": 13.805128205128206,
+   "firstClear": 3.67,
+   "dry90": 9,
+   "near": 0,
+   "petShare": 100,
+   "acts": 1.965
+  },
+  "seek": {
+   "win": 100,
+   "moves": 10.545,
+   "firstClear": 2.37,
+   "dry90": 6,
+   "near": null,
+   "petShare": 100,
+   "acts": 2
+  },
+  "noPet": {
+   "win": 0,
+   "moves": 0,
+   "firstClear": 2.945,
+   "dry90": 9,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 100,
+  "real": null,
+  "bad": [
+   "宠物干的"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 12,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 100,
+   "moves": 13.23,
+   "firstClear": 1.37,
+   "dry90": 8,
+   "near": null,
+   "petShare": 67,
+   "acts": 1.875
+  },
+  "raw": {
+   "win": 96,
+   "moves": 15.44502617801047,
+   "firstClear": 1.955,
+   "dry90": 10,
+   "near": 0,
+   "petShare": 70,
+   "acts": 1.83
+  },
+  "seek": {
+   "win": 100,
+   "moves": 10.725,
+   "firstClear": 1.145,
+   "dry90": 7,
+   "near": null,
+   "petShare": 60,
+   "acts": 1.82
+  },
+  "noPet": {
+   "win": 95,
+   "moves": 22.489473684210527,
+   "firstClear": 1.37,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 5,
+  "real": null,
+  "bad": [
+   "最闷",
+   "宠物干的"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 13,
+  "tier": "普通",
+  "line": {
+   "name": "普通",
+   "moves": [
+    12,
+    20
+   ],
+   "win": [
+    80,
+    90
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 100,
+   "moves": 13.361809045226131,
+   "firstClear": 3.925,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 78,
+   "acts": 1.955
+  },
+  "raw": {
+   "win": 85,
+   "moves": 16.488235294117647,
+   "firstClear": 4.875,
+   "dry90": 9,
+   "near": 13,
+   "petShare": 86,
+   "acts": 1.895
+  },
+  "seek": {
+   "win": 100,
+   "moves": 11.5,
+   "firstClear": 3.38,
+   "dry90": 6,
+   "near": null,
+   "petShare": 71,
+   "acts": 1.84
+  },
+  "noPet": {
+   "win": 63,
+   "moves": 43.58730158730159,
+   "firstClear": 3.925,
+   "dry90": 8,
+   "near": 9,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 37,
+  "real": null,
+  "bad": [
+   "一次过",
+   "第一次消",
+   "最闷",
+   "差一点",
+   "宠物干的"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 14,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 97,
+   "moves": 17.623711340206185,
+   "firstClear": 3.75,
+   "dry90": 9,
+   "near": 0,
+   "petShare": 30,
+   "acts": 1.515
+  },
+  "raw": {
+   "win": 81,
+   "moves": 21.537037037037038,
+   "firstClear": 5.145,
+   "dry90": 10,
+   "near": 0,
+   "petShare": 36,
+   "acts": 1.64
+  },
+  "seek": {
+   "win": 100,
+   "moves": 13.585,
+   "firstClear": 4.43,
+   "dry90": 8,
+   "near": null,
+   "petShare": 19,
+   "acts": 1.13
+  },
+  "noPet": {
+   "win": 92,
+   "moves": 24.628415300546447,
+   "firstClear": 3.75,
+   "dry90": 9,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 5,
+  "real": null,
+  "bad": [
+   "几手",
+   "第一次消",
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 15,
+  "tier": "难",
+  "line": {
+   "name": "难",
+   "moves": [
+    16,
+    24
+   ],
+   "win": [
+    55,
+    70
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 94,
+   "moves": 17.272727272727273,
+   "firstClear": 1,
+   "dry90": 7,
+   "near": 8,
+   "petShare": 31,
+   "acts": 2.785
+  },
+  "raw": {
+   "win": 73,
+   "moves": 21.220689655172414,
+   "firstClear": 1,
+   "dry90": 8,
+   "near": 16,
+   "petShare": 36,
+   "acts": 2.905
+  },
+  "seek": {
+   "win": 98,
+   "moves": 14.933673469387756,
+   "firstClear": 1,
+   "dry90": 5,
+   "near": 0,
+   "petShare": 26,
+   "acts": 2.635
+  },
+  "noPet": {
+   "win": 37,
+   "moves": 40.397260273972606,
+   "firstClear": 1,
+   "dry90": 7,
+   "near": 9,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 57,
+  "real": null,
+  "bad": [
+   "一次过",
+   "最闷",
+   "差一点"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 16,
+  "tier": "喘气 / 爽关",
+  "line": {
+   "name": "喘气 / 爽关",
+   "moves": [
+    8,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 4,
+   "near": null
+  },
+  "avg": {
+   "win": 100,
+   "moves": 8.422110552763819,
+   "firstClear": 1,
+   "dry90": 5,
+   "near": 100,
+   "petShare": 19,
+   "acts": 1.405
+  },
+  "raw": {
+   "win": 96,
+   "moves": 11.602094240837696,
+   "firstClear": 1.19,
+   "dry90": 7,
+   "near": 22,
+   "petShare": 21,
+   "acts": 1.545
+  },
+  "seek": {
+   "win": 100,
+   "moves": 6.235,
+   "firstClear": 1,
+   "dry90": 3,
+   "near": null,
+   "petShare": 19,
+   "acts": 1.235
+  },
+  "noPet": {
+   "win": 99,
+   "moves": 11.434343434343434,
+   "firstClear": 1,
+   "dry90": 5,
+   "near": 50,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 1,
+  "real": null,
+  "bad": [
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 17,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 99,
+   "moves": 14.710659898477157,
+   "firstClear": 3.3,
+   "dry90": 9,
+   "near": 0,
+   "petShare": 0,
+   "acts": 1.42
+  },
+  "raw": {
+   "win": 91,
+   "moves": 18.483516483516482,
+   "firstClear": 4.575,
+   "dry90": 10,
+   "near": 0,
+   "petShare": 0,
+   "acts": 2.02
+  },
+  "seek": {
+   "win": 100,
+   "moves": 10.95,
+   "firstClear": 2.375,
+   "dry90": 7,
+   "near": null,
+   "petShare": 0,
+   "acts": 0.85
+  },
+  "noPet": {
+   "win": 96,
+   "moves": 16.05759162303665,
+   "firstClear": 3.3,
+   "dry90": 7,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 3,
+  "real": null,
+  "bad": [
+   "几手",
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 18,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 99,
+   "moves": 12.852791878172589,
+   "firstClear": 4.915,
+   "dry90": 10,
+   "near": 33,
+   "petShare": 48,
+   "acts": 1.68
+  },
+  "raw": {
+   "win": 89,
+   "moves": 16.46067415730337,
+   "firstClear": 6.59,
+   "dry90": 11,
+   "near": 14,
+   "petShare": 52,
+   "acts": 1.735
+  },
+  "seek": {
+   "win": 100,
+   "moves": 10.195979899497488,
+   "firstClear": 3.75,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 43,
+   "acts": 1.575
+  },
+  "noPet": {
+   "win": 86,
+   "moves": 23.511627906976745,
+   "firstClear": 4.915,
+   "dry90": 9,
+   "near": 32,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 13,
+  "real": null,
+  "bad": [
+   "第一次消",
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 19,
+  "tier": "超难",
+  "line": {
+   "name": "超难",
+   "moves": [
+    20,
+    28
+   ],
+   "win": [
+    35,
+    50
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 73,
+   "moves": 21.682758620689654,
+   "firstClear": 3.43,
+   "dry90": 8,
+   "near": 7,
+   "petShare": 75,
+   "acts": 2.98
+  },
+  "raw": {
+   "win": 47,
+   "moves": 23.301075268817204,
+   "firstClear": 3.9,
+   "dry90": 9,
+   "near": 5,
+   "petShare": 79,
+   "acts": 2.3
+  },
+  "seek": {
+   "win": 82,
+   "moves": 18.48170731707317,
+   "firstClear": 3.16,
+   "dry90": 7,
+   "near": 0,
+   "petShare": 70,
+   "acts": 2.96
+  },
+  "noPet": {
+   "win": 0,
+   "moves": 0,
+   "firstClear": 3.43,
+   "dry90": 7,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 73,
+  "real": null,
+  "bad": [
+   "一次过",
+   "最闷",
+   "差一点",
+   "宠物干的"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 20,
+  "tier": "头目",
+  "line": {
+   "name": "头目",
+   "moves": [
+    24,
+    32
+   ],
+   "win": [
+    55,
+    70
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 84,
+   "moves": 27.779761904761905,
+   "firstClear": 4.98,
+   "dry90": 11,
+   "near": 6,
+   "petShare": 37,
+   "acts": 3.315
+  },
+  "raw": {
+   "win": 61,
+   "moves": 33.02459016393443,
+   "firstClear": 6.96,
+   "dry90": 13,
+   "near": 12,
+   "petShare": 44,
+   "acts": 3.17
+  },
+  "seek": {
+   "win": 98,
+   "moves": 20.835897435897436,
+   "firstClear": 3.48,
+   "dry90": 10,
+   "near": 0,
+   "petShare": 28,
+   "acts": 2.915
+  },
+  "noPet": {
+   "win": 39,
+   "moves": 35.896103896103895,
+   "firstClear": 4.98,
+   "dry90": 10,
+   "near": 8,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 45,
+  "real": null,
+  "bad": [
+   "一次过",
+   "第一次消",
+   "最闷",
+   "差一点"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 21,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 99,
+   "moves": 11.358585858585858,
+   "firstClear": 1.37,
+   "dry90": 7,
+   "near": 0,
+   "petShare": 21,
+   "acts": 1.215
+  },
+  "raw": {
+   "win": 98,
+   "moves": 15.428571428571429,
+   "firstClear": 1.98,
+   "dry90": 10,
+   "near": 0,
+   "petShare": 27,
+   "acts": 1.495
+  },
+  "seek": {
+   "win": 100,
+   "moves": 9.29,
+   "firstClear": 1.17,
+   "dry90": 5,
+   "near": null,
+   "petShare": 19,
+   "acts": 1.125
+  },
+  "noPet": {
+   "win": 94,
+   "moves": 20.13903743315508,
+   "firstClear": 1.37,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 5,
+  "real": null,
+  "bad": [
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 22,
+  "tier": "普通",
+  "line": {
+   "name": "普通",
+   "moves": [
+    12,
+    20
+   ],
+   "win": [
+    80,
+    90
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 100,
+   "moves": 12.69,
+   "firstClear": 3.055,
+   "dry90": 7,
+   "near": null,
+   "petShare": 66,
+   "acts": 2.18
+  },
+  "raw": {
+   "win": 89,
+   "moves": 15.5561797752809,
+   "firstClear": 4.145,
+   "dry90": 10,
+   "near": 23,
+   "petShare": 70,
+   "acts": 2.07
+  },
+  "seek": {
+   "win": 100,
+   "moves": 10.9,
+   "firstClear": 2.62,
+   "dry90": 5,
+   "near": null,
+   "petShare": 63,
+   "acts": 2.015
+  },
+  "noPet": {
+   "win": 79,
+   "moves": 36.13375796178344,
+   "firstClear": 3.055,
+   "dry90": 8,
+   "near": 26,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 21,
+  "real": null,
+  "bad": [
+   "一次过",
+   "最闷",
+   "宠物干的"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 23,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 99,
+   "moves": 13.686868686868687,
+   "firstClear": 5.06,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 34,
+   "acts": 1.625
+  },
+  "raw": {
+   "win": 96,
+   "moves": 16.69633507853403,
+   "firstClear": 6.38,
+   "dry90": 11,
+   "near": 0,
+   "petShare": 45,
+   "acts": 2.185
+  },
+  "seek": {
+   "win": 100,
+   "moves": 11.01,
+   "firstClear": 4.12,
+   "dry90": 7,
+   "near": null,
+   "petShare": 30,
+   "acts": 1.225
+  },
+  "noPet": {
+   "win": 96,
+   "moves": 17.162303664921467,
+   "firstClear": 4.985,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 3,
+  "real": null,
+  "bad": [
+   "第一次消",
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 24,
+  "tier": "普通",
+  "line": {
+   "name": "普通",
+   "moves": [
+    12,
+    20
+   ],
+   "win": [
+    80,
+    90
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 95,
+   "moves": 14.264550264550264,
+   "firstClear": 3.445,
+   "dry90": 10,
+   "near": 0,
+   "petShare": 37,
+   "acts": 1.71
+  },
+  "raw": {
+   "win": 85,
+   "moves": 17.301775147928993,
+   "firstClear": 4.895,
+   "dry90": 10,
+   "near": 13,
+   "petShare": 50,
+   "acts": 2.11
+  },
+  "seek": {
+   "win": 97,
+   "moves": 11.371134020618557,
+   "firstClear": 2.675,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 28,
+   "acts": 1.255
+  },
+  "noPet": {
+   "win": 85,
+   "moves": 21.347058823529412,
+   "firstClear": 3.425,
+   "dry90": 9,
+   "near": 20,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 10,
+  "real": null,
+  "bad": [
+   "一次过",
+   "最闷",
+   "差一点"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 25,
+  "tier": "难",
+  "line": {
+   "name": "难",
+   "moves": [
+    16,
+    24
+   ],
+   "win": [
+    55,
+    70
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 92,
+   "moves": 22.87431693989071,
+   "firstClear": 5.585,
+   "dry90": 9,
+   "near": 12,
+   "petShare": 38,
+   "acts": 3
+  },
+  "raw": {
+   "win": 65,
+   "moves": 26.689922480620154,
+   "firstClear": 6.58,
+   "dry90": 10,
+   "near": 23,
+   "petShare": 44,
+   "acts": 2.78
+  },
+  "seek": {
+   "win": 98,
+   "moves": 20.948979591836736,
+   "firstClear": 5.3,
+   "dry90": 8,
+   "near": 50,
+   "petShare": 33,
+   "acts": 2.815
+  },
+  "noPet": {
+   "win": 41,
+   "moves": 39.829268292682926,
+   "firstClear": 5.585,
+   "dry90": 8,
+   "near": 29,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 51,
+  "real": null,
+  "bad": [
+   "一次过",
+   "第一次消",
+   "最闷",
+   "差一点"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 26,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 99,
+   "moves": 17.78680203045685,
+   "firstClear": 1.805,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 7,
+   "acts": 1.645
+  },
+  "raw": {
+   "win": 90,
+   "moves": 22.461111111111112,
+   "firstClear": 2.91,
+   "dry90": 9,
+   "near": 40,
+   "petShare": 7,
+   "acts": 2.18
+  },
+  "seek": {
+   "win": 100,
+   "moves": 14.5,
+   "firstClear": 1.29,
+   "dry90": 7,
+   "near": null,
+   "petShare": 2,
+   "acts": 1.24
+  },
+  "noPet": {
+   "win": 91,
+   "moves": 19.414364640883978,
+   "firstClear": 1.805,
+   "dry90": 8,
+   "near": 74,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 8,
+  "real": null,
+  "bad": [
+   "几手",
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 27,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 99,
+   "moves": 16.3989898989899,
+   "firstClear": 1.375,
+   "dry90": 9,
+   "near": 100,
+   "petShare": 22,
+   "acts": 2.295
+  },
+  "raw": {
+   "win": 95,
+   "moves": 20.46031746031746,
+   "firstClear": 2.055,
+   "dry90": 11,
+   "near": 36,
+   "petShare": 28,
+   "acts": 2.69
+  },
+  "seek": {
+   "win": 100,
+   "moves": 12.49,
+   "firstClear": 1.2,
+   "dry90": 7,
+   "near": null,
+   "petShare": 23,
+   "acts": 2.045
+  },
+  "noPet": {
+   "win": 98,
+   "moves": 20.47179487179487,
+   "firstClear": 1.375,
+   "dry90": 8,
+   "near": 40,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 1,
+  "real": null,
+  "bad": [
+   "几手",
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 28,
+  "tier": "教新东西",
+  "line": {
+   "name": "教新东西",
+   "moves": [
+    10,
+    14
+   ],
+   "win": [
+    95,
+    100
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": null
+  },
+  "avg": {
+   "win": 99,
+   "moves": 23.00507614213198,
+   "firstClear": 5.8,
+   "dry90": 9,
+   "near": 0,
+   "petShare": 48,
+   "acts": 3.97
+  },
+  "raw": {
+   "win": 94,
+   "moves": 23.356382978723403,
+   "firstClear": 6.94,
+   "dry90": 12,
+   "near": 25,
+   "petShare": 58,
+   "acts": 3.905
+  },
+  "seek": {
+   "win": 100,
+   "moves": 23.75,
+   "firstClear": 4.405,
+   "dry90": 8,
+   "near": null,
+   "petShare": 21,
+   "acts": 4
+  },
+  "noPet": {
+   "win": 0,
+   "moves": 0,
+   "firstClear": 5.63,
+   "dry90": 9,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 99,
+  "real": null,
+  "bad": [
+   "几手",
+   "第一次消",
+   "最闷"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 29,
+  "tier": "超难",
+  "line": {
+   "name": "超难",
+   "moves": [
+    20,
+    28
+   ],
+   "win": [
+    35,
+    50
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 85,
+   "moves": 21.644970414201183,
+   "firstClear": 5.04,
+   "dry90": 8,
+   "near": 6,
+   "petShare": 63,
+   "acts": 3.405
+  },
+  "raw": {
+   "win": 55,
+   "moves": 26.28181818181818,
+   "firstClear": 5.945,
+   "dry90": 10,
+   "near": 16,
+   "petShare": 67,
+   "acts": 2.98
+  },
+  "seek": {
+   "win": 97,
+   "moves": 18.803108808290155,
+   "firstClear": 4.03,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 59,
+   "acts": 3.48
+  },
+  "noPet": {
+   "win": 0,
+   "moves": 0,
+   "firstClear": 5.04,
+   "dry90": 8,
+   "near": 0,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 85,
+  "real": null,
+  "bad": [
+   "一次过",
+   "第一次消",
+   "最闷",
+   "差一点",
+   "宠物干的"
+  ],
+  "lamp": "红"
+ },
+ {
+  "lv": 30,
+  "tier": "头目",
+  "line": {
+   "name": "头目",
+   "moves": [
+    24,
+    32
+   ],
+   "win": [
+    55,
+    70
+   ],
+   "firstClear": 3,
+   "dry": 6,
+   "near": 50
+  },
+  "avg": {
+   "win": 86,
+   "moves": 28.61046511627907,
+   "firstClear": 4.13,
+   "dry90": 9,
+   "near": 14,
+   "petShare": 48,
+   "acts": 4.37
+  },
+  "raw": {
+   "win": 59,
+   "moves": 34.601694915254235,
+   "firstClear": 5.655,
+   "dry90": 10,
+   "near": 15,
+   "petShare": 53,
+   "acts": 4.185
+  },
+  "seek": {
+   "win": 92,
+   "moves": 22.16393442622951,
+   "firstClear": 2.98,
+   "dry90": 7,
+   "near": 12,
+   "petShare": 41,
+   "acts": 3.84
+  },
+  "noPet": {
+   "win": 45,
+   "moves": 38.977777777777774,
+   "firstClear": 4.13,
+   "dry90": 8,
+   "near": 16,
+   "petShare": 0,
+   "acts": 0
+  },
+  "petMatter": 41,
+  "real": null,
+  "bad": [
+   "一次过",
+   "第一次消",
+   "最闷",
+   "差一点"
+  ],
+  "lamp": "红"
+ }
+]

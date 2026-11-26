@@ -2130,7 +2130,7 @@ const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
 const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
-const VERSION = '0.9.15'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.16'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -3667,6 +3667,16 @@ function drawInfo() {
   if (k !== undefined) { ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.strokeRect(cellX(k % 9) + 1, cellY(Math.floor(k / 9)) + 1, L.cell - 2, L.cell - 2); }
   ctx.restore();
 }
+// 一只点屏幕的手（图形引导用）：指尖在 (x, y)，tap 0–1 = 按下去的程度
+function drawHand(x, y, tap) {
+  const d = (tap || 0) * 6;
+  ctx.save(); ctx.globalAlpha = 0.95;
+  ctx.fillStyle = COL.steam; ctx.strokeStyle = COL.ink; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(x + 10, y + 22 + d, 13, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillRect(x + 5, y + d, 9, 22); ctx.strokeRect(x + 5, y + d, 9, 22);
+  if (tap > 0.6) { ctx.strokeStyle = 'rgba(243,210,122,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + 9, y, 14 + (tap - 0.6) * 30, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.restore();
+}
 function drawTutorial() {
   const siegeTut = g && g.siege && g.firstRun && g.phase === 'play';
   const petTut = g && g.pets && petIdx === 0 && !save.petTutDone;
@@ -4164,10 +4174,18 @@ function drawChapter() {
   }
   // 底部大按钮永远是「继续 · 第 N 关」（Cc 11-24：「底下的这个选项不应该变……我没法跳关，我当然是打第 14 关了」）。
   // 不管上面选中哪一格、翻到哪一章，点了都开打当前关；点上面的格子只是看预览。打过的关不从这里重打（学 Royal Match）
-  if (done) button('play', rP.x, btnY, rP.w, rP.h, '全部过关 · 新关卡在做', { kind: 'sub', size: 16, fn: () => {} });
+  // 宠物园入口（0.9.16）：开打按钮左边一格，画出带的宠物；有丹可喂就冒红点、发光
+  const gW = save.petOrder.length ? 60 : 0;
+  if (gW) {
+    const gid = save.activePet || save.petOrder[0], can = canLevelAny();
+    button('chGarden', rP.x, btnY, gW - 8, rP.h, '', { kind: 'sub', hot: can, fn: () => openCamp() });
+    petIcon(gid, rP.x + (gW - 8) / 2, btnY + rP.h / 2, Math.min(40, rP.h - 8), 0, can ? Math.max(0, Math.sin(clock * 5)) * 0.15 : 0);
+    if (can) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.arc(rP.x + gW - 14, btnY + 6, 7, 0, Math.PI * 2); ctx.fill(); }
+  }
+  if (done) button('play', rP.x + gW, btnY, rP.w - gW, rP.h, '全部过关 · 新关卡在做', { kind: 'sub', size: 16, fn: () => {} });
   else {
     const cst = PLV[cur], who = cst.only ? ' · ' + PG.PETS[ownedOf(cst.only) || cst.only].name + '上场' : '';
-    button('play', rP.x, btnY, rP.w, rP.h, '继续 · 第 ' + (cur + 1) + ' 关' + who, { size: 20, fn: () => newPetLevel(cur) });
+    button('play', rP.x + gW, btnY, rP.w - gW, rP.h, '继续 · 第 ' + (cur + 1) + ' 关' + who, { size: 20, fn: () => newPetLevel(cur) });
   }
   // 底栏去掉了（0.9.7，Cc 11-25：「经典拼画有啥用啊？……画册有啥用啊？……营地有啥用啊？……这都删了吧」）。过关后照旧回营地那一页；给宠物升级还能从上面「先练谁」进
 }
@@ -5040,6 +5058,14 @@ function showPet() {
   if (r.gift) CUT.petIntro(r.gift);
   playCuts();
 }
+// 输了以后右边那个小按钮：丹够升级就是「宠物园」（发金光 + 丹），不然是「地图」（0.9.16，Cc：「卡在第十关，退不回园子里去喂宠物了」）
+function lossSideBtn(x, y, w, h) {
+  if (canLevelAny()) {
+    button('toGarden', x, y, w, h, '宠物园', { size: 16, bg: COL.wood, hot: true, fn: () => openCamp() });
+    ctx.strokeStyle = 'rgba(243,210,122,' + (0.5 + Math.sin(clock * 6) * 0.4) + ')'; ctx.lineWidth = 3; rr(x - 3, y - 3, w + 6, h + 6, 12); ctx.stroke();
+    danOrb(x + 14, y + h / 2, 8);
+  } else button('tomap', x, y, w, h, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+}
 function drawPetOver() {
   const age = clock - overAt;
   const r = result;
@@ -5110,6 +5136,13 @@ function drawPetOver() {
   if (r.won) {
     // 过关一律回营地（Cc 11-24：「别给我直接进入下一关的选项，每一关过完了之后必定回营地」）：炼丹、喂宠物、换出战，再从营地去闯下一关
     button('tocamp', bx, by + 20, bw, 64, '回宠物园', { size: 28, fn: () => openCamp() });
+    // 够升级了：按钮外一圈金光，左边一颗丹带个向上的箭头（0.9.16：玩家不知道该回去喂）
+    if (save.petOrder.some((id) => save.dan >= danToLevel(id))) {
+      const gy = by + 20 + 32, a2 = 0.5 + Math.sin(clock * 6) * 0.4;
+      ctx.strokeStyle = 'rgba(243,210,122,' + a2 + ')'; ctx.lineWidth = 4; rr(bx - 4, by + 16, bw + 8, 72, 16); ctx.stroke();
+      danOrb(bx + 30, gy, 11);
+      const ay = gy - 4 - Math.abs(Math.sin(clock * 5)) * 5; ctx.fillStyle = COL.jade; ctx.beginPath(); ctx.moveTo(bx + 44, ay - 10); ctx.lineTo(bx + 52, ay); ctx.lineTo(bx + 36, ay); ctx.fill(); ctx.fillRect(bx + 41, ay, 6, 9);
+    }
   } else {
     button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => (g.stage.evolve ? newEvolution(g.stage.evolve.pet, petIdx) : newPetLevel(petIdx)) });
     const lost2 = save.loss && save.loss[petIdx] >= 2;
@@ -5121,14 +5154,14 @@ function drawPetOver() {
     if (bestId) {
       text('这关的怪不怕' + PG.PETS[g.team[0].id].name + '。', W / 2, by - 14, 14, COL.dim, 'center', 'normal');
       button('lend', bx, by + 70, bw * 0.6 - 6, 44, '请' + PG.PETS[bestId].name + '来帮忙', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, 3, bestId) });
-      button('tomap', bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+      lossSideBtn(bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44);
     } else if (lendLv) { // 专属关连输两次：递个梯子
       button('lend', bx, by + 70, bw * 0.6 - 6, 44, '借一只 ' + lendLv + ' 级的再来', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, lendLv) });
-      button('tomap', bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+      lossSideBtn(bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44);
     } else if (g.adsUsed < C.adMax) {
       button('revive', bx, by + 70, bw * 0.6 - 6, 44, '清空正中间', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { reviveFx(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
-      button('tomap', bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-    } else button('tomap', bx, by + 70, bw, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
+      lossSideBtn(bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44);
+    } else lossSideBtn(bx, by + 70, bw, 44);
   }
   if (PLAYTEST) { // 面板底下，一关打完就点得到
     const nLog = (save.playLog || []).length;
@@ -5249,6 +5282,19 @@ function drawCamp() {
       if (ua > 0.4) { ctx.globalAlpha = Math.min(1, (2 - ua) * 2); text(PG.petGain(id, u.from) || '', p.x, p.y + sz * 0.75, 13, COL.text); ctx.globalAlpha = 1; }
     }
   });
+  // 喂丹引导（0.9.16，Cc：「你这没有任何提示让我喂它」；Sylvie 打到第 8 关铜雀还是 1 级）：第一次攒够丹，一只手指先点宠物、气泡出来后再点丹的按钮；喂过一次就不再出现
+  if (!save.feedTaught) {
+    const ready = ids.filter((id) => save.dan >= danToLevel(id) && !(PG.PETS[id].evo && save.pets[id].lv >= PG.PETS[id].evoLv));
+    const who = ready.includes(save.activePet) ? save.activePet : ready[0];
+    if (who) {
+      let tx, ty;
+      const fb = gardenSel === who ? buttons.find((b) => b.id === 'feedG') : null;
+      if (fb) { tx = fb.x + fb.w * 0.4; ty = fb.y + fb.h * 0.55; }
+      else { const p = garden[who]; tx = p.x; ty = p.y; ctx.strokeStyle = 'rgba(243,210,122,' + (0.5 + Math.sin(clock * 6) * 0.4) + ')'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, sz * 0.55, 0, Math.PI * 2); ctx.stroke(); }
+      const ph = (clock % 1.2) / 1.2, tap = ph < 0.5 ? 0 : Math.sin(((ph - 0.5) / 0.5) * Math.PI);
+      drawHand(tx, ty, tap);
+    }
+  }
   // 一句很短的提示（升级了什么），飘一下就走
   if (petMsg && clock - petMsg.t < 2.2) {
     const a = clock - petMsg.t; ctx.globalAlpha = Math.min(1, (2.2 - a) * 2);
@@ -5274,6 +5320,7 @@ function drawCamp() {
 function feedFx(id) {
   const before = save.dan, lv0 = save.pets[id].lv;
   levelUpPet(id);
+  if (save.dan < before && !save.feedTaught) { save.feedTaught = true; persist(); T.rec('b', 'feedTaught'); }
   if (save.dan < before) { const n = Math.min(8, before - save.dan), lv1 = save.pets[id].lv; for (let i = 0; i < n; i++) danOrbs.push({ id, x: W - 16 - 86 + 18, y: uiTop() + 23, t: clock + i * 0.09, last: i === n - 1, up: lv1 > lv0, lv0, lv1 }); petMsg = null; } // 升级的话由最后一颗丹落进嘴里那一下演
 }
 function addExp(rec, n) {

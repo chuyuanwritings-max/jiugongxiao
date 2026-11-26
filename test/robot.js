@@ -320,7 +320,7 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   ok(st.team === 'jinchique' && st.active === 'baozhu', '专属关（第 13 关点名铜雀）：自动换上金翅雀，营地里选的爆竹鼠不变');
   await page.evaluate(() => { const G = window.__game; G.g.over = true; G.g.reason = 'stuck'; G.endGame(); });
   await page.waitForTimeout(700);
-  await click('tomap');
+  if (!(await click('tomap'))) await click('map'); // 0.9.16：丹够升级时这个按钮是「宠物园」，就点左上角的「‹ 地图」
   await page.waitForTimeout(400);
   await shot('13_章页');
   st = await page.evaluate(() => ({ mode: window.__game.mode, btn: window.__game.buttons().map((b) => b.id) }));

@@ -9,7 +9,7 @@ const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
 const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
-const VERSION = '0.9.17'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.18'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -869,12 +869,20 @@ function juice(ev) {
   (ev.collected || []).forEach((c, n) => {
     flyers.push({ what: c.what, x: cellX(c.k % 9) + L.cell / 2, y: cellY(Math.floor(c.k / 9)) + L.cell / 2, t: clock + n * 0.05 });
   });
-  if (ev.collected && ev.collected.length) setTimeout(() => P.sound('coin', 0.5), 380);
-  // 声音
-  if (ev.beat === 2) P.sound('line', 0.7);
-  if (ev.beat === 3) P.sound('box', 0.8);
-  if (ev.beat === 4) P.sound(ev.combo >= 3 || ev.streak >= 5 ? 'combo4' : ev.combo >= 2 ? 'combo3' : 'combo2', 0.7), P.sound('line', 0.5);
-  if (ev.beat === 5) P.sound('five', 0.9), P.sound('combo4', 0.4);
+  // 声音。0.9.18 宠物关：消除一律编钟和弦，第几声照连消数：第 1–5 声五声往上，第 6 声起一路扫上去；一下消 5 处以上 / 过关那一手再加低音大钟（声音包装方案第五节第 1、3 条）
+  if (g && g.pets) {
+    const mons = (ev.collected || []).filter((c) => c.what === 'monster').length;
+    for (let n = 0; n < Math.min(4, mons); n++) setTimeout(() => P.sound('pop', 0.55), 260 + n * 110); // 墨怪吸进葫芦「啵」
+    const lv = Math.max(0, (ev.streak || 1) - 1);
+    if (ev.beat >= 2) P.sound(lv >= 5 ? 'sweep' : 'clear' + lv, 0.75);
+    if (ev.beat >= 2 && ((ev.units && ev.units.length >= 5) || ev.win)) setTimeout(() => P.sound('dong', 0.8), 60);
+  } else {
+    if (ev.collected && ev.collected.length) setTimeout(() => P.sound('coin', 0.5), 380);
+    if (ev.beat === 2) P.sound('line', 0.7);
+    if (ev.beat === 3) P.sound('box', 0.8);
+    if (ev.beat === 4) P.sound(ev.combo >= 3 || ev.streak >= 5 ? 'combo4' : ev.combo >= 2 ? 'combo3' : 'combo2', 0.7), P.sound('line', 0.5);
+    if (ev.beat === 5) P.sound('five', 0.9), P.sound('combo4', 0.4);
+  }
   if (ev.crossbow) P.sound('bolt', 0.6);
   if (ev.newlyLit.length) setTimeout(() => P.sound('lit', 0.6), 120);
   hapticWave(ev.win || ev.beat >= 5 ? CLEAR_WAVE.big : ev.beat >= 4 ? CLEAR_WAVE.combo : CLEAR_WAVE.line); // 消掉了：「嘣嘣嘣」三下波浪（Cc 11-25），连消也只来一串、取最重的那串
@@ -1389,7 +1397,7 @@ function drawTray() {
   }
   for (let i = 0; i < 4; i++) {
     const p = g.hand[i];
-    if (p !== handSeen[i]) { handSeen[i] = p; if (p) handAt[i] = clock + (i < 3 ? i * 0.07 : 0); } // 发新块：从托盘下面一块块滑上来（0.9.13，Cc：「所有只要动了我们玩家的东西，就全都需要用动画来做」）
+    if (p !== handSeen[i]) { handSeen[i] = p; if (p) { handAt[i] = clock + (i < 3 ? i * 0.07 : 0); if (i === 0 && mode === 'play' && g && g.moves > 0) P.sound('deal', 0.45); } } // 0.9.18 发新块：轻「唰」 // 发新块：从托盘下面一块块滑上来（0.9.13，Cc：「所有只要动了我们玩家的东西，就全都需要用动画来做」）
     if (!p || (drag && drag.slot === i)) continue;
     const ha = Math.min(1, Math.max(0, (clock - (handAt[i] || -9)) / 0.28)), he = 1 - Math.pow(1 - ha, 3);
     if (ha <= 0) continue;
@@ -2654,6 +2662,18 @@ function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好�
   if (g.onlyPet && save.activePet !== g.onlyPet) { petFx.pop[g.onlyPet] = clock + 0.15; P.sound('select', 0.5); } // 被点名的那只跳进来
   // 这一章第一次开打：先放这章的开场（镜头摇过全景，硬切推到大墨怪）
   if (!quiet && i % 10 === 0 && !save.cutSeen['chapter' + i / 10]) { CUT.chapter(i / 10); playCuts(); }
+  startLevelMusic(st1, i, quiet);
+}
+// 0.9.18 背景音乐（js/music.js，曲子是声音会话写的六段）：按章挑曲子；普通 / 难关（稍快加一层鼓）/ 头目（最紧张）。
+// 关与关之间先来一段过场声（试听_7 的 STING.B），换章的那一关用 STING.C；过场完了曲子才进来
+let musicTimer = null;
+function startLevelMusic(st, i, quiet) {
+  if (musicTimer) clearTimeout(musicTimer);
+  const ch = Math.floor(i / 10) + 1, tens = st.goal && st.goal.boss ? 2 : st.hard ? 1 : 0;
+  if (quiet) { P.bgm.play(ch, tens); return; }
+  P.bgm.stop();
+  const len = P.bgm.sting(i % 10 === 0 ? 'C' : 'B');
+  musicTimer = setTimeout(() => { musicTimer = null; if (mode === 'play' || mode === 'start' || mode === 'intro') P.bgm.play(ch, tens); }, Math.max(300, len * 850));
 }
 function newEvolution(id, levelIdx) {
   petIdx = levelIdx === undefined ? PLV.findIndex((x) => x.evolveLevel === id) : levelIdx;
@@ -2794,11 +2814,11 @@ function juicePets(ev, colorsBefore) {
   if (!ev.skill || (ev.units && ev.units.length)) juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? (ev.units.length >= 2 ? 3 : 2) : 1), collected: ev.collected }); // 技能块（0.9.12）只有吐丝补满了一排才走消除那一套，别的由 juicePK 演
   if (ev.fire) { const c = boxCenter(ev.fire.box); rings.push({ t: clock, big: false, at: c }); flash = 0.25; P.sound('combo3', 0.7); shake = Math.max(shake, 8); }
   // 0.9.17：墨怪爬（从原来那格蹦过去）、冒脚印、金属被啄碎、冲锋关补格子
-  (ev.crawl || []).forEach((e, j) => { monSlide[e.to] = { from: e.from, t: clock + 0.12 + j * 0.05 }; timeline.push({ t: clock + 0.12 + j * 0.05, fn: () => P.sound('tap', 0.35) }); });
-  if (ev.footprint && ev.footprint.length) timeline.push({ t: clock + 0.2, fn: () => P.sound('select', 0.25) });
-  (ev.metal || []).forEach((k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 12; n++) { const a2 = Math.random() * Math.PI * 2, v = 90 + Math.random() * 140; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 110, t: clock, life: 0.6, s: 3 + Math.random() * 4, col: '#f3d27a' }); } shake = Math.max(shake, 5); P.sound('combo2', 0.7); haptic('medium'); });
+  (ev.crawl || []).forEach((e, j) => { monSlide[e.to] = { from: e.from, t: clock + 0.12 + j * 0.05 }; timeline.push({ t: clock + 0.12 + j * 0.05, fn: () => P.sound('skitter', 0.4) }); });
+  if (ev.footprint && ev.footprint.length) timeline.push({ t: clock + 0.2, fn: () => P.sound('skitter', 0.22) });
+  (ev.metal || []).forEach((k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 12; n++) { const a2 = Math.random() * Math.PI * 2, v = 90 + Math.random() * 140; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 110, t: clock, life: 0.6, s: 3 + Math.random() * 4, col: '#f3d27a' }); } shake = Math.max(shake, 5); P.sound('shing', 0.55); haptic('medium'); });
   (ev.refill || []).forEach((k, j) => { cellIn[k] = clock + 0.34 + j * 0.012; });
-  if (ev.bossJumpPlan !== undefined) timeline.push({ t: clock + 0.15, fn: () => { P.sound('deny', 0.5); haptic('medium'); } });
+  if (ev.bossJumpPlan !== undefined) timeline.push({ t: clock + 0.15, fn: () => { P.sound('skitter', 0.5); haptic('medium'); } });
   juicePK(ev);
   // 同色的块化成光点飞到宠物身上
   ev.sparks.forEach((sp) => {
@@ -2822,9 +2842,9 @@ function juicePets(ev, colorsBefore) {
     petInk.push({ from, k: ev.bossSpit, t: clock + 0.1 });
     timeline.push({ t: clock + 0.1, fn: () => P.sound('combo2', 0.5) });
   }
-  if (ev.bossJump) { flash = 0.2; shake = Math.max(shake, 9); P.sound('combo4', 0.6); haptic('heavy'); }
+  if (ev.bossJump) { flash = 0.2; shake = Math.max(shake, 9); P.sound('dong', 0.75); haptic('heavy'); } // 头目跳 = 低音大钟
   if (ev.bigHits.length) {
-    petFx.bossHit = clock; shake = Math.max(shake, 6); P.sound('combo2', 0.7); haptic('medium');
+    petFx.bossHit = clock; shake = Math.max(shake, 6); P.sound('thump', 0.75); haptic('medium'); // 头目挨打「嘭」
     // 碎掉的那颗红心飞出去
     const k0 = g.bigCells[0], x = cellX(k0 % 9) + L.cell, y = cellY(Math.floor(k0 / 9)) - 4;
     for (let n = 0; n < 8; n++) { const a2 = Math.random() * Math.PI * 2, sp = 90 + Math.random() * 120; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 120, t: clock, life: 0.6, s: 4 + Math.random() * 3 }); }
@@ -2883,17 +2903,18 @@ function juicePK(ev) {
     if (sk.hand !== undefined) {
       const c = slotCenter(sk.hand);
       for (let n = 0; n < 12; n++) { const a2 = Math.random() * Math.PI * 2, v = 60 + Math.random() * 90; fx.push({ kind: 'shard', x: c.x, y: c.y - 10, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 80, t: clock, life: 0.6, s: 3 + Math.random() * 3, col }); }
-      P.sound('pick', 0.9); haptic('medium');
+      P.sound('crunch', 0.8); haptic('medium'); // 啃「咔嚓」
     } else {
       const kind = sk.kind;
-      sk.cells.forEach((k, j) => { burst(k, kind === 'fire' ? '#ff8a3a' : col, kind === 'peck' ? 5 : 7, 120, j * 0.09); if (j) timeline.push({ t: clock + j * 0.09, fn: () => { P.sound('tap', 0.7); haptic('light'); } }); });
+      if (kind === 'peck') P.sound('chirp', 0.6); // 0.9.18 每只宠物自己的叫声 + 招式声：铜雀「啾」+ 啄「笃笃笃」
+      sk.cells.forEach((k, j) => { burst(k, kind === 'fire' ? '#ff8a3a' : col, kind === 'peck' ? 5 : 7, 120, j * 0.09); if (j) timeline.push({ t: clock + j * 0.09, fn: () => { haptic('light'); } }); });
       (sk.fill || []).forEach((k, j) => burst(k, col, 6, 70, j * 0.06));
       rings.push({ t: clock, big: false, at: at(ev.r * 9 + ev.c) });
       flash = Math.max(flash, 0.1); shake = Math.max(shake, 3);
-      P.sound(kind === 'fire' ? 'bolt' : kind === 'silk' ? 'select' : 'tap', 0.8); haptic('medium');
+      P.sound(kind === 'fire' ? 'bolt' : kind === 'silk' ? 'select' : 'peck', 0.75); haptic('medium');
     }
   }
-  (ev.counter || []).forEach((c) => { burst(c.k, COL.brassLight, 18, 220); burst(c.k, '#ffffff', 6, 140); flash = Math.max(flash, 0.3); P.sound('combo4', 0.8); haptic('medium'); }); // 克住了：金光炸开
+  (ev.counter || []).forEach((c) => { burst(c.k, COL.brassLight, 18, 220); burst(c.k, '#ffffff', 6, 140); flash = Math.max(flash, 0.3); P.sound('shing', 0.7); haptic('medium'); }); // 克住了：金光「锵——」
   (ev.petMiss || []).forEach((m) => { petFx.petMiss = petFx.petMiss || {}; petFx.petMiss[m.k] = clock; burst(m.k, '#9aa0b0', 5, 70); P.sound('deny', 0.5); }); // 打不动：灰光挡住
   (ev.drain || []).forEach((d, j) => {
     const n = Math.max(0, g.team.findIndex((p) => p.id === d.id));
@@ -2904,7 +2925,7 @@ function juicePK(ev) {
   // 第一次被偷能量：演完喷墨，出一张说明卡（只出一次）
   if (ev.drain && ev.drain.length && !save.introSeen.steal) timeline.push({ t: clock + 1.2, fn: showStealIntro });
   if (ev.wave) petFx.waveJump = clock + 0.1;
-  if (ev.wave) { ev.wave.cells.forEach((k, j) => { monIn[k] = clock + 0.15 + j * 0.09; burst(k, '#3b3150', 10, 120, 0.1 + j * 0.04); }); flash = Math.max(flash, 0.2); shake = Math.max(shake, 5); timeline.push({ t: clock + 0.1, fn: () => { P.sound('combo2', 0.6); haptic('medium'); } }); }
+  if (ev.wave) { ev.wave.cells.forEach((k, j) => { monIn[k] = clock + 0.15 + j * 0.09; burst(k, '#3b3150', 10, 120, 0.1 + j * 0.04); }); flash = Math.max(flash, 0.2); shake = Math.max(shake, 5); ev.wave.cells.forEach((k, j) => timeline.push({ t: clock + 0.15 + j * 0.09, fn: () => P.sound('plop', 0.5) })); timeline.push({ t: clock + 0.1, fn: () => haptic('medium') }); } // 下一波：一只只落进格子「啪嗒、啪嗒」
 }
 // 手上正拖着块就等一等（0.9.14 debug）：原来卡片照弹，松手那一下块照样放下去；要是正好过关 / 堵死，「出结算页」那一步看到不在关里就不做了，点完「继续」对着一盘不能动的棋
 function showStealIntro() {
@@ -3098,6 +3119,8 @@ function showPet() {
   if (!result) settlePet(); // 保险：没有结果就先结账（0.9.14）
   const st = g.stage, r = result, petReplay = g._settleInfo ? g._settleInfo.petReplay : false;
   mode = 'over';
+  if (musicTimer) { clearTimeout(musicTimer); musicTimer = null; }
+  if (r.won && st.goal && st.goal.boss) P.bgm.outro(Math.floor(petIdx / 10) + 1); else P.bgm.stop(); // 打完头目收一句安静尾声
   if (r.evolved) { P.sound('win', 0.9); flash = 0.7; } else if (!g.won) { P.sound('lose', 0.6); say('堵住了'); }
   // 过场（东西上面已经入账了，跳过也不丢）：打倒这章的大墨怪 → 过章；进化；新宠物到手
   if (g.won && st.goal.boss && petIdx % 10 === 9 && !petReplay) CUT.chapterClear(Math.floor(petIdx / 10));
@@ -3328,7 +3351,7 @@ function drawCamp() {
   danOrbs = danOrbs.filter((o) => {
     const a = (clock - o.t) / 0.5; if (a < 0) return true;
     const p = garden[o.id]; if (!p) return false;
-    if (a >= 1) { if (!o.done) { o.done = true; petFx.pop[o.id] = clock; gardenEat[o.id] = clock; P.sound('coin', 0.5); haptic('light'); if (o.last && o.up) { gardenUp[o.id] = { t: clock, from: o.lv0, to: o.lv1 }; P.sound('lit', 0.8); haptic('medium'); } } return false; }
+    if (a >= 1) { if (!o.done) { o.done = true; petFx.pop[o.id] = clock; gardenEat[o.id] = clock; P.sound(o.k !== undefined ? 'feed' + Math.min(10, o.k + 1) : 'coin', 0.5); haptic('light'); if (o.last && o.up) { gardenUp[o.id] = { t: clock, from: o.lv0, to: o.lv1 }; P.sound('lvup', 0.8); setTimeout(() => P.sound('chirp', 0.5), 120); haptic('medium'); } } return false; } // 0.9.18 喂丹：每颗「叮」一颗比一颗高；升级：宠物叫一声 + 编钟往上扫
     const x = o.x + (p.x - o.x) * a, y = o.y + (p.y - sz * 0.15 - o.y) * a - Math.sin(a * Math.PI) * 70; danOrb(x, y, 8); return true;
   });
   // 吃丹：嘴边一下嚼的光；升级：跳起来、一圈金光、「Lv3 → Lv4」翻过去、飘出这一级多了什么
@@ -3385,7 +3408,7 @@ function feedFx(id) {
   if (save.dan < before && !save.feedTaught) { save.feedTaught = true; persist(); T.rec('b', 'feedTaught'); }
   const nid = save.pets[id] ? id : PG.PETS[id].evo; // 0.9.17：喂到 5 级会直接进化，原来那只的名字就没了
   if (nid !== id && gardenSel === id) gardenSel = nid;
-  if (save.dan < before) { const n = Math.min(8, before - save.dan), lv1 = save.pets[nid] ? save.pets[nid].lv : lv0; for (let i = 0; i < n; i++) danOrbs.push({ id: nid, x: W - 16 - 86 + 18, y: uiTop() + 23, t: clock + i * 0.09, last: i === n - 1, up: lv1 > lv0, lv0, lv1 }); petMsg = null; } // 升级的话由最后一颗丹落进嘴里那一下演
+  if (save.dan < before) { const n = Math.min(8, before - save.dan), lv1 = save.pets[nid] ? save.pets[nid].lv : lv0; for (let i = 0; i < n; i++) danOrbs.push({ id: nid, k: i, x: W - 16 - 86 + 18, y: uiTop() + 23, t: clock + i * 0.09, last: i === n - 1, up: lv1 > lv0, lv0, lv1 }); petMsg = null; } // 升级的话由最后一颗丹落进嘴里那一下演
 }
 function addExp(rec, n) {
   rec.exp += n;
@@ -3989,6 +4012,7 @@ function frameRescue() {
 }
 function frameBody() {
   const now = P.now();
+  if (P.bgm.playing() !== null && !['play', 'intro', 'start', 'over', 'ad', 'cut'].includes(mode)) P.bgm.stop(); // 离开关卡（地图、宠物园、主菜单）：音乐停
   if (mode !== lastModeRec) { if (mode !== 'cut' && lastModeRec !== 'cut') transAt = clock; T.rec('m', mode); lastModeRec = mode; if (mode === 'play' && g && g.pets && !g._recL) { g._recL = true; const pt = g.team[0]; T.rec('L', g.stage && g.stage.evolve ? 'evo' : petIdx + 1, pt ? pt.id : '', pt ? pt.lv : 0, ((save.loss || {})[petIdx] || 0) + 1); } // 真进了关里才算开一关（开机时垫底摆好的盘不算）
   if (mode === 'over' || mode === 'settings') T.prepare({ ver: VERSION, log: save.playLog || [] }); } // 到结算、设置页先把记录压好，点复制时马上能用
   const dt = Math.min(0.05, (now - last) / 1000);

@@ -2265,7 +2265,7 @@ const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
 const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
-const VERSION = '0.9.17'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.18'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -3125,12 +3125,20 @@ function juice(ev) {
   (ev.collected || []).forEach((c, n) => {
     flyers.push({ what: c.what, x: cellX(c.k % 9) + L.cell / 2, y: cellY(Math.floor(c.k / 9)) + L.cell / 2, t: clock + n * 0.05 });
   });
-  if (ev.collected && ev.collected.length) setTimeout(() => P.sound('coin', 0.5), 380);
-  // 声音
-  if (ev.beat === 2) P.sound('line', 0.7);
-  if (ev.beat === 3) P.sound('box', 0.8);
-  if (ev.beat === 4) P.sound(ev.combo >= 3 || ev.streak >= 5 ? 'combo4' : ev.combo >= 2 ? 'combo3' : 'combo2', 0.7), P.sound('line', 0.5);
-  if (ev.beat === 5) P.sound('five', 0.9), P.sound('combo4', 0.4);
+  // 声音。0.9.18 宠物关：消除一律编钟和弦，第几声照连消数：第 1–5 声五声往上，第 6 声起一路扫上去；一下消 5 处以上 / 过关那一手再加低音大钟（声音包装方案第五节第 1、3 条）
+  if (g && g.pets) {
+    const mons = (ev.collected || []).filter((c) => c.what === 'monster').length;
+    for (let n = 0; n < Math.min(4, mons); n++) setTimeout(() => P.sound('pop', 0.55), 260 + n * 110); // 墨怪吸进葫芦「啵」
+    const lv = Math.max(0, (ev.streak || 1) - 1);
+    if (ev.beat >= 2) P.sound(lv >= 5 ? 'sweep' : 'clear' + lv, 0.75);
+    if (ev.beat >= 2 && ((ev.units && ev.units.length >= 5) || ev.win)) setTimeout(() => P.sound('dong', 0.8), 60);
+  } else {
+    if (ev.collected && ev.collected.length) setTimeout(() => P.sound('coin', 0.5), 380);
+    if (ev.beat === 2) P.sound('line', 0.7);
+    if (ev.beat === 3) P.sound('box', 0.8);
+    if (ev.beat === 4) P.sound(ev.combo >= 3 || ev.streak >= 5 ? 'combo4' : ev.combo >= 2 ? 'combo3' : 'combo2', 0.7), P.sound('line', 0.5);
+    if (ev.beat === 5) P.sound('five', 0.9), P.sound('combo4', 0.4);
+  }
   if (ev.crossbow) P.sound('bolt', 0.6);
   if (ev.newlyLit.length) setTimeout(() => P.sound('lit', 0.6), 120);
   hapticWave(ev.win || ev.beat >= 5 ? CLEAR_WAVE.big : ev.beat >= 4 ? CLEAR_WAVE.combo : CLEAR_WAVE.line); // 消掉了：「嘣嘣嘣」三下波浪（Cc 11-25），连消也只来一串、取最重的那串
@@ -3645,7 +3653,7 @@ function drawTray() {
   }
   for (let i = 0; i < 4; i++) {
     const p = g.hand[i];
-    if (p !== handSeen[i]) { handSeen[i] = p; if (p) handAt[i] = clock + (i < 3 ? i * 0.07 : 0); } // 发新块：从托盘下面一块块滑上来（0.9.13，Cc：「所有只要动了我们玩家的东西，就全都需要用动画来做」）
+    if (p !== handSeen[i]) { handSeen[i] = p; if (p) { handAt[i] = clock + (i < 3 ? i * 0.07 : 0); if (i === 0 && mode === 'play' && g && g.moves > 0) P.sound('deal', 0.45); } } // 0.9.18 发新块：轻「唰」 // 发新块：从托盘下面一块块滑上来（0.9.13，Cc：「所有只要动了我们玩家的东西，就全都需要用动画来做」）
     if (!p || (drag && drag.slot === i)) continue;
     const ha = Math.min(1, Math.max(0, (clock - (handAt[i] || -9)) / 0.28)), he = 1 - Math.pow(1 - ha, 3);
     if (ha <= 0) continue;
@@ -4910,6 +4918,18 @@ function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好�
   if (g.onlyPet && save.activePet !== g.onlyPet) { petFx.pop[g.onlyPet] = clock + 0.15; P.sound('select', 0.5); } // 被点名的那只跳进来
   // 这一章第一次开打：先放这章的开场（镜头摇过全景，硬切推到大墨怪）
   if (!quiet && i % 10 === 0 && !save.cutSeen['chapter' + i / 10]) { CUT.chapter(i / 10); playCuts(); }
+  startLevelMusic(st1, i, quiet);
+}
+// 0.9.18 背景音乐（js/music.js，曲子是声音会话写的六段）：按章挑曲子；普通 / 难关（稍快加一层鼓）/ 头目（最紧张）。
+// 关与关之间先来一段过场声（试听_7 的 STING.B），换章的那一关用 STING.C；过场完了曲子才进来
+let musicTimer = null;
+function startLevelMusic(st, i, quiet) {
+  if (musicTimer) clearTimeout(musicTimer);
+  const ch = Math.floor(i / 10) + 1, tens = st.goal && st.goal.boss ? 2 : st.hard ? 1 : 0;
+  if (quiet) { P.bgm.play(ch, tens); return; }
+  P.bgm.stop();
+  const len = P.bgm.sting(i % 10 === 0 ? 'C' : 'B');
+  musicTimer = setTimeout(() => { musicTimer = null; if (mode === 'play' || mode === 'start' || mode === 'intro') P.bgm.play(ch, tens); }, Math.max(300, len * 850));
 }
 function newEvolution(id, levelIdx) {
   petIdx = levelIdx === undefined ? PLV.findIndex((x) => x.evolveLevel === id) : levelIdx;
@@ -5050,11 +5070,11 @@ function juicePets(ev, colorsBefore) {
   if (!ev.skill || (ev.units && ev.units.length)) juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? (ev.units.length >= 2 ? 3 : 2) : 1), collected: ev.collected }); // 技能块（0.9.12）只有吐丝补满了一排才走消除那一套，别的由 juicePK 演
   if (ev.fire) { const c = boxCenter(ev.fire.box); rings.push({ t: clock, big: false, at: c }); flash = 0.25; P.sound('combo3', 0.7); shake = Math.max(shake, 8); }
   // 0.9.17：墨怪爬（从原来那格蹦过去）、冒脚印、金属被啄碎、冲锋关补格子
-  (ev.crawl || []).forEach((e, j) => { monSlide[e.to] = { from: e.from, t: clock + 0.12 + j * 0.05 }; timeline.push({ t: clock + 0.12 + j * 0.05, fn: () => P.sound('tap', 0.35) }); });
-  if (ev.footprint && ev.footprint.length) timeline.push({ t: clock + 0.2, fn: () => P.sound('select', 0.25) });
-  (ev.metal || []).forEach((k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 12; n++) { const a2 = Math.random() * Math.PI * 2, v = 90 + Math.random() * 140; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 110, t: clock, life: 0.6, s: 3 + Math.random() * 4, col: '#f3d27a' }); } shake = Math.max(shake, 5); P.sound('combo2', 0.7); haptic('medium'); });
+  (ev.crawl || []).forEach((e, j) => { monSlide[e.to] = { from: e.from, t: clock + 0.12 + j * 0.05 }; timeline.push({ t: clock + 0.12 + j * 0.05, fn: () => P.sound('skitter', 0.4) }); });
+  if (ev.footprint && ev.footprint.length) timeline.push({ t: clock + 0.2, fn: () => P.sound('skitter', 0.22) });
+  (ev.metal || []).forEach((k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 12; n++) { const a2 = Math.random() * Math.PI * 2, v = 90 + Math.random() * 140; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 110, t: clock, life: 0.6, s: 3 + Math.random() * 4, col: '#f3d27a' }); } shake = Math.max(shake, 5); P.sound('shing', 0.55); haptic('medium'); });
   (ev.refill || []).forEach((k, j) => { cellIn[k] = clock + 0.34 + j * 0.012; });
-  if (ev.bossJumpPlan !== undefined) timeline.push({ t: clock + 0.15, fn: () => { P.sound('deny', 0.5); haptic('medium'); } });
+  if (ev.bossJumpPlan !== undefined) timeline.push({ t: clock + 0.15, fn: () => { P.sound('skitter', 0.5); haptic('medium'); } });
   juicePK(ev);
   // 同色的块化成光点飞到宠物身上
   ev.sparks.forEach((sp) => {
@@ -5078,9 +5098,9 @@ function juicePets(ev, colorsBefore) {
     petInk.push({ from, k: ev.bossSpit, t: clock + 0.1 });
     timeline.push({ t: clock + 0.1, fn: () => P.sound('combo2', 0.5) });
   }
-  if (ev.bossJump) { flash = 0.2; shake = Math.max(shake, 9); P.sound('combo4', 0.6); haptic('heavy'); }
+  if (ev.bossJump) { flash = 0.2; shake = Math.max(shake, 9); P.sound('dong', 0.75); haptic('heavy'); } // 头目跳 = 低音大钟
   if (ev.bigHits.length) {
-    petFx.bossHit = clock; shake = Math.max(shake, 6); P.sound('combo2', 0.7); haptic('medium');
+    petFx.bossHit = clock; shake = Math.max(shake, 6); P.sound('thump', 0.75); haptic('medium'); // 头目挨打「嘭」
     // 碎掉的那颗红心飞出去
     const k0 = g.bigCells[0], x = cellX(k0 % 9) + L.cell, y = cellY(Math.floor(k0 / 9)) - 4;
     for (let n = 0; n < 8; n++) { const a2 = Math.random() * Math.PI * 2, sp = 90 + Math.random() * 120; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 120, t: clock, life: 0.6, s: 4 + Math.random() * 3 }); }
@@ -5139,17 +5159,18 @@ function juicePK(ev) {
     if (sk.hand !== undefined) {
       const c = slotCenter(sk.hand);
       for (let n = 0; n < 12; n++) { const a2 = Math.random() * Math.PI * 2, v = 60 + Math.random() * 90; fx.push({ kind: 'shard', x: c.x, y: c.y - 10, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 80, t: clock, life: 0.6, s: 3 + Math.random() * 3, col }); }
-      P.sound('pick', 0.9); haptic('medium');
+      P.sound('crunch', 0.8); haptic('medium'); // 啃「咔嚓」
     } else {
       const kind = sk.kind;
-      sk.cells.forEach((k, j) => { burst(k, kind === 'fire' ? '#ff8a3a' : col, kind === 'peck' ? 5 : 7, 120, j * 0.09); if (j) timeline.push({ t: clock + j * 0.09, fn: () => { P.sound('tap', 0.7); haptic('light'); } }); });
+      if (kind === 'peck') P.sound('chirp', 0.6); // 0.9.18 每只宠物自己的叫声 + 招式声：铜雀「啾」+ 啄「笃笃笃」
+      sk.cells.forEach((k, j) => { burst(k, kind === 'fire' ? '#ff8a3a' : col, kind === 'peck' ? 5 : 7, 120, j * 0.09); if (j) timeline.push({ t: clock + j * 0.09, fn: () => { haptic('light'); } }); });
       (sk.fill || []).forEach((k, j) => burst(k, col, 6, 70, j * 0.06));
       rings.push({ t: clock, big: false, at: at(ev.r * 9 + ev.c) });
       flash = Math.max(flash, 0.1); shake = Math.max(shake, 3);
-      P.sound(kind === 'fire' ? 'bolt' : kind === 'silk' ? 'select' : 'tap', 0.8); haptic('medium');
+      P.sound(kind === 'fire' ? 'bolt' : kind === 'silk' ? 'select' : 'peck', 0.75); haptic('medium');
     }
   }
-  (ev.counter || []).forEach((c) => { burst(c.k, COL.brassLight, 18, 220); burst(c.k, '#ffffff', 6, 140); flash = Math.max(flash, 0.3); P.sound('combo4', 0.8); haptic('medium'); }); // 克住了：金光炸开
+  (ev.counter || []).forEach((c) => { burst(c.k, COL.brassLight, 18, 220); burst(c.k, '#ffffff', 6, 140); flash = Math.max(flash, 0.3); P.sound('shing', 0.7); haptic('medium'); }); // 克住了：金光「锵——」
   (ev.petMiss || []).forEach((m) => { petFx.petMiss = petFx.petMiss || {}; petFx.petMiss[m.k] = clock; burst(m.k, '#9aa0b0', 5, 70); P.sound('deny', 0.5); }); // 打不动：灰光挡住
   (ev.drain || []).forEach((d, j) => {
     const n = Math.max(0, g.team.findIndex((p) => p.id === d.id));
@@ -5160,7 +5181,7 @@ function juicePK(ev) {
   // 第一次被偷能量：演完喷墨，出一张说明卡（只出一次）
   if (ev.drain && ev.drain.length && !save.introSeen.steal) timeline.push({ t: clock + 1.2, fn: showStealIntro });
   if (ev.wave) petFx.waveJump = clock + 0.1;
-  if (ev.wave) { ev.wave.cells.forEach((k, j) => { monIn[k] = clock + 0.15 + j * 0.09; burst(k, '#3b3150', 10, 120, 0.1 + j * 0.04); }); flash = Math.max(flash, 0.2); shake = Math.max(shake, 5); timeline.push({ t: clock + 0.1, fn: () => { P.sound('combo2', 0.6); haptic('medium'); } }); }
+  if (ev.wave) { ev.wave.cells.forEach((k, j) => { monIn[k] = clock + 0.15 + j * 0.09; burst(k, '#3b3150', 10, 120, 0.1 + j * 0.04); }); flash = Math.max(flash, 0.2); shake = Math.max(shake, 5); ev.wave.cells.forEach((k, j) => timeline.push({ t: clock + 0.15 + j * 0.09, fn: () => P.sound('plop', 0.5) })); timeline.push({ t: clock + 0.1, fn: () => haptic('medium') }); } // 下一波：一只只落进格子「啪嗒、啪嗒」
 }
 // 手上正拖着块就等一等（0.9.14 debug）：原来卡片照弹，松手那一下块照样放下去；要是正好过关 / 堵死，「出结算页」那一步看到不在关里就不做了，点完「继续」对着一盘不能动的棋
 function showStealIntro() {
@@ -5354,6 +5375,8 @@ function showPet() {
   if (!result) settlePet(); // 保险：没有结果就先结账（0.9.14）
   const st = g.stage, r = result, petReplay = g._settleInfo ? g._settleInfo.petReplay : false;
   mode = 'over';
+  if (musicTimer) { clearTimeout(musicTimer); musicTimer = null; }
+  if (r.won && st.goal && st.goal.boss) P.bgm.outro(Math.floor(petIdx / 10) + 1); else P.bgm.stop(); // 打完头目收一句安静尾声
   if (r.evolved) { P.sound('win', 0.9); flash = 0.7; } else if (!g.won) { P.sound('lose', 0.6); say('堵住了'); }
   // 过场（东西上面已经入账了，跳过也不丢）：打倒这章的大墨怪 → 过章；进化；新宠物到手
   if (g.won && st.goal.boss && petIdx % 10 === 9 && !petReplay) CUT.chapterClear(Math.floor(petIdx / 10));
@@ -5584,7 +5607,7 @@ function drawCamp() {
   danOrbs = danOrbs.filter((o) => {
     const a = (clock - o.t) / 0.5; if (a < 0) return true;
     const p = garden[o.id]; if (!p) return false;
-    if (a >= 1) { if (!o.done) { o.done = true; petFx.pop[o.id] = clock; gardenEat[o.id] = clock; P.sound('coin', 0.5); haptic('light'); if (o.last && o.up) { gardenUp[o.id] = { t: clock, from: o.lv0, to: o.lv1 }; P.sound('lit', 0.8); haptic('medium'); } } return false; }
+    if (a >= 1) { if (!o.done) { o.done = true; petFx.pop[o.id] = clock; gardenEat[o.id] = clock; P.sound(o.k !== undefined ? 'feed' + Math.min(10, o.k + 1) : 'coin', 0.5); haptic('light'); if (o.last && o.up) { gardenUp[o.id] = { t: clock, from: o.lv0, to: o.lv1 }; P.sound('lvup', 0.8); setTimeout(() => P.sound('chirp', 0.5), 120); haptic('medium'); } } return false; } // 0.9.18 喂丹：每颗「叮」一颗比一颗高；升级：宠物叫一声 + 编钟往上扫
     const x = o.x + (p.x - o.x) * a, y = o.y + (p.y - sz * 0.15 - o.y) * a - Math.sin(a * Math.PI) * 70; danOrb(x, y, 8); return true;
   });
   // 吃丹：嘴边一下嚼的光；升级：跳起来、一圈金光、「Lv3 → Lv4」翻过去、飘出这一级多了什么
@@ -5641,7 +5664,7 @@ function feedFx(id) {
   if (save.dan < before && !save.feedTaught) { save.feedTaught = true; persist(); T.rec('b', 'feedTaught'); }
   const nid = save.pets[id] ? id : PG.PETS[id].evo; // 0.9.17：喂到 5 级会直接进化，原来那只的名字就没了
   if (nid !== id && gardenSel === id) gardenSel = nid;
-  if (save.dan < before) { const n = Math.min(8, before - save.dan), lv1 = save.pets[nid] ? save.pets[nid].lv : lv0; for (let i = 0; i < n; i++) danOrbs.push({ id: nid, x: W - 16 - 86 + 18, y: uiTop() + 23, t: clock + i * 0.09, last: i === n - 1, up: lv1 > lv0, lv0, lv1 }); petMsg = null; } // 升级的话由最后一颗丹落进嘴里那一下演
+  if (save.dan < before) { const n = Math.min(8, before - save.dan), lv1 = save.pets[nid] ? save.pets[nid].lv : lv0; for (let i = 0; i < n; i++) danOrbs.push({ id: nid, k: i, x: W - 16 - 86 + 18, y: uiTop() + 23, t: clock + i * 0.09, last: i === n - 1, up: lv1 > lv0, lv0, lv1 }); petMsg = null; } // 升级的话由最后一颗丹落进嘴里那一下演
 }
 function addExp(rec, n) {
   rec.exp += n;
@@ -6245,6 +6268,7 @@ function frameRescue() {
 }
 function frameBody() {
   const now = P.now();
+  if (P.bgm.playing() !== null && !['play', 'intro', 'start', 'over', 'ad', 'cut'].includes(mode)) P.bgm.stop(); // 离开关卡（地图、宠物园、主菜单）：音乐停
   if (mode !== lastModeRec) { if (mode !== 'cut' && lastModeRec !== 'cut') transAt = clock; T.rec('m', mode); lastModeRec = mode; if (mode === 'play' && g && g.pets && !g._recL) { g._recL = true; const pt = g.team[0]; T.rec('L', g.stage && g.stage.evolve ? 'evo' : petIdx + 1, pt ? pt.id : '', pt ? pt.lv : 0, ((save.loss || {})[petIdx] || 0) + 1); } // 真进了关里才算开一关（开机时垫底摆好的盘不算）
   if (mode === 'over' || mode === 'settings') T.prepare({ ver: VERSION, log: save.playLog || [] }); } // 到结算、设置页先把记录压好，点复制时马上能用
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -6339,6 +6363,295 @@ P.exposeForTest('__game', {
   get cutPlaying() { return CUT.playing; }, levelUpPet, danToLevel, get CUT() { return CUT; }, playCuts, skipCuts() { while (mode === 'cut') { CUT.skip(); if (!CUT.playing) endCuts(); } if (mode === 'start' && startCard) { mode = startCard.next || 'play'; startCard = null; } },
   newGame, endGame, core, T, fixSave, get capsule() { return CAP; }, get uiTop() { return uiTop(); }, get drag() { return drag; },
 });
+
+});
+__def("js/music.js", function (module, exports, require) {
+// 背景音乐 + 关与关之间的过场声（0.9.18，声音会话交接：../九宫消_声音包装方案_1.0.md 第五节；记谱、伴奏、乐器全是从 ../声音试听/试听_6.html、试听_7.html 搬过来的）
+// 全部用 WebAudio 实时合成（编钟、竹笛、埙、鼓、古琴），只用 do re mi sol la，和消除的编钟永远合得上。
+// 同一章分三种紧张程度：0 普通 / 1 难关（稍快、多一层鼓）/ 2 头目（最紧张）；打完头目收一句安静尾声。
+// 微信的 WebAudio 少几样东西（回声、颤音连线）时就不用那几样，不报错；每个音单独 try，一个音出错不影响别的。
+// 防哑：所有算出来的采样（古琴、噪声）存进去之前查一遍不是数字就写 0（试听_5 踩过：一个 NaN 进回声，全部声音都哑了）。
+let ctx = null, out = null, rev = null, bgmBus = null, bgmVol = 0.45, muted = false;
+const toBgm = true;
+function init(a, destination) {
+  if (ctx === a) return true;
+  ctx = a; out = null; rev = null; bgmBus = null; noiseBuf = null;
+  try {
+    out = a.createGain(); out.gain.value = 0.75; out.connect(destination || a.destination);
+    bgmBus = a.createGain(); bgmBus.gain.value = muted ? 0 : bgmVol; bgmBus.connect(out);
+    if (typeof a.createConvolver === 'function') {
+      const len = Math.floor(a.sampleRate * 2.2), ir = a.createBuffer(2, len, a.sampleRate);
+      for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
+      const conv = a.createConvolver(); conv.buffer = ir; rev = a.createGain(); rev.gain.value = 0.22; rev.connect(conv); conv.connect(bgmBus);
+    }
+  } catch (e) { rev = null; }
+  return !!out;
+}
+const bus = () => bgmBus;
+function dest(wet) { const g = ctx.createGain(); g.connect(bus()); if (wet && rev) { const s = ctx.createGain(); s.gain.value = wet; g.connect(s); s.connect(rev); } return g; }
+const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+const now = () => ctx.currentTime;
+function env(g, t, a, peak, hold, rel) { peak = Number.isFinite(peak) && peak > 0 ? peak : 0.0001; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); if (hold) g.gain.setValueAtTime(peak, t + a + hold); g.gain.exponentialRampToValueAtTime(0.0001, t + a + (hold || 0) + rel); }
+function osc(t, f, type, dur, to) { const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(Number.isFinite(f) ? f : 440, t); o.connect(to); o.start(t); o.stop(t + dur); return o; }
+let noiseBuf = null;
+function noise(t, dur, to) { if (!noiseBuf) { const n = ctx.sampleRate * 2; noiseBuf = ctx.createBuffer(1, n, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; } const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true; s.connect(to); s.start(t, Math.random()); s.stop(t + dur); return s; }
+const clean = (d) => { for (let i = 0; i < d.length; i++) if (!Number.isFinite(d[i])) d[i] = 0; return d; };
+
+// ---------- 乐器（照搬试听_6）----------
+//INST
+const INST = {
+  orig(t, m, vol) { const g = dest(0.1); g.gain.value = 0; [[1, 0.25, 1.2], [2, 0.08, 0.5], [3, 0.03, 0.3]].forEach(([r, a, d]) => { const gg = ctx.createGain(); env(gg, t, 0.004, a * vol * 2, 0, d); gg.connect(bus()); osc(t, hz(m) * r, 'sine', d + 0.1, gg); }); },
+  bell(t, m, vol) { // 编钟：五个不整齐的泛音 + 敲击声
+    const g = dest(0.35); g.gain.value = vol;
+    [[1, 0.45, 2.2], [2.01, 0.2, 1.4], [2.76, 0.15, 1.0], [4.07, 0.08, 0.55], [5.43, 0.05, 0.35]].forEach(([r, a, d]) => { const gg = ctx.createGain(); env(gg, t, 0.003, a, 0, d); gg.connect(g); osc(t, hz(m) * r, 'sine', d + 0.1, gg); });
+    const ng = ctx.createGain(), hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3500; env(ng, t, 0.001, 0.08, 0, 0.03); noise(t, 0.06, hp); hp.connect(ng); ng.connect(g);
+  },
+  flute(t, m, vol, len) { // 竹笛：基音 + 少量泛音，慢慢起，颤音，带气声
+    const f = hz(m), g = dest(0.3); env(g, t, 0.06, vol, len * 0.6, 0.18);
+    const vib = ctx.createOscillator(), vg = ctx.createGain(); vib.frequency.value = 5.2; vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(f * 0.012, t + 0.25); vib.connect(vg); vib.start(t); vib.stop(t + len + 0.4);
+    [[1, 0.55, 'sine'], [2, 0.12, 'sine'], [3, 0.05, 'sine']].forEach(([r, a, ty]) => { const gg = ctx.createGain(); gg.gain.value = a; gg.connect(g); const o = osc(t, f * r, ty, len + 0.4, gg); try { vg.connect(o.frequency); } catch (e) { /* 微信里连不上颤音就不颤 */ } });
+    const bp = ctx.createBiquadFilter(), bg = ctx.createGain(); bp.type = 'bandpass'; bp.frequency.value = f * 2; bp.Q.value = 2; bg.gain.value = 0.16; noise(t, len + 0.3, bp); bp.connect(bg); bg.connect(g);
+  },
+  xun(t, m, vol, len) { // 埙：几乎纯的低音，闷，起得更慢，气声更重
+    const f = hz(m), g = dest(0.35); env(g, t, 0.09, vol, len * 0.6, 0.25);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = f * 2.5; lp.connect(g);
+    const vib = ctx.createOscillator(), vg = ctx.createGain(); vib.frequency.value = 4.2; vg.gain.value = f * 0.007; vib.connect(vg); vib.start(t); vib.stop(t + len + 0.5);
+    [[1, 0.7, 'sine'], [2, 0.08, 'triangle']].forEach(([r, a, ty]) => { const gg = ctx.createGain(); gg.gain.value = a; gg.connect(lp); const o = osc(t, f * r, ty, len + 0.5, gg); try { vg.connect(o.frequency); } catch (e) { /* 微信里连不上颤音就不颤 */ } });
+    const bp = ctx.createBiquadFilter(), bg = ctx.createGain(); bp.type = 'bandpass'; bp.frequency.value = f * 1.5; bp.Q.value = 1.2; bg.gain.value = 0.28; noise(t, len + 0.4, bp); bp.connect(bg); bg.connect(g);
+  },
+  drum(t, m, vol) { // 调了音的鼓：音高往下掉的「咚」+ 鼓皮的沙沙声
+    const f = hz(m), g = dest(0.25); g.gain.value = vol;
+    const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.setValueAtTime(f * 1.6, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.04); env(og, t, 0.002, 0.9, 0, 0.35); o.connect(og); og.connect(g); o.start(t); o.stop(t + 0.5);
+    const bp = ctx.createBiquadFilter(), ng = ctx.createGain(); bp.type = 'bandpass'; bp.frequency.value = f * 3; bp.Q.value = 0.8; env(ng, t, 0.001, 0.35, 0, 0.06); noise(t, 0.12, bp); bp.connect(ng); ng.connect(g);
+  },
+  bigdrum(t, vol) { const g = dest(0.3); g.gain.value = vol; const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.12); env(og, t, 0.002, 1, 0, 0.6); o.connect(og); og.connect(g); o.start(t); o.stop(t + 0.8);
+    const lp = ctx.createBiquadFilter(), ng = ctx.createGain(); lp.type = 'lowpass'; lp.frequency.value = 900; env(ng, t, 0.001, 0.5, 0, 0.08); noise(t, 0.15, lp); lp.connect(ng); ng.connect(g); },
+  qin(t, m, vol) { // 古琴：拨弦（弦一样慢慢停下来的算法）+ 一点往上的滑音
+    const f = hz(m), sr = ctx.sampleRate, n = Math.floor(sr * 3), b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0), N = Math.round(sr / f);
+    for (let i = 0; i < N; i++) d[i] = Math.random() * 2 - 1;
+    for (let i = N + 1; i < n; i++) d[i] = 0.4985 * (d[i - N] + d[i - N - 1]); // 从 N+1 起：d[-1] 不存在，会算出 NaN，让整个声音（连回声）全哑
+    for (let i = 0; i < N; i++) d[i] *= i / N;
+    clean(d);
+    const s = ctx.createBufferSource(), g = dest(0.3), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = f * 6; g.gain.value = vol * 1.4;
+    s.buffer = b; s.playbackRate.setValueAtTime(0.97, t); s.playbackRate.linearRampToValueAtTime(1, t + 0.12); s.connect(lp); lp.connect(g); s.start(t);
+    const body = ctx.createGain(); env(body, t, 0.003, vol * 0.35, 0, 1.6); body.connect(g); osc(t, f, 'sine', 1.8, body);
+  },
+};
+
+
+//RAIN
+function rain(t, dur) { const lp = ctx.createBiquadFilter(), hp = ctx.createBiquadFilter(), g = dest(0); lp.type = 'lowpass'; lp.frequency.value = 5000; hp.type = 'highpass'; hp.frequency.value = 700; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.09, t + 0.4); g.gain.setValueAtTime(0.09, t + dur - 0.4); g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.3); noise(t, dur + 0.4, lp); lp.connect(hp); hp.connect(g);
+  for (let i = 0; i < dur * 6; i++) { const tt = t + Math.random() * dur, dg = dest(0.2); env(dg, tt, 0.001, 0.05 + Math.random() * 0.05, 0, 0.03); const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2500 + Math.random() * 3000; noise(tt, 0.05, bp); bp.connect(dg); } }
+//SONGS
+const PC = { C: 0, D: 2, E: 4, G: 7, A: 9 };
+function parse(str) {
+  const out = []; let beat = 0, bar = 0, barBeat = 0;
+  str.trim().split(/\s+/).forEach((tok) => {
+    if (tok === '|') { if (Math.abs(barBeat - 4) > 1e-6) console.warn('小节不满 4 拍', bar, barBeat, str.slice(0, 30)); bar++; barBeat = 0; return; }
+    const [n, d] = tok.split(':'); const len = parseFloat(d);
+    if (n !== '-') out.push({ b: beat, len, m: (parseInt(n.slice(-1)) + 1) * 12 + PC[n[0]] });
+    beat += len; barBeat += len;
+  });
+  return { notes: out, beats: beat };
+}
+const P5 = [0, 2, 4, 7, 9];
+function sh(m, k) { const pc = ((m % 12) + 12) % 12, idx = P5.indexOf(pc), i = Math.floor(m / 12) * 5 + idx + k; return Math.floor(i / 5) * 12 + P5[((i % 5) + 5) % 5]; }
+const tones = (r) => [r, sh(r, 2), sh(r, 3), r + 12]; // 根音 + 五声里的两个音 + 高八度，永远不出五个音
+const N = (s) => s.split(' ').map((x) => (parseInt(x.slice(-1)) + 1) * 12 + PC[x[0]]);
+
+const SONGS = {
+  1: { name: '第一章 金 · 清晨的工坊', mood: '安静、好奇、有盼头', bpm: 66, swing: 0,
+    form: ['A', 'A', 'B', 'A'], formName: ['编钟独奏', '轻轻加进伴奏', '往上走（这首最响）', '回到开头，收住'],
+    A: 'E4:1 G4:1 A4:1.5 G4:.5 | E4:1 D4:1 C4:2 | E4:1 G4:1 C5:1.5 D5:.5 | A4:3 -:1 | G4:.5 C5:.5 D5:1 A4:2 | G4:1 E4:1 D4:2 | E4:1 D4:.5 C4:.5 A3:1 C4:1 | D4:1 C4:3',
+    B: 'A4:1 C5:1 D5:1 E5:1 | D5:1.5 C5:.5 A4:2 | G4:1 A4:1 C5:1 D5:.5 E5:.5 | G5:3 -:1 | E5:1 D5:1 C5:1 A4:1 | G4:.5 C5:.5 D5:1 A4:2 | G4:1 E4:1 G4:1 A4:1 | G4:4',
+    bass: { A: N('C3 C3 C3 A2 G2 G2 A2 C3'), B: N('A2 A2 G2 G2 C3 G2 E2 G2') } },
+  2: { name: '第二章 土 · 正午的梯田', mood: '开阔、暖、稳稳往前', bpm: 84, swing: 0,
+    form: ['A', 'A', 'B', 'A'], formName: ['埙 + 农家鼓', '加进古琴底音', '往高处走', '回到开头'],
+    A: 'G4:1 A4:1 C5:1 A4:1 | G4:1 E4:1 D4:2 | E4:1 G4:1 A4:1 C5:1 | D5:3 -:1 | D5:1 C5:.5 A4:.5 G4:1 A4:1 | D4:.5 G4:.5 A4:1 E4:2 | G4:1 E4:1 D4:1 E4:1 | G4:4',
+    B: 'C5:1 D5:1 E5:2 | D5:1 C5:1 A4:2 | C5:1 A4:1 G4:1 E4:1 | D4:3 -:1 | E4:1 G4:1 A4:1 C5:1 | D5:1.5 C5:.5 A4:2 | G4:.5 A4:.5 C5:1 A4:1 E4:1 | G4:4',
+    bass: { A: N('G2 C3 C3 D3 G2 D3 C3 G2'), B: N('C3 A2 C3 D3 C3 D3 C3 G2') } },
+  3: { name: '第三章 木 · 下午的竹林', mood: '最欢快、最亮', bpm: 120, swing: 0.16,
+    form: ['A', 'A', 'B', 'A', 'B', 'A'], formName: ['竹笛 + 木鱼', '加进古琴', '往高处蹦', '回来', '再蹦一次', '回来'],
+    A: 'G5:.5 A5:.5 G5:.5 E5:.5 D5:.5 E5:.5 G5:1 | A5:.5 G5:.5 E5:.5 D5:.5 C5:2 | D5:.5 E5:.5 G5:.5 A5:.5 C6:1 A5:1 | G5:1.5 E5:.5 G5:2 | G5:.5 C6:.5 D6:1 A5:2 | G5:.5 E5:.5 D5:.5 E5:.5 G5:1 E5:1 | D5:.5 C5:.5 D5:.5 E5:.5 G5:.5 E5:.5 D5:1 | C5:3 -:1',
+    B: 'A5:1 G5:.5 A5:.5 C6:1 A5:1 | G5:.5 E5:.5 G5:.5 A5:.5 G5:2 | E5:1 D5:.5 E5:.5 G5:1 E5:1 | D5:.5 C5:.5 A4:.5 C5:.5 D5:2 | E5:.5 G5:.5 A5:.5 C6:.5 D6:1 E6:1 | D6:.5 C6:.5 A5:.5 G5:.5 A5:2 | G5:.5 A5:.5 G5:.5 E5:.5 D5:.5 E5:.5 D5:.5 C5:.5 | D5:1 E5:1 G5:2',
+    bass: { A: N('C3 A2 C3 G2 G2 C3 G2 C3'), B: N('A2 C3 A2 G2 A2 A2 G2 G2') } },
+  4: { name: '第四章 火 · 夜里的熔炉', mood: '暗、害怕、一路逼近，最后最响', bpm: 96, swing: 0,
+    form: ['A', 'A', 'B', 'B'], formName: ['低鼓敲出旋律', '心跳一样的底音进来', '往上逼', '最响'],
+    A: 'A3:.5 A3:.5 C4:.5 A3:.5 D4:1 C4:1 | A3:.5 A3:.5 G3:.5 A3:.5 E3:2 | A3:.5 A3:.5 C4:.5 D4:.5 E4:1 D4:1 | C4:.5 D4:.5 C4:.5 A3:.5 G3:2 | E3:.5 A3:.5 C4:1 G3:2 | A3:.5 G3:.5 E3:.5 G3:.5 A3:2 | C4:.5 D4:.5 E4:.5 G4:.5 E4:1 D4:1 | E4:2 A3:2',
+    B: 'E4:.5 E4:.5 G4:.5 E4:.5 A4:1 G4:1 | E4:.5 D4:.5 E4:.5 G4:.5 A4:2 | C5:.5 A4:.5 G4:.5 A4:.5 E4:1 D4:1 | E4:.5 G4:.5 A4:.5 C5:.5 D5:2 | E4:.5 A4:.5 C5:1 G4:2 | A4:.5 G4:.5 E4:.5 D4:.5 E4:2 | A4:.5 C5:.5 D5:.5 E5:.5 D5:.5 C5:.5 A4:.5 G4:.5 | A4:4',
+    bass: { A: N('A2 A2 A2 G2 E2 A2 C3 A2'), B: N('C3 A2 A2 G2 E2 A2 D3 A2') } },
+  5: { name: '第五章 水 · 深夜暴雨的河', mood: '最低谷：冷、空、孤单，找不到家', bpm: 54, swing: 0,
+    form: ['A', 'A', 'B'], formName: ['几声古琴泛音 + 雨', '泛音多了一层', '最后涌起来'],
+    A: 'D5:3 -:1 | E5:1 D5:1 A4:2 | -:1 C5:1 D5:2 | A4:4 | D5:.5 G5:.5 A5:1 E5:2 | D5:4 | -:2 C5:1 A4:1 | E5:4',
+    B: 'A4:1 C5:1 D5:1 E5:1 | G5:2 E5:2 | D5:1 E5:1 G5:1 A5:1 | C6:3 -:1 | A5:1 G5:1 E5:1 D5:1 | D5:.5 G5:.5 A5:1 E5:2 | D5:2 C5:2 | A4:4',
+    bass: { A: N('D2 D2 A1 A1 G1 G1 A1 A1'), B: N('A1 C2 D2 E2 A1 G1 D2 A1') } },
+  6: { name: '第六章 五行合一 · 天亮的城心', mood: '最热、最亮，五样都回来，回到第一章的家', bpm: 76, swing: 0,
+    form: ['I', 'A', 'A', 'B', 'B', 'A'], formName: ['编钟敲出小记号（几乎无声起）', '竹笛吹起第一章那段', '埙、古琴、编钟一件件加进来', '五件一起 + 鼓（最高潮）', '最高潮再来一次', '安静下来，回到家'],
+    I: 'G4:.5 C5:.5 D5:1 A4:2 | -:4 | G4:.5 C5:.5 D5:1 A4:2 | -:4',
+    A: 'E4:1 G4:1 A4:1.5 G4:.5 | E4:1 D4:1 C4:2 | E4:1 G4:1 C5:1.5 D5:.5 | A4:3 -:1 | G4:.5 C5:.5 D5:1 A4:2 | G4:1 E4:1 D4:2 | E4:1 D4:.5 C4:.5 A3:1 C4:1 | D4:1 C4:3',
+    B: 'C5:1 D5:1 E5:1 G5:1 | A5:2 G5:1 E5:1 | D5:1 E5:1 G5:1 A5:1 | C6:3 -:1 | G5:.5 C6:.5 D6:1 A5:2 | G5:1 E5:1 D5:1 E5:1 | G5:.5 C6:.5 D6:1 E6:2 | C6:4',
+    bass: { I: N('C3 C3 C3 C3'), A: N('C3 C3 C3 A2 G2 G2 A2 C3'), B: N('C3 A2 G2 A2 G2 E2 G2 C3') } },
+};
+
+//ACC
+function accomp(c, i, sec, bar, r, t, q) {
+  const S = SONGS[c];
+  if (c === 1) {
+    if (i >= 1) INST.bell(t, r - 12, 0.18);
+    if (i >= 1) [0, 2].forEach((b, k) => INST.qin(t + b * q, k ? sh(r, 3) : r, 0.22));
+    if (sec === 'B') INST.xun(t, r + 12, 0.08, q * 3.8);
+  }
+  if (c === 2) {
+    INST.bigdrum(t, 0.14); INST.bigdrum(t + 2 * q, 0.09);
+    if (i >= 1) { INST.drum(t + q, 55, 0.07); INST.drum(t + 3 * q, 55, 0.07); INST.qin(t, r - 12, 0.22); }
+    if (sec === 'B') INST.bell(t, r + 12, 0.1);
+  }
+  if (c === 3) {
+    for (let b = 0.5; b < 4; b += 1) INST.drum(t + (b + S.swing) * q, 84, 0.09);
+    INST.qin(t, r - 12, 0.3); INST.qin(t + 2 * q, sh(r, 3) - 12, 0.2);
+    if (i >= 1) { const tn = tones(r); for (let e = 0; e < 8; e++) if (e % 2) INST.qin(t + (e * 0.5 + S.swing) * q, tn[e % 4], 0.1); }
+  }
+  if (c === 4) {
+    const boost = [0.75, 0.9, 1.05, 1.25][i];
+    const beats = i >= 2 ? [0, 1, 2, 3] : [0, 2];
+    beats.forEach((b) => INST.bigdrum(t + b * q, (b === 0 ? 0.6 : 0.35) * boost));
+    if (i >= 1) for (let e = 0; e < (i >= 3 ? 8 : 4); e++) INST.drum(t + e * (i >= 3 ? 0.5 : 1) * q, r - 12, 0.16 * boost);
+    if (i >= 1) INST.xun(t, r - 12, 0.07 * boost, q * 3.9);
+    if (bar === 7 && i >= 2) [3, 3.25, 3.5, 3.75].forEach((b, k) => INST.drum(t + b * q, r - 5 + k * 2, 0.25 * boost));
+  }
+  if (c === 5) {
+    if (bar % 2 === 0 && sec === 'A') INST.qin(t, r, 0.28);
+    if (sec === 'B') {
+      const lift = (bar + 1) / 8;
+      for (let e = 0; e < 8; e++) INST.qin(t + e * 0.5 * q, r + 12, 0.08 + 0.32 * lift);
+      rumble(t, q * 4, 0.08 + 0.45 * lift);
+      if (bar === 3) INST.bigdrum(t, 0.45);
+    }
+    if (bar === 0) rain(t, q * 32);
+  }
+  if (c === 6) {
+    const full = sec === 'B', loud = i === 4 ? 1.2 : 1;
+    if (sec === 'I') { INST.bell(t, 36, 0.2); return; }
+    INST.qin(t, r - 12, 0.32 * loud); INST.qin(t + 2 * q, sh(r, 3) - 12, 0.2 * loud);
+    if (i >= 2) INST.bell(t, r + 12, 0.14 * loud);
+    if (full) { INST.bigdrum(t, 0.55 * loud); INST.bigdrum(t + 2 * q, 0.35 * loud); INST.drum(t + q, 62, 0.14 * loud); INST.drum(t + 3 * q, 62, 0.14 * loud); INST.xun(t, r, 0.12 * loud, q * 3.9); }
+    if (i === 5) { /* 最后一段：只剩竹笛和古琴 */ }
+  }
+}
+// 旋律用什么乐器奏
+function melody(c, i, sec, n, t, len) {
+  if (c === 1) INST.bell(t, n.m - 12, [0.34, 0.3, 0.38, 0.26][i]);
+  if (c === 2) INST.xun(t, n.m - 12, 0.3, len);
+  if (c === 3) INST.flute(t, n.m, 0.3, Math.min(len, 0.9));
+  if (c === 4) INST.drum(t, n.m, [0.45, 0.5, 0.6, 0.72][i]);
+  if (c === 5) { harm(t, n.m, sec === 'B' ? 0.5 : (i === 0 ? 0.3 : 0.34)); if (i >= 1) harm(t + 0.02, n.m + 12, 0.12); if (sec === 'B') INST.qin(t, n.m - 12, 0.3); }
+  if (c === 6) {
+    if (sec === 'I') { INST.bell(t, n.m, 0.36); return; }
+    const loud = i === 4 ? 1.2 : 1;
+    INST.flute(t, n.m + (sec === 'A' ? 12 : 0), 0.28 * loud, len);
+    if (i >= 2 && len >= 1.5 * (60 / SONGS[6].bpm)) INST.xun(t, n.m - 12, 0.18 * loud, len);
+    if (sec === 'B' && len >= 60 / SONGS[6].bpm) INST.bell(t, n.m, 0.2 * loud);
+  }
+}
+// 古琴泛音：又高又细、像玻璃，第五章的「冷」
+function harm(t, m, vol) {
+  const g = dest(0.5); g.gain.value = vol;
+  [[1, 0.6, 2.6], [2, 0.12, 1.2], [3, 0.04, 0.6]].forEach(([r, a, d]) => { const gg = ctx.createGain(); env(gg, t, 0.006, a, 0, d); gg.connect(g); osc(t, hz(m) * r, 'sine', d + 0.1, gg); });
+  const hp = ctx.createBiquadFilter(), ng = ctx.createGain(); hp.type = 'highpass'; hp.frequency.value = 5000; env(ng, t, 0.001, 0.04, 0, 0.02); noise(t, 0.04, hp); hp.connect(ng); ng.connect(g);
+}
+// 低处滚上来的闷响（第五章最后涌起来）
+function rumble(t, dur, vol) { const lp = ctx.createBiquadFilter(), g = dest(0.2); lp.type = 'lowpass'; lp.frequency.value = 220; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + dur * 0.9); g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.2); noise(t, dur + 0.3, lp); lp.connect(g); }
+
+
+//H7
+function snare(t, vol) { const g = dest(0.25); g.gain.value = vol; const bp = ctx.createBiquadFilter(), ng = ctx.createGain(); bp.type = 'bandpass'; bp.frequency.value = 1900; bp.Q.value = 0.7; env(ng, t, 0.001, 0.9, 0, 0.12); noise(t, 0.2, bp); bp.connect(ng); ng.connect(g); const bg = ctx.createGain(); env(bg, t, 0.001, 0.5, 0, 0.08); bg.connect(g); osc(t, 190, 'triangle', 0.15, bg); }
+function hat(t, vol) { const g = dest(0.1); g.gain.value = vol; const hp = ctx.createBiquadFilter(), ng = ctx.createGain(); hp.type = 'highpass'; hp.frequency.value = 7500; env(ng, t, 0.001, 0.6, 0, 0.03); noise(t, 0.06, hp); hp.connect(ng); ng.connect(g); }
+function whoosh(t, dur, vol) { const bp = ctx.createBiquadFilter(), g = dest(0.3); bp.type = 'bandpass'; bp.Q.value = 1.5; bp.frequency.setValueAtTime(200, t); bp.frequency.exponentialRampToValueAtTime(5000, t + dur); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + dur * 0.85); g.gain.linearRampToValueAtTime(0.0001, t + dur + 0.15); noise(t, dur + 0.2, bp); bp.connect(g); }
+function bass(t, m, vol, len) { const g = dest(0.05); env(g, t, 0.004, vol, 0, len || 0.25); const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600; lp.connect(g); osc(t, hz(m), 'triangle', (len || 0.25) + 0.1, lp); osc(t, hz(m) * 2, 'sine', (len || 0.25) + 0.1, lp); }
+
+// ---------- 排程：照试听_6 的 build / fire，多一个紧张程度 ----------
+let curC = null, tension = 0, evs = [], loopBeats = 0, ptr = 0, loopN = 0, t0 = 0, timer = null, q = 0.9;
+function build(c) {
+  const S = SONGS[c]; evs = []; let b0 = 0;
+  S.form.forEach((sec, i) => {
+    const sc = parse(S[sec]);
+    sc.notes.forEach((n) => evs.push({ b: b0 + n.b, kind: 'mel', i, sec, n }));
+    const bars = Math.round(sc.beats / 4), bl = S.bass[sec];
+    for (let bar = 0; bar < bars; bar++) evs.push({ b: b0 + bar * 4, kind: 'acc', i, sec, bar, r: bl[bar % bl.length] });
+    b0 += sc.beats;
+  });
+  loopBeats = b0; evs.sort((a, b) => a.b - b.b);
+}
+const safe = (fn) => { try { fn(); } catch (e) { /* 这个音放不出来就算了 */ } };
+function fire(c, e, t) {
+  const S = SONGS[c];
+  if (e.kind === 'mel') { const sw = Math.abs((e.n.b % 1) - 0.5) < 1e-6 ? S.swing * q : 0; safe(() => melody(c, e.i, e.sec, e.n, t + sw, e.n.len * q)); }
+  if (e.kind === 'acc') {
+    safe(() => accomp(c, e.i, e.sec, e.bar, e.r, t, q));
+    // 难关：多一层低鼓（每拍一下）；头目：每拍大鼓 + 反拍小鼓，最紧张
+    if (tension >= 1) safe(() => { for (let b = 0; b < 4; b++) INST.drum(t + b * q, e.r - 12, 0.1); });
+    if (tension >= 2) safe(() => { for (let b = 0; b < 4; b++) { INST.bigdrum(t + b * q, b === 0 ? 0.42 : 0.26); INST.drum(t + (b + 0.5) * q, e.r, 0.08); } });
+  }
+}
+function tick() {
+  if (curC === null || !ctx) return;
+  for (let guard = 0; guard < 400; guard++) { const e = evs[ptr], t = t0 + (loopN * loopBeats + e.b) * q; if (t > now() + 0.7) break; if (t > now() - 0.05) fire(curC, e, t); ptr++; if (ptr >= evs.length) { ptr = 0; loopN++; } }
+}
+// 放第 c 章（1–6）的曲子；tens = 0 普通 / 1 难关 / 2 头目。同一首同一档在放就不动
+function play(c, tens) {
+  if (!ctx || !SONGS[c]) return;
+  if (curC === c && tension === (tens || 0) && timer) return;
+  stop(true);
+  curC = c; tension = tens || 0; build(c); ptr = 0; loopN = 0;
+  q = 60 / (SONGS[c].bpm * (tension === 2 ? 1.15 : tension === 1 ? 1.08 : 1));
+  t0 = now() + 0.2;
+  if (bgmBus) { bgmBus.gain.cancelScheduledValues(now()); bgmBus.gain.setValueAtTime(0.0001, now()); bgmBus.gain.linearRampToValueAtTime(muted ? 0.0001 : bgmVol, now() + 1.2); }
+  tick(); timer = setInterval(tick, 120);
+}
+// 停（fade = 淡出一秒）
+function stop(quick) {
+  if (timer) clearInterval(timer); timer = null; curC = null;
+  if (!quick && bgmBus && ctx) safe(() => { bgmBus.gain.cancelScheduledValues(now()); bgmBus.gain.setValueAtTime(bgmBus.gain.value, now()); bgmBus.gain.linearRampToValueAtTime(0.0001, now() + 1); setTimeout(() => { if (curC === null && bgmBus) bgmBus.gain.value = muted ? 0 : bgmVol; }, 1300); });
+}
+// 打完头目：音乐停下，编钟轻轻敲这一章开头那句的最后两小节（安静尾声）
+function outro(c) {
+  stop(false);
+  if (!ctx || !SONGS[c]) return;
+  const sc = parse(SONGS[c].A), qq = 60 / SONGS[c].bpm, from = sc.beats - 8, t = now() + 1.1;
+  sc.notes.filter((n) => n.b >= from).forEach((n) => safe(() => INST.bell(t + (n.b - from) * qq, n.m, 0.22)));
+  setTimeout(() => { if (bgmBus && curC === null) bgmBus.gain.value = muted ? 0 : bgmVol; }, 0);
+}
+// 切后台停、回来接着放（从现在的拍子接上）
+let pausedC = null, pausedT = 0;
+function pause() { if (curC !== null) { pausedC = curC; pausedT = tension; stop(true); } }
+function resume() { if (pausedC !== null) { const c = pausedC; pausedC = null; play(c, pausedT); } }
+function setMuted(v) { muted = !!v; if (bgmBus) bgmBus.gain.value = muted ? 0 : bgmVol; }
+// 关与关之间的过场（试听_7 的 STING.B）、换章（STING.C）。不受背景音量影响，走 out
+function sting(kind) {
+  if (!ctx || muted) return 0;
+  const t0s = now() + 0.1;
+  const saveBus = bgmBus; bgmBus = out; // 过场声比背景响一些
+  let len = 0;
+  safe(() => {
+    if (kind === 'B') {
+      const qq = 60 / 116;
+      [['C2', 0], ['C2', 0.75], ['E2', 1], ['G2', 1.5], ['A2', 2.5], ['G2', 3], ['C2', 4], ['C2', 4.75], ['E2', 5], ['G2', 5.5], ['A2', 6], ['C3', 6.5], ['D3', 7]].forEach(([n, b]) => bass(t0s + b * qq, N(n)[0] + 12, 0.55));
+      for (let b = 0; b < 8; b += 0.5) hat(t0s + b * qq, b % 1 ? 0.25 : 0.4);
+      [1, 3, 5, 7].forEach((b) => snare(t0s + b * qq, 0.5)); [0, 2, 4, 6].forEach((b) => INST.bigdrum(t0s + b * qq, 0.45));
+      [['G4', 0.5], ['A4', 1], ['C5', 1.5], ['D5', 4.5], ['C5', 5], ['A4', 5.5]].forEach(([n, b]) => INST.bell(t0s + b * qq, N(n)[0], 0.3));
+      const hit = t0s + 8 * qq; INST.bigdrum(hit, 0.9); snare(hit, 0.6); N('C4 E4 G4 C5').forEach((m) => INST.bell(hit, m, 0.38));
+      len = 8 * qq + 2.5;
+    } else {
+      whoosh(t0s, 2.2, 0.35);
+      for (let i = 0; i < 11; i++) INST.qin(t0s + 0.2 + i * 0.17, sh(55, i), 0.25 + i * 0.02);
+      const land = t0s + 2.4; INST.bigdrum(land, 0.8); N('G4 C5 D5 G5').forEach((m) => INST.bell(land, m, 0.32)); INST.flute(land + 0.05, 79, 0.2, 1.6);
+      len = 5.5;
+    }
+  });
+  bgmBus = saveBus;
+  return len;
+}
+module.exports = { init, play, stop, outro, pause, resume, setMuted, sting, SONGS, playing: () => curC };
 
 });
 __def("js/petgame.js", function (module, exports, require) {
@@ -7133,8 +7446,9 @@ function createPetGame(opts) {
     g.board = b;
     // 计分
     let pts = 0;
-    if (units.length) { g.streak++; pts = units.length * 20 * (1 + Math.min(1.5, (units.length - 1) * 0.5)) * (1 + Math.min(1, (g.streak - 1) * 0.25)); }
-    else g.streak = 0;
+    // 0.9.18 连消照 Block Blast（声音包装方案第五节第 2 条）：隔 2 手没消不断，第 3 手还没消才归零；一手消几处就加几级。同一个数管声音、「连消 N」、盘边发光
+    if (units.length) { g.streak = (g.streak || 0) + units.length; g.dryRun = 0; pts = units.length * 20 * (1 + Math.min(1.5, (units.length - 1) * 0.5)) * (1 + Math.min(1, (g.streak - 1) * 0.12)); }
+    else { g.dryRun = (g.dryRun || 0) + 1; if (g.dryRun >= 3) g.streak = 0; }
     pts += ev.petActs.reduce((a, x) => a + (x.lines.length + x.boxes.length) * 10 + x.cells.length, 0);
     ev.gained += Math.round(pts);
     g.score += ev.gained;
@@ -8859,15 +9173,22 @@ function audioCtx() {
   return audio;
 }
 // 浏览器要在手指点下去的那一刻打开声音
+let warmed = false;
 function unlockAudio() {
   const a = audioCtx();
   if (a && a.state === 'suspended' && a.resume) a.resume();
+  if (a && !warmed) { warmed = true; warmSounds(); } // 0.9.18：第一次碰屏幕后，把常用的声音一个个先算好
 }
+// 0.9.18：同一瞬间好几声，消除和弦最优先，别的自动变小（声音包装方案第四节第 6 条）
+const BIG = /^(clear\d|sweep|dong|line|box|combo\d|five)$/;
+let lastBigAt = -9;
 function sound(name, volume) {
   if (muted) return;
   const a = audioCtx();
   if (!a) return;
   try {
+    if (BIG.test(name)) lastBigAt = a.currentTime;
+    else if (a.currentTime - lastBigAt < 0.25) volume = (volume === undefined ? 0.6 : volume) * 0.5;
     if (!buffers[name]) {
       const sr = 22050;
       const data = sfx.make(name, sr);
@@ -8889,7 +9210,31 @@ function sound(name, volume) {
 }
 function setMuted(v) {
   muted = !!v;
+  music.setMuted(muted);
 }
+// 先把常用的声音算好（一个一个来，不卡画面）：第一次消除不用现算 2 秒的编钟
+function warmSounds(list) {
+  const a = audioCtx();
+  if (!a) return;
+  const todo = (list || ['place', 'pick', 'deny', 'clear0', 'clear1', 'clear2', 'clear3', 'clear4', 'sweep', 'dong', 'pop', 'deal', 'tap', 'select', 'thump', 'plop', 'skitter', 'chirp', 'peck', 'win', 'lose', 'lit']).filter((n) => !buffers[n]);
+  const step = () => {
+    const name = todo.shift();
+    if (!name) return;
+    try { const sr = 22050, data = sfx.make(name, sr); if (data) { const buf = a.createBuffer(1, data.length, sr); buf.getChannelData(0).set(data); buffers[name] = buf; } } catch (e) { /* 算不出来就到时候再算 */ }
+    setTimeout(step, 30);
+  };
+  setTimeout(step, 50);
+}
+// 背景音乐（js/music.js）：放第几章、紧张程度；打完头目收尾；过场声
+const music = require('./music.js');
+function musicReady() { const a = audioCtx(); return !!a && music.init(a, a.destination); }
+const bgm = {
+  play: (c, tens) => { try { if (musicReady()) music.play(c, tens); } catch (e) { /* 放不出来就安静 */ } },
+  stop: () => { try { music.stop(); } catch (e) { /* */ } },
+  outro: (c) => { try { if (musicReady()) music.outro(c); } catch (e) { /* */ } },
+  sting: (k) => { try { return musicReady() ? music.sting(k) : 0; } catch (e) { return 0; } },
+  playing: () => music.playing(),
+};
 
 // 存档：微信用 wx.setStorageSync，浏览器用 localStorage
 function load(key) {
@@ -9056,6 +9401,14 @@ function onError(cb) {
   } catch (e) { /* 拿不到就不记 */ }
 }
 // 切到后台 / 回到前台（试玩记录用）：微信 wx.onHide / onShow，网页 visibilitychange
+// 切到后台：背景音乐停；回来接着放
+(function () {
+  const hook = (visible) => { try { if (visible) music.resume(); else music.pause(); } catch (e) { /* */ } };
+  try {
+    if (isWx) { wx.onHide && wx.onHide(() => hook(false)); wx.onShow && wx.onShow(() => hook(true)); }
+    else if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => hook(document.visibilityState === 'visible'));
+  } catch (e) { /* */ }
+})();
 function onVisibility(cb) {
   try {
     if (isWx) { wx.onHide && wx.onHide(() => cb(false)); wx.onShow && wx.onShow(() => cb(true)); return; }
@@ -9065,13 +9418,15 @@ function onVisibility(cb) {
     }
   } catch (e) { /* 拿不到就不记 */ }
 }
-module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm };
 
 });
 __def("js/sfx.js", function (module, exports, require) {
-// 音效：全部用代码合成（不用音频文件），微信和浏览器都用 WebAudio 播放。
-// 以后换成正式音效，只要换这里。make(name, sr) 返回一串 -1..1 的采样。
-// 大事件比小事件响、长、低音多（爽感分级）。
+// 音效：全部用代码合成（不用音频文件），微信和浏览器都用 WebAudio 播放。make(name, sr) 返回一串 -1..1 的采样。
+// 0.9.18 换成声音会话定下的一整套（../九宫消_声音包装方案_1.0.md 第四、五节；音色照 ../声音试听/试听_1.html 的编钟）：
+//   ① 消除一律编钟和弦，第几声由连消数定：五声 5 级（第 k 声 = do re mi sol la 上第 k+2、k+3、k+5 格，第 1 声 mi sol do），第 6 声起「一路扫上去」；
+//   ② 放块的「咔嗒」永远同一个音（衬托消除）；③ 一个声音一个意思；④ 越大的事越响、越低、越长；⑤ 有音高的只用 do re mi sol la，和背景音乐合得上。
+// 防哑：算出来的采样里有不是数字的，一律写 0（试听_5 踩过：一个 NaN 进回声，全部声音都哑了）。
 
 function env(t, a, d) {
   return t < a ? t / a : Math.exp(-(t - a) / d);
@@ -9083,61 +9438,105 @@ function noise(seed) {
     return (s / 2147483647) * 2 - 1;
   };
 }
-const sin = (f, t) => Math.sin(2 * Math.PI * f * t);
-const sq = (f, t) => Math.sign(Math.sin(2 * Math.PI * f * t));
-// 一串音：notes 每个 step 秒
-function arp(notes, step, decay, wave) {
-  return (t) => {
-    const i = Math.min(notes.length - 1, Math.floor(t / step));
-    const k = t - i * step;
-    return (wave || sin)(notes[i], t) * env(k, 0.003, decay);
-  };
+const TAU = 2 * Math.PI;
+const sin = (f, t) => Math.sin(TAU * f * t);
+const sq = (f, t) => Math.sign(Math.sin(TAU * f * t));
+const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+// 五声音阶：第 i 格（0 = 中央 do），往上 do re mi sol la 一格格走
+const P5 = [0, 2, 4, 7, 9];
+const pn = (i) => 60 + 12 * Math.floor(i / 5) + P5[((i % 5) + 5) % 5];
+// 编钟：五个不整齐的泛音，各自衰减（照试听_1 的 bell：泛音比 1 / 2.01 / 2.76 / 4.07 / 5.43）
+const BELL = [[1, 0.45, 2.2], [2.01, 0.2, 1.4], [2.76, 0.15, 1.0], [4.07, 0.08, 0.55], [5.43, 0.05, 0.35]];
+function bell(m, t, vol) {
+  if (t < 0) return 0;
+  const f = hz(m);
+  let v = 0;
+  for (const [r, a, d] of BELL) v += a * Math.sin(TAU * f * r * t) * (t < 0.003 ? t / 0.003 : Math.exp((-9.2 * t) / d));
+  return v * vol;
 }
+// 木头：短，高泛音很快没了
+function wood(f, t, vol) {
+  if (t < 0) return 0;
+  return (0.55 * Math.sin(TAU * f * t) * Math.exp((-9.2 * t) / 0.12) + 0.18 * Math.sin(TAU * f * 3.9 * t) * Math.exp((-9.2 * t) / 0.04) + 0.05 * Math.sin(TAU * f * 9.2 * t) * Math.exp((-9.2 * t) / 0.015)) * vol;
+}
+// 敲击的「嚓」：高频噪声一下
+const click = (t, n, vol, d) => (t < 0 ? 0 : n() * env(t, 0.0008, d || 0.006) * vol);
+// 一个和弦（几个音同时敲）
+const chordAt = (notes, vol) => (t, n) => notes.reduce((a, m) => a + bell(m, t, vol), 0) + click(t, n, 0.12, 0.01);
+// 消除第 k 声（k = 0..4）
+const clearChord = (k) => chordAt([pn(k + 2), pn(k + 3), pn(k + 5)], 0.42);
+// 到顶：一路扫上去（9 个音 45 毫秒一个）+ 落在一个大和弦上
+const sweep = (t, n) => { let v = 0; for (let i = 0; i < 9; i++) v += bell(pn(5 + i), t - i * 0.045, 0.2 + i * 0.02); for (const m of [76, 79, 84, 96]) v += bell(m, t - 0.45, 0.32); return v + click(t, n, 0.12, 0.01); };
+// 低音大钟「咚——」（只给大事：一下消 5 处以上 / 过关那一手、头目跳）
+const dong = (t, n) => bell(36, t, 0.9) + Math.sin(TAU * (48 + 60 * Math.exp(-t * 10)) * t) * env(t, 0.002, 0.45) * 0.6 + n() * env(t, 0.001, 0.03) * 0.25;
+// 一串音（每个 step 秒一个）
+const run = (notes, step, vol, voice) => (t) => notes.reduce((a, m, i) => a + (voice || bell)(m, t - i * step, vol), 0);
+// 过关：编钟敲第一章开头那句的最后一句（往上提一个八度），再「啵、啵、啵」墨怪收进葫芦
+const WIN_LINE = [[76, 0], [74, 1], [72, 1.5], [69, 2], [72, 3], [74, 4], [72, 5]]; // E D C A C | D C（一拍 0.19 秒）
+const pop = (t, vol) => (t < 0 ? 0 : Math.sin(TAU * (320 + 900 * Math.min(1, t / 0.05)) * t) * env(t, 0.002, 0.035) * vol);
 
 const RECIPES = {
-  // 拿起块：轻「嗒」
-  pick: { len: 0.06, f: (t, n) => n() * env(t, 0.001, 0.008) * 0.3 + sin(1200, t) * env(t, 0.001, 0.015) * 0.2 },
-  // 放下：木头落位
-  place: { len: 0.14, f: (t, n) => sin(180 - 300 * t, t) * env(t, 0.002, 0.03) * 0.8 + n() * env(t, 0.001, 0.01) * 0.4 },
-  // 放不下：弹回去
-  deny: { len: 0.16, f: (t) => sq(150, t) * env(t, 0.005, 0.05) * 0.18 },
-  // 消一条：齿轮咔啦 + 蒸汽嘶
-  line: { len: 0.35, f: (t, n) => (sq(90 + (Math.floor(t * 60) % 2) * 40, t) * env(t, 0.002, 0.05) * 0.25 + n() * env(t, 0.01, 0.12) * 0.25 + sin(660, t) * env(t, 0.003, 0.08) * 0.25) },
-  // 消一宫：上扬
-  box: { len: 0.5, f: (t, n) => arp([523, 784, 1047], 0.07, 0.12)(t) * 0.45 + n() * env(t, 0.01, 0.15) * 0.2 + sin(110, t) * env(t, 0.002, 0.1) * 0.4 },
-  // 连击：一串越来越高（combo2..combo5 由画面层按级别挑）
-  combo2: { len: 0.4, f: arp([659, 880, 1175], 0.06, 0.09) },
-  combo3: { len: 0.45, f: arp([784, 1047, 1319, 1568], 0.055, 0.09) },
-  combo4: { len: 0.5, f: arp([880, 1175, 1568, 1760, 2093], 0.05, 0.1) },
-  // 中宫 ×5：重鼓 + 和弦
-  five: { len: 1.0, f: (t, n) => sin(60 + 40 * Math.exp(-t * 8), t) * env(t, 0.002, 0.25) * 0.9 + n() * env(t, 0.001, 0.05) * 0.4 + (sin(523, t) + sin(659, t) + sin(784, t)) * env(t, 0.02, 0.35) * 0.15 },
-  // 城区点亮：叮
-  lit: { len: 0.4, f: (t) => (sin(1568, t) + sin(2093, t) * 0.5) * env(t, 0.002, 0.15) * 0.3 },
-  // 连弩齐射
-  bolt: { len: 0.3, f: (t, n) => n() * env(t, 0.001, 0.04) * 0.5 + sin(400 - 900 * t, t) * env(t, 0.002, 0.08) * 0.3 },
-  // 金币
-  coin: { len: 0.22, f: (t) => sq(t < 0.07 ? 1320 : 1760, t) * env(t < 0.07 ? t : t - 0.07, 0.002, 0.06) * 0.22 },
-  // 最后 10 秒：嘀
+  // —— 放块 ——
+  pick: { len: 0.06, f: (t, n) => wood(hz(96), t, 0.5) + click(t, n, 0.15) }, // 拿起：很短很轻的高音「嗒」
+  deny: { len: 0.18, f: (t, n) => Math.sin(TAU * (140 - 60 * t) * t) * env(t, 0.004, 0.05) * 0.35 + n() * env(t, 0.002, 0.03) * 0.08 }, // 没放成、弹回托盘：闷「噗」
+  place: { len: 0.16, f: (t, n) => wood(hz(81), t, 0.7) + click(t, n, 0.35, 0.004) + wood(hz(81), t - 0.03, 0.35) + click(t - 0.03, n, 0.2, 0.004) }, // 放下：机关「咔嗒」卡进槽，永远同一个音
+  deal: { len: 0.28, f: (t, n) => { let v = 0; const k = t / 0.28; v = n() * Math.sin(Math.PI * Math.min(1, k)) * 0.16 * (0.4 + k); return v; } }, // 发新的三块：托盘滑上来，轻「唰」
+  // —— 消除：编钟和弦 5 级 + 一路扫上去 + 低音大钟 ——
+  clear0: { len: 2.3, f: clearChord(0) },
+  clear1: { len: 2.3, f: clearChord(1) },
+  clear2: { len: 2.3, f: clearChord(2) },
+  clear3: { len: 2.3, f: clearChord(3) },
+  clear4: { len: 2.3, f: clearChord(4) },
+  sweep: { len: 2.8, f: sweep },
+  dong: { len: 2.6, f: dong },
+  // —— 墨怪 ——
+  pop: { len: 0.12, f: (t) => pop(t, 0.5) }, // 墨怪被吸进葫芦「啵」
+  thump: { len: 0.45, f: (t, n) => Math.sin(TAU * (100 - 45 * Math.min(1, t * 6)) * t) * env(t, 0.002, 0.12) * 0.85 + n() * env(t, 0.001, 0.02) * 0.3 + Math.sin(TAU * 150 * t) * env(t - 0.05 < 0 ? 0 : t - 0.05, 0.02, 0.08) * (t > 0.05 ? 0.18 : 0) }, // 头目挨打「嘭」+ 闷哼
+  plop: { len: 0.14, f: (t, n) => Math.sin(TAU * (520 - 1800 * Math.min(0.15, t)) * t) * env(t, 0.002, 0.03) * 0.4 + click(t, n, 0.2, 0.005) }, // 下一波，一只只落进格子「啪嗒」
+  skitter: { len: 0.22, f: (t, n) => click(t, n, 0.18, 0.004) + click(t - 0.06, n, 0.14, 0.004) + click(t - 0.12, n, 0.12, 0.004) }, // 墨怪要爬：窸窸窣窣小碎步
+  crunch: { len: 0.2, f: (t, n) => n() * env(t, 0.001, 0.05) * 0.45 * (1 + 0.5 * sq(60, t)) }, // 啃「咔嚓」
+  clank: { len: 0.4, f: (t) => run([88, 93], 0.0, 0.25, (m, tt) => (tt < 0 ? 0 : Math.sin(TAU * hz(m) * tt) * Math.exp(-tt * 9) + 0.4 * Math.sin(TAU * hz(m) * 2.7 * tt) * Math.exp(-tt * 14)))(t) }, // 掉一层甲「当啷」
+  // —— 宠物 ——
+  chirp: { len: 0.28, f: (t) => { const s = (tt) => (tt < 0 || tt > 0.09 ? 0 : Math.sin(TAU * (2600 + 1400 * Math.sin(Math.PI * tt / 0.09)) * tt) * Math.sin(Math.PI * tt / 0.09) * 0.32); return s(t) + s(t - 0.13); } }, // 铜雀「啾啾」
+  peck: { len: 0.3, f: (t, n) => wood(hz(91), t, 0.5) + click(t, n, 0.2) + wood(hz(91), t - 0.08, 0.45) + click(t - 0.08, n, 0.18) + wood(hz(91), t - 0.16, 0.4) + click(t - 0.16, n, 0.16) }, // 啄「笃笃笃」
+  shing: { len: 1.0, f: (t, n) => (Math.sin(TAU * 2093 * t) * 0.3 + Math.sin(TAU * 3142 * t) * 0.18 + Math.sin(TAU * 4710 * t) * 0.1) * env(t, 0.002, 0.35) + n() * env(t, 0.001, 0.02) * 0.2 }, // 克住墨怪：金光「锵——」
+  lvup: { len: 1.6, f: run([pn(7), pn(8), pn(9), pn(10), pn(12)], 0.07, 0.3) }, // 宠物升级：编钟往上扫一小段
+  // —— 局外 ——
+  tap: { len: 0.05, f: (t, n) => wood(hz(88), t, 0.45) + click(t, n, 0.1) }, // 点按钮：木头「嗒」
+  select: { len: 0.07, f: (t, n) => wood(hz(91), t, 0.4) + click(t, n, 0.08) },
+  win: { len: 3.0, f: (t, n) => WIN_LINE.reduce((a, [m, b]) => a + bell(m, t - b * 0.19, 0.34), 0) + bell(60, t - 5 * 0.19, 0.3) + pop(t - 1.6, 0.4) + pop(t - 1.8, 0.4) + pop(t - 2.0, 0.45) + click(t, n, 0.1, 0.01) },
+  lose: { len: 1.2, f: (t) => (t < 0.45 ? Math.sin(TAU * hz(67) * t) * env(t, 0.03, 0.25) : Math.sin(TAU * hz(64) * (t - 0.45)) * env(t - 0.45, 0.03, 0.35)) * 0.3 }, // 输了：两个往下走的软音
+  ding: { len: 1.4, f: (t) => bell(pn(15), t, 0.35) }, // 放得好：一声很亮的高音钟「叮——」
+  // —— 老名字（别的地方还在叫）——
+  coin: { len: 0.6, f: (t) => bell(pn(12), t, 0.3) },
+  lit: { len: 1.6, f: run([pn(7), pn(8), pn(9), pn(10), pn(12)], 0.07, 0.3) },
   tick: { len: 0.05, f: (t) => sin(1000, t) * env(t, 0.002, 0.02) * 0.35 },
-  // 整幅画拼完
-  win: { len: 1.2, f: (t) => arp([523, 659, 784, 1047, 1319, 1568], 0.1, 0.3)(t) * 0.45 + sin(130, t) * env(t, 0.01, 0.4) * 0.3 },
-  // 输
-  lose: { len: 0.8, f: (t) => sin(440 - 240 * t, t) * env(t, 0.01, 0.3) * 0.4 },
-  // 按钮
-  tap: { len: 0.05, f: (t) => sin(900, t) * env(t, 0.001, 0.02) * 0.3 },
+  bolt: { len: 0.3, f: (t, n) => n() * env(t, 0.001, 0.04) * 0.5 + sin(400 - 900 * t, t) * env(t, 0.002, 0.08) * 0.3 },
 };
+// 老名字 → 新声音（line / box / combo2–4 / five 不再分档，按连消挑和弦；没改到的地方也不会哑）
+const ALIAS = { line: 'clear0', box: 'clear1', combo2: 'clear1', combo3: 'clear2', combo4: 'clear3', five: 'sweep' };
+// chain1..chain15：五声往上一个一个的单音编钟（喂丹一颗比一颗高、星星一颗颗蹦）
+function recipeOf(name) {
+  if (RECIPES[name]) return RECIPES[name];
+  if (ALIAS[name]) return RECIPES[ALIAS[name]];
+  const m = /^chain(\d+)$/.exec(name) || /^feed(\d+)$/.exec(name);
+  if (m) { const k = +m[1]; return { len: 1.3, f: (t) => bell(pn(4 + k), t, 0.36) }; }
+  return null;
+}
 
 function make(name, sr) {
-  const r = RECIPES[name];
+  const r = recipeOf(name);
   if (!r) return null;
   const n = Math.floor(r.len * sr);
   const out = new Float32Array(n);
-  const rnd = noise(name.length * 7919);
-  for (let i = 0; i < n; i++) out[i] = Math.max(-1, Math.min(1, r.f(i / sr, rnd)));
+  const rnd = noise(name.length * 7919 + 13);
+  let peak = 0;
+  for (let i = 0; i < n; i++) { const v = r.f(i / sr, rnd); out[i] = Number.isFinite(v) ? v : 0; peak = Math.max(peak, Math.abs(out[i])); }
+  if (peak > 0.98) { const k = 0.98 / peak; for (let i = 0; i < n; i++) out[i] *= k; } // 几个音叠起来超过 1：整体压一压，不削波
   return out;
 }
 
-module.exports = { make, NAMES: Object.keys(RECIPES) };
+module.exports = { make, NAMES: Object.keys(RECIPES), pn };
 
 });
 __def("js/siege.js", function (module, exports, require) {

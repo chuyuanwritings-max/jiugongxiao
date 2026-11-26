@@ -165,15 +165,22 @@ function audioCtx() {
   return audio;
 }
 // 浏览器要在手指点下去的那一刻打开声音
+let warmed = false;
 function unlockAudio() {
   const a = audioCtx();
   if (a && a.state === 'suspended' && a.resume) a.resume();
+  if (a && !warmed) { warmed = true; warmSounds(); } // 0.9.18：第一次碰屏幕后，把常用的声音一个个先算好
 }
+// 0.9.18：同一瞬间好几声，消除和弦最优先，别的自动变小（声音包装方案第四节第 6 条）
+const BIG = /^(clear\d|sweep|dong|line|box|combo\d|five)$/;
+let lastBigAt = -9;
 function sound(name, volume) {
   if (muted) return;
   const a = audioCtx();
   if (!a) return;
   try {
+    if (BIG.test(name)) lastBigAt = a.currentTime;
+    else if (a.currentTime - lastBigAt < 0.25) volume = (volume === undefined ? 0.6 : volume) * 0.5;
     if (!buffers[name]) {
       const sr = 22050;
       const data = sfx.make(name, sr);
@@ -195,7 +202,31 @@ function sound(name, volume) {
 }
 function setMuted(v) {
   muted = !!v;
+  music.setMuted(muted);
 }
+// 先把常用的声音算好（一个一个来，不卡画面）：第一次消除不用现算 2 秒的编钟
+function warmSounds(list) {
+  const a = audioCtx();
+  if (!a) return;
+  const todo = (list || ['place', 'pick', 'deny', 'clear0', 'clear1', 'clear2', 'clear3', 'clear4', 'sweep', 'dong', 'pop', 'deal', 'tap', 'select', 'thump', 'plop', 'skitter', 'chirp', 'peck', 'win', 'lose', 'lit']).filter((n) => !buffers[n]);
+  const step = () => {
+    const name = todo.shift();
+    if (!name) return;
+    try { const sr = 22050, data = sfx.make(name, sr); if (data) { const buf = a.createBuffer(1, data.length, sr); buf.getChannelData(0).set(data); buffers[name] = buf; } } catch (e) { /* 算不出来就到时候再算 */ }
+    setTimeout(step, 30);
+  };
+  setTimeout(step, 50);
+}
+// 背景音乐（js/music.js）：放第几章、紧张程度；打完头目收尾；过场声
+const music = require('./music.js');
+function musicReady() { const a = audioCtx(); return !!a && music.init(a, a.destination); }
+const bgm = {
+  play: (c, tens) => { try { if (musicReady()) music.play(c, tens); } catch (e) { /* 放不出来就安静 */ } },
+  stop: () => { try { music.stop(); } catch (e) { /* */ } },
+  outro: (c) => { try { if (musicReady()) music.outro(c); } catch (e) { /* */ } },
+  sting: (k) => { try { return musicReady() ? music.sting(k) : 0; } catch (e) { return 0; } },
+  playing: () => music.playing(),
+};
 
 // 存档：微信用 wx.setStorageSync，浏览器用 localStorage
 function load(key) {
@@ -362,6 +393,14 @@ function onError(cb) {
   } catch (e) { /* 拿不到就不记 */ }
 }
 // 切到后台 / 回到前台（试玩记录用）：微信 wx.onHide / onShow，网页 visibilitychange
+// 切到后台：背景音乐停；回来接着放
+(function () {
+  const hook = (visible) => { try { if (visible) music.resume(); else music.pause(); } catch (e) { /* */ } };
+  try {
+    if (isWx) { wx.onHide && wx.onHide(() => hook(false)); wx.onShow && wx.onShow(() => hook(true)); }
+    else if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => hook(document.visibilityState === 'visible'));
+  } catch (e) { /* */ }
+})();
 function onVisibility(cb) {
   try {
     if (isWx) { wx.onHide && wx.onHide(() => cb(false)); wx.onShow && wx.onShow(() => cb(true)); return; }
@@ -371,4 +410,4 @@ function onVisibility(cb) {
     }
   } catch (e) { /* 拿不到就不记 */ }
 }
-module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm };

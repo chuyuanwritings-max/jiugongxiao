@@ -789,8 +789,9 @@ function createPetGame(opts) {
     g.board = b;
     // 计分
     let pts = 0;
-    if (units.length) { g.streak++; pts = units.length * 20 * (1 + Math.min(1.5, (units.length - 1) * 0.5)) * (1 + Math.min(1, (g.streak - 1) * 0.25)); }
-    else g.streak = 0;
+    // 0.9.18 连消照 Block Blast（声音包装方案第五节第 2 条）：隔 2 手没消不断，第 3 手还没消才归零；一手消几处就加几级。同一个数管声音、「连消 N」、盘边发光
+    if (units.length) { g.streak = (g.streak || 0) + units.length; g.dryRun = 0; pts = units.length * 20 * (1 + Math.min(1.5, (units.length - 1) * 0.5)) * (1 + Math.min(1, (g.streak - 1) * 0.12)); }
+    else { g.dryRun = (g.dryRun || 0) + 1; if (g.dryRun >= 3) g.streak = 0; }
     pts += ev.petActs.reduce((a, x) => a + (x.lines.length + x.boxes.length) * 10 + x.cells.length, 0);
     ev.gained += Math.round(pts);
     g.score += ev.gained;

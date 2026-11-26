@@ -8,10 +8,12 @@ let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++; console.log('✗ ' + m); } };
 const section = (name, fn) => { try { fn(); } catch (e) { fail++; console.log('✗ ' + name + '：抛出异常 ' + (e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : e)); } };
 const SEEN = { pet: 1, gem: 1, wave: 1, monster: 1, gempiece: 1, box: 1, rock: 1, boss: 1, baozhu: 1, shell: 1, jumper: 1, modou: 1, eat: 1, boss2: 1, qilin: 1, color: 1, moss: 1, bomb: 1, split: 1, boss3: 1, steal: 1 };
-const OLD = (extra) => JSON.stringify(Object.assign({ petTutDone: true, tutorialDone: true, petStage: 12, pets: { tongque: { lv: 4, exp: 1 }, baozhu: { lv: 2, exp: 1 }, modou: { lv: 1, exp: 1 }, qilin: { lv: 1, exp: 0 } }, petOrder: ['tongque', 'baozhu', 'modou', 'qilin'], activePet: 'tongque', dan: 5, introSeen: SEEN, cutSeen: { chapter0: true, chapter1: true, chapter2: true } }, extra || {}));
+// 0.9.17：关卡表只剩新版第一章（10 关）；ch1new 表示「已经是新版存档」，不会被清回第 1 关
+const OLD = (extra) => JSON.stringify(Object.assign({ ch1new: 1, petTutDone: true, tutorialDone: true, petStage: 10, pets: { tongque: { lv: 4, exp: 1 }, baozhu: { lv: 2, exp: 1 }, modou: { lv: 1, exp: 1 }, qilin: { lv: 1, exp: 0 } }, petOrder: ['tongque', 'baozhu', 'modou', 'qilin'], activePet: 'tongque', dan: 5, introSeen: SEEN, cutSeen: { chapter0: true, chapter1: true, chapter2: true } }, extra || {}));
 // 进第 i 关（0 起）、过掉卡片和说明卡，停在能拖块的时候
 function enter(E, i, lendLv, lendId) {
   const { G, run, tap, btn, touch } = E;
+  if (i >= G.PLV.length) i = 3 + (i % 6); // 0.9.17：原来第 11 关以后的关不在了，换成新版第一章里有墨怪、带宠物的关（第 4–9 关）
   G.newPetLevel(i, false, lendLv, lendId); run(3);
   for (let n = 0; n < 40 && G.mode !== 'play'; n++) {
     if (G.mode === 'cut') { touch('down', 100, 300); run(2); touch('up', 100, 300); }

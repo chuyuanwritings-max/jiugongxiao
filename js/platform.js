@@ -308,6 +308,44 @@ function copyText(str, ok, title) {
     try { showCopyBox(str, title); cb('box'); } catch (e2) { cb(false); }
   }
 }
+// 把一张画好的图「发送给朋友」（0.9.17：试玩记录画成方格图发给 Cc，见 js/logimg.js）
+// 微信：画布 → 临时 png → wx.showShareImageMenu（弹出「发送给朋友 / 收藏 / 保存」）。cb(true) 弹出来了，cb(false, 原因) 没弹出来
+// 网页：盖一层，上面是这张图，长按图片就能发送 / 保存
+function shareImage(canvas, cb) {
+  const done = (v, why) => cb && cb(v, why);
+  try {
+    if (isWx) {
+      if (typeof wx.showShareImageMenu !== 'function') return done(false, '微信版本太老，没有发图功能');
+      canvas.toTempFilePath({
+        x: 0, y: 0, width: canvas.width, height: canvas.height, destWidth: canvas.width, destHeight: canvas.height, fileType: 'png',
+        success: (r) => wx.showShareImageMenu({ path: r.tempFilePath, success: () => done(true), fail: (e) => done(false, (e && e.errMsg) || '取消了') }),
+        fail: (e) => done(false, '图没存下来：' + ((e && e.errMsg) || '')),
+      });
+      return;
+    }
+    const old = document.getElementById('shareImgBox');
+    if (old) old.remove();
+    const box = document.createElement('div');
+    box.id = 'shareImgBox';
+    box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(8,10,24,0.97);display:flex;flex-direction:column;align-items:center;padding:16px;gap:10px;overflow:auto;font-family:"PingFang SC",sans-serif;color:#f3e6c8;';
+    const tip = document.createElement('div');
+    tip.textContent = '长按下面这张图 → 发送给朋友（发给 Cc）或保存到相册再发';
+    tip.style.cssText = 'font-size:15px;line-height:1.5;text-align:center;';
+    const img = document.createElement('img');
+    img.id = 'shareImg';
+    img.src = canvas.toDataURL('image/png');
+    img.style.cssText = 'width:100%;max-width:540px;background:#fff;';
+    const close = document.createElement('button');
+    close.textContent = '关闭';
+    close.style.cssText = 'height:48px;width:160px;font-size:18px;border:none;border-radius:12px;background:#3a3550;color:#f3e6c8;flex:none;';
+    close.addEventListener('click', () => box.remove());
+    box.appendChild(tip); box.appendChild(img); box.appendChild(close);
+    document.body.appendChild(box);
+    done(true);
+  } catch (e) {
+    done(false, String((e && e.message) || e));
+  }
+}
 // 让玩家打一句话（试玩「记一下」用）：微信用可输入的弹窗，网页用 prompt。取消或不写 → cb('')
 function askText(title, hint, cb) {
   try {
@@ -333,4 +371,4 @@ function onVisibility(cb) {
     }
   } catch (e) { /* 拿不到就不记 */ }
 }
-module.exports = { onError, askText, onVisibility, copyText, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };
+module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted };

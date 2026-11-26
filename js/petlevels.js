@@ -1,6 +1,7 @@
 // 0.9.12 起用这张表：Fable「宠物技能重做」版（test/fable_skills/gen_s.js 生成）。三段式（dSeg：送 / 挤 / 收尾）、不再有 luck（发牌一定有活路）、铁石每关 2 块放在最后一段、前三关换了新盘面。
 // 注意：第 15、19、29 关（爆竹鼠的硬关）机器人赢的局要 65–92 手，超了 35–55 手的线，Fable 说要重排，还没调。
-module.exports = [
+// 0.9.17：这张旧表（0.9.12 的 30 关）不再直接用。现在只上新版第一章（js/chapter1.js），第二章起等新设计做好再开。旧表留在 module.exports.old 给老测试看
+const OLD = [
  {
   "goal": {
    "lines": 3
@@ -1336,6 +1337,8 @@ module.exports = [
   "dBoss3": 0.3
  }
 ];
+module.exports = require('./chapter1.js');
+module.exports.old = OLD;
 module.exports.evolveStage = (petId, color) => ({
   goal: { evolve: 9 }, d: 0.1, evolve: { pet: petId }, team: null, colors: [color, -1, 3],
   board: ['#.......#', '.........', '..#...#..', '.........', '.........', '.........', '..#...#..', '.........', '#.......#'],

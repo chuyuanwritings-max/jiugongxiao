@@ -76,4 +76,27 @@ function exportText(extra) {
   if (!hasCS && packed.text.slice(0, 5) !== 'JGX1:') { const z = Z.pack(packed.text); if (z) packed = { text: 'JGX1:' + z, n: packed.n }; }
   return packed.text;
 }
-module.exports = { rec, input, prepare, exportText, count: () => ev.length, flush, _all: () => ev };
+// 发图用（0.9.17）：压好的字节（deflate-raw）。装不下 maxBytes 就只留最近的一段记录（从后往前留，二分找最多能留几条）。
+// 返回 { bytes, kept, total }；压不出来返回 null
+function packBytes(raw) {
+  const u = Z.utf8(raw), z = Z.deflateRaw(u), back = Z.inflateFixed(z);
+  if (back.length !== u.length) return null;
+  for (let i = 0; i < u.length; i++) if (back[i] !== u[i]) return null;
+  return z;
+}
+function exportBytes(extra, maxBytes) {
+  try {
+    const total = ev.length;
+    const tryN = (n) => packBytes(JSON.stringify(Object.assign({ game: '九宫消', fmt: 1 }, extra, { ev: ev.slice(total - n), cut: total - n })));
+    let z = tryN(total);
+    if (z && z.length <= maxBytes) return { bytes: z, kept: total, total };
+    let lo = 0, hi = total, best = null;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2), zz = tryN(mid);
+      if (zz && zz.length <= maxBytes) { lo = mid; best = zz; } else hi = mid - 1;
+    }
+    if (!best) best = tryN(lo);
+    return best ? { bytes: best, kept: lo, total } : null;
+  } catch (e) { return null; }
+}
+module.exports = { rec, input, prepare, exportText, exportBytes, count: () => ev.length, flush, _all: () => ev };

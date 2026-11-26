@@ -281,10 +281,25 @@ function showCopyBox(str, title) {
   box.appendChild(h); box.appendChild(tip); box.appendChild(ta); box.appendChild(row);
   document.body.appendChild(box);
 }
+// 复制不了时的后路：一段一段放进微信的输入弹窗（每段 1000 字），玩家长按全选拷贝、粘到微信，再点「下一段」
+function modalChunks(str, title, done) {
+  const CH = 1000, n = Math.max(1, Math.ceil(str.length / CH));
+  const show = (k) => {
+    if (k >= n) { done && done(); return; }
+    wx.showModal({ title: (title || '试玩记录') + (n > 1 ? ' 第 ' + (k + 1) + '/' + n + ' 段' : ''), content: str.slice(k * CH, (k + 1) * CH), editable: true, placeholderText: '', confirmText: k < n - 1 ? '下一段' : '好了', cancelText: '关闭',
+      success: (r) => { if (r.confirm) show(k + 1); else done && done(); }, fail: () => done && done() });
+  };
+  show(0);
+}
 function copyText(str, ok, title) {
-  const cb = (v) => ok && ok(v);
+  const cb = (v, why) => ok && ok(v, why);
   try {
-    if (isWx) { wx.setClipboardData({ data: str, success: () => cb(true), fail: () => cb(false) }); return; }
+    if (isWx) {
+      // 0.9.15：微信 2023-09 起剪贴板是「隐私接口」，后台没在《用户隐私保护指引》里声明「剪贴板」就会失败（errno 112）。
+      // 失败了不只说「失败」：把原因带回去；再把记录分段放进微信自己的输入弹窗，长按「全选 → 拷贝」照样拿得走（系统输入框的复制不走这个接口）
+      wx.setClipboardData({ data: str, success: () => cb(true), fail: (e) => { const msg = (e && (e.errMsg || e.errno)) || ''; if (wx.showModal) modalChunks(str, title, () => cb('modal', msg)); else cb(false, msg); } });
+      return;
+    }
     if (legacyCopy(str)) return cb(true);
     const box = () => { showCopyBox(str, title); cb('box'); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(str).then(() => cb(true), box);

@@ -9,7 +9,7 @@ const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
 const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
-const VERSION = '0.9.14'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.15'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -2359,8 +2359,9 @@ let copyMsg = null; // 「复制试玩记录」之后的一句提示
 const PLAYTEST = true;
 function copyPlayLog() {
   const n = (save.playLog || []).length;
-  P.copyText(T.exportText({ ver: VERSION, log: save.playLog || [] }), (ok) => {
-    copyMsg = { text: ok === true ? '已复制 ' + n + ' 局，粘到微信发回来' : ok === 'box' ? '在弹出的框里复制' : '复制不了，再点一次试试', t: clock };
+  P.copyText(T.exportText({ ver: VERSION, log: save.playLog || [] }), (ok, why) => {
+    copyMsg = { text: ok === true ? '已复制 ' + n + ' 局，粘到微信发回来' : ok === 'box' ? '在弹出的框里复制' : ok === 'modal' ? '弹窗里长按全选拷贝，一段段发回来' : '复制失败：' + String(why || '原因不明').slice(0, 24), t: clock, dur: ok === true ? 2.5 : 8 };
+    if (ok !== true) logErr('copy', String(why || ok)); // 0.9.15：复制失败的原因记进试玩记录
   }, '试玩记录（' + n + ' 局）');
 }
 let settingsAsk = 0; // 「重新开始」要点两下：第一下变成「真的清空？」，3 秒内再点才清
@@ -2386,7 +2387,7 @@ function drawSettings() {
   text(asking ? '宠物、关卡、葫芦、金币全部清空，回到第 1 关' : '清空所有进度，从第 1 关重新玩', W / 2, y + 80, 14, asking ? COL.red : COL.dim, 'center', 'normal');
   // 试玩记录：复制出来贴给 Kira（难度表的「真人」那一列）
   const nLog = (save.playLog || []).length;
-  button('setCopyLog', bx, H - 168, bw, 44, copyMsg && clock - copyMsg.t < 2.5 ? copyMsg.text : '复制试玩记录（' + nLog + ' 局）', { kind: 'sub', size: 13, fn: copyPlayLog });
+  button('setCopyLog', bx, H - 168, bw, 44, copyMsg && clock - copyMsg.t < (copyMsg.dur || 2.5) ? copyMsg.text : '复制试玩记录（' + nLog + ' 局）', { kind: 'sub', size: 13, fn: copyPlayLog });
   button('setBack', bx, H - (PLAYTEST ? 114 : 100), bw, 60, settingsFrom === 'map' ? '回地图' : '回主菜单', { size: 24, fn: () => { mode = settingsFrom; } });
 }
 
@@ -3010,7 +3011,7 @@ function drawPetOver() {
   }
   if (PLAYTEST) { // 面板底下，一关打完就点得到
     const nLog = (save.playLog || []).length;
-    button('overCopyLog', bx, Math.min(H - 56, py + ph + 14), bw, 44, copyMsg && clock - copyMsg.t < 2.5 ? copyMsg.text : '复制试玩记录（' + nLog + ' 局），发回来', { kind: 'sub', size: 15, hot: true, fn: copyPlayLog });
+    button('overCopyLog', bx, Math.min(H - 56, py + ph + 14), bw, 44, copyMsg && clock - copyMsg.t < (copyMsg.dur || 2.5) ? copyMsg.text : '复制试玩记录（' + nLog + ' 局），发回来', { kind: 'sub', size: 15, hot: true, fn: copyPlayLog });
   }
 }
 // 葫芦：两个圆叠起来，腰上一根红绳

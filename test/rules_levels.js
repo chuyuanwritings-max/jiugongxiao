@@ -1,13 +1,13 @@
 // 段 1 规则 10：升级表、名字、老存档（规则细设计第三节 T107–T110）。用法：node test/rules_levels.js
 const fs = require('fs'), path = require('path');
 const { PG, ok, t, done } = require('./rules_lib.js');
-const BASE = ['tongque', 'baozhu', 'modou', 'shizi', 'lvgui'];
+const BASE = ['tongque', 'baozhu', 'modou', 'huli', 'lvgui'];
 // 细设计第二节的表；绿龟那一行照 Cc 段 1 定（一颗水珠永远转 1 块，只涨表盘）
 const DOC = {
   tongque: { n: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], ring: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3] },
   baozhu: { n: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], ring: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3] },
   modou: { n: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], ring: [9, 8, 7, 7, 7, 6, 6, 5, 4, 4] },
-  shizi: { n: [1, 1, 1, 1, 1, 2, 2, 3, 3, 3], ring: [10, 9, 8, 7, 7, 7, 6, 6, 5, 5] },
+  huli: { n: [1, 1, 1, 1, 1, 2, 2, 3, 3, 3], ring: [10, 9, 8, 7, 7, 7, 6, 6, 5, 5] },
   lvgui: { n: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1], ring: [10, 9, 8, 7, 7, 6, 5, 4, 3, 3] },
 };
 
@@ -29,9 +29,11 @@ t('T108', () => {
   ok(!bad.length, 'T108 五只宠物的表和细设计第二节逐格一样（龟照 Cc 段 1 定）；不对的：' + (bad.join('、') || '没有'));
 });
 t('T109', () => {
-  const names = BASE.map((id) => [PG.PETS[id].name, PG.PETS[PG.PETS[id].evo] && PG.PETS[PG.PETS[id].evo].name]);
-  const want = [['铜雀', '金凤凰'], ['爆竹鼠', '鼠王'], ['墨斗蚕', '蝴蝶'], ['小狮子', '麒麟'], ['绿龟', '大龟']];
-  ok(JSON.stringify(names) === JSON.stringify(want), 'T109 五只宠物各有小时候、长大两个名字：' + names.map((x) => x.join(' → ')).join('，'));
+  // 11-28 Cc 定 A 新阵容：每只三个样子（1 级 → 5 级 → 10 级）
+  const chain = (id) => { const out = []; for (let k = 0; id && k < 3; k++) { out.push(PG.PETS[id].name); id = PG.PETS[id].evo; } return out; };
+  const names = BASE.map(chain);
+  const want = [['小铜雀', '铜隼', '金翅大鹏'], ['小穿山甲', '穿山甲', '地龙'], ['蚕宝宝', '蚕茧', '蝴蝶'], ['一尾狐', '三尾狐', '九尾狐'], ['小龟', '灵龟', '玄武']];
+  ok(JSON.stringify(names) === JSON.stringify(want), 'T109 五只宠物各有三个样子：' + names.map((x) => x.join(' → ')).join('，'));
   const js = fs.readdirSync(path.join(__dirname, '..', 'js')).filter((f) => f.endsWith('.js')).filter((f) => /金翅雀/.test(fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8')));
   ok(!js.length, 'T109 js/ 里搜不到「金翅雀」（' + (js.join('、') || '没有') + '）');
 });
@@ -42,7 +44,7 @@ t('T110', () => {
   const E = boot({ seed: 3, store: { luoshu_save_v1: JSON.stringify(old) } }), { G, run } = E;
   run(10);
   const p = G.save.pets;
-  ok(p.jinchique && p.jinchique.lv === 5 && p.baozhu && p.baozhu.lv === 3 && p.shizi && p.shizi.lv === 2 && !p.qilin && G.save.activePet === 'shizi', 'T110 老存档读进来：等级不变（金凤凰 5、爆竹鼠 3），老的 qilin 2 级改成小狮子 2 级');
+  ok(p.jinchique && p.jinchique.lv === 5 && p.baozhu && p.baozhu.lv === 3 && p.huli && p.huli.lv === 2 && !p.qilin && G.save.activePet === 'huli', 'T110 老存档读进来：等级不变（铜隼 5、小穿山甲 3），老的 qilin 2 级改成一尾狐 2 级');
   G.save.activePet = 'jinchique'; G.newPetLevel(12); run(20);
   const g = G.g, pt = g && g.team[0];
   ok(pt && pt.id === 'jinchique' && pt.lv === 5 && PG.energyMax(g, pt) === 6 && PG.skillN(pt.id, pt.lv) === 2 && !E.errs().length, 'T110 带金凤凰 5 级进关：本事照新表（表盘 6 格、啄 2 格），不报错' + (E.errs().length ? '：' + E.errs()[0] : ''));

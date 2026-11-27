@@ -6,7 +6,7 @@
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const PG = require('../js/petgame.js'), PLV = require('../js/petlevels.js'), core = require('../js/core.js');
 const FILE = path.join(__dirname, '..', 'test', 'baseline', 'engine.json');
-const PETS5 = ['tongque', 'baozhu', 'modou', 'shizi', 'lvgui'];
+const PETS5 = ['tongque', 'baozhu', 'modou', 'huli', 'lvgui'];
 const EXP_NEED = [0, 4, 6, 6, 8, 10, 12, 13, 15, 16];
 const lvOf = (dan) => { let lv = 1; while (lv < 10 && dan >= EXP_NEED[lv]) { dan -= EXP_NEED[lv]; lv++; } return lv; };
 const LV_AT = (() => { let d = 0; return PLV.map((st, i) => { const lv = lvOf(d); d += (st.dan || 0) * (i >= 10 ? 0.5 : 1); return lv; }); })();

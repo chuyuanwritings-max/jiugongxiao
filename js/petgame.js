@@ -30,25 +30,26 @@ const at = (arr, lv) => arr[Math.min(arr.length, Math.max(1, lv)) - 1];
 // 每升一级只变一样（打得多 / 攒得快 / 5 级长大 / 10 级绝招）；没有「开局带能量」（Cc 11-27「B 轮流两样」）
 // 绿龟只涨表盘、一颗水珠永远转 1 块，5 级学翻面、10 级学变形（Cc 段 1 定，替换细设计里龟那一行）
 const SKILL = {
-  n: { tongque: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], baozhu: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], modou: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], shizi: [1, 1, 1, 1, 1, 2, 2, 3, 3, 3], lvgui: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
-  ring: { tongque: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], baozhu: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], modou: [9, 8, 7, 7, 7, 6, 6, 5, 4, 4], shizi: [10, 9, 8, 7, 7, 7, 6, 6, 5, 5], lvgui: [10, 9, 8, 7, 7, 6, 5, 4, 3, 3] },
-  kind: { tongque: 'peck', baozhu: 'gnaw', modou: 'silk', shizi: 'fire', lvgui: 'turn' },
+  n: { tongque: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], baozhu: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], modou: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], huli: [1, 1, 1, 1, 1, 2, 2, 3, 3, 3], lvgui: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
+  ring: { tongque: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], baozhu: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], modou: [9, 8, 7, 7, 7, 6, 6, 5, 4, 4], huli: [10, 9, 8, 7, 7, 7, 6, 6, 5, 5], lvgui: [10, 9, 8, 7, 7, 6, 5, 4, 3, 3] },
+  kind: { tongque: 'peck', baozhu: 'gnaw', modou: 'silk', huli: 'fire', lvgui: 'turn' },
   intro: 1, // 登场关 / 升级后第一关（fastCharge）：开局只差几格就满
 };
 const EVO_LV = 5, ULT_LV = 10; // 5 级长大、10 级学绝招
 // 长大版映回小时候版
-const BASE_OF = { jinchique: 'tongque', baozhuwang: 'baozhu', hudie: 'modou', qilin: 'shizi', dagui: 'lvgui' };
+const BASE_OF = { jinchique: 'tongque', dapeng: 'tongque', baozhuwang: 'baozhu', dilong: 'baozhu', canjian: 'modou', hudie: 'modou', sanweihu: 'huli', jiuweihu: 'huli', dagui: 'lvgui', xuanwu: 'lvgui' };
 const baseId = (id) => BASE_OF[id] || id;
 const skillKind = (id) => SKILL.kind[baseId(id)];
 const skillN = (id, lv) => at(SKILL.n[baseId(id)], lv);
 const ringOf = (id, lv) => at(SKILL.ring[baseId(id)], lv);
-// 五只宠物，每只「小时候」「长大」两个样子（编号不动，只改名字；规则 10）
+// 五只宠物，每只三个样子：1 级小时候 → 5 级长大 → 10 级完全体（11-28 Cc 定 A 新阵容，全量设计第 207 条；长大要像宝可梦那样有质变）
+// 编号是内部用的，不改老编号，只改名字；规则（本事、升级表）一点不变
 const PETS = {
-  tongque: { name: '铜雀', color: 0, evo: 'jinchique', evoLv: EVO_LV }, jinchique: { name: '金凤凰', color: 0 },
-  baozhu: { name: '爆竹鼠', color: 1, evo: 'baozhuwang', evoLv: EVO_LV }, baozhuwang: { name: '鼠王', color: 1 },
-  modou: { name: '墨斗蚕', color: 2, evo: 'hudie', evoLv: EVO_LV }, hudie: { name: '蝴蝶', color: 2 },
-  shizi: { name: '小狮子', color: 5, evo: 'qilin', evoLv: EVO_LV }, qilin: { name: '麒麟', color: 5 },
-  lvgui: { name: '绿龟', color: 6, evo: 'dagui', evoLv: EVO_LV }, dagui: { name: '大龟', color: 6 },
+  tongque: { name: '小铜雀', color: 0, evo: 'jinchique', evoLv: EVO_LV }, jinchique: { name: '铜隼', color: 0, evo: 'dapeng', evoLv: ULT_LV }, dapeng: { name: '金翅大鹏', color: 0 }, // 金：啄
+  baozhu: { name: '小穿山甲', color: 1, evo: 'baozhuwang', evoLv: EVO_LV }, baozhuwang: { name: '穿山甲', color: 1, evo: 'dilong', evoLv: ULT_LV }, dilong: { name: '地龙', color: 1 }, // 土：啃一口、把土堆挖塌
+  modou: { name: '蚕宝宝', color: 2, evo: 'canjian', evoLv: EVO_LV }, canjian: { name: '蚕茧', color: 2, evo: 'hudie', evoLv: ULT_LV }, hudie: { name: '蝴蝶', color: 2 }, // 木：吐丝补空格
+  huli: { name: '一尾狐', color: 5, evo: 'sanweihu', evoLv: EVO_LV }, sanweihu: { name: '三尾狐', color: 5, evo: 'jiuweihu', evoLv: ULT_LV }, jiuweihu: { name: '九尾狐', color: 5 }, // 火：狐火烫墨怪（女性）
+  lvgui: { name: '小龟', color: 6, evo: 'dagui', evoLv: EVO_LV }, dagui: { name: '灵龟', color: 6, evo: 'xuanwu', evoLv: ULT_LV }, xuanwu: { name: '玄武', color: 6 }, // 水：转手上的块
 };
 // 升到下一级变的是哪一样（段 1 附录 D 丁；给升级演示 R-087 和 T107 用）：'n' 打得多 / 'ring' 攒得快 / 'evo' 5 级长大 / 'ult' 10 级绝招；满级返回 ''
 function petGain(id, lv) {
@@ -64,7 +65,7 @@ function petGain(id, lv) {
 function bestPetFor(st) {
   let metal = 0, dirt = 0;
   st.board.forEach((row) => row.split('').forEach((ch) => { if (ch === 'Z') metal++; else if (ch === 'D') dirt++; }));
-  const out = [{ id: 'tongque', n: metal }, { id: 'baozhu', n: dirt }, { id: 'modou', n: 0 }, { id: 'qilin', n: 0 }].sort((x, y) => y.n - x.n);
+  const out = [{ id: 'tongque', n: metal }, { id: 'baozhu', n: dirt }, { id: 'modou', n: 0 }, { id: 'sanweihu', n: 0 }].sort((x, y) => y.n - x.n);
   return out[0].n > 0 ? out : [];
 }
 // 技能块：每只宠物都是这个 1 格的模子

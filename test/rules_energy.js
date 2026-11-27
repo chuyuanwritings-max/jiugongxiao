@@ -1,6 +1,6 @@
 // 段 1 规则 9：能量和表盘（规则细设计第三节 T100–T106）。用法：node test/rules_energy.js
 const { PG, CELL, P, ok, t, done, mk, K, giveSkill } = require('./rules_lib.js');
-const PETS5 = ['tongque', 'baozhu', 'modou', 'shizi', 'lvgui'];
+const PETS5 = ['tongque', 'baozhu', 'modou', 'huli', 'lvgui'];
 const tq = (lv) => [{ id: 'tongque', lv }];
 // 放 1 格到 (0,8) 一手消三处：第 0 排、第 8 列、右上大格
 const THREE = { 0: '########.', 1: '......###', 2: '......###', 3: '........#', 4: '........#', 5: '........#', 6: '........#', 7: '........#', 8: '........#' };

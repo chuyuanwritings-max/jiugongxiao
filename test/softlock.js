@@ -9,7 +9,7 @@ const { boot, playStep, ROOT } = require('./wx-env.js');
 let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++; console.log('✗ ' + m); } };
 const section = (name, fn) => { try { fn(); } catch (e) { fail++; console.log('✗ ' + name + '：抛出异常 ' + (e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : e)); } };
-const SEEN = { pet: 1, gem: 1, wave: 1, monster: 1, gempiece: 1, box: 1, rock: 1, boss: 1, baozhu: 1, shell: 1, jumper: 1, modou: 1, eat: 1, boss2: 1, qilin: 1, color: 1, moss: 1, bomb: 1, split: 1, boss3: 1, steal: 1 };
+const SEEN = { pet: 1, gem: 1, wave: 1, monster: 1, gempiece: 1, box: 1, rock: 1, boss: 1, baozhu: 1, shell: 1, jumper: 1, modou: 1, eat: 1, boss2: 1, sanweihu: 1, color: 1, moss: 1, bomb: 1, split: 1, boss3: 1, steal: 1 };
 // 现在这一版的存档：打到第 12 关（过了 11 关），手里是第 2 关送的铜雀、第 10 关送的爆竹鼠。ch1new 表示「已经是新版存档」，不会被清回第 1 关
 const OLD = (extra) => JSON.stringify(Object.assign({ ch1new: 1, petTutDone: true, tutorialDone: true, petStage: 11, pets: { tongque: { lv: 4, exp: 1 }, baozhu: { lv: 2, exp: 1 } }, petOrder: ['tongque', 'baozhu'], activePet: 'tongque', dan: 5, introSeen: SEEN, cutSeen: { chapter0: true, chapter1: true, chapter2: true } }, extra || {}));
 // 进第 i 关（0 起）、过掉卡片和说明卡，停在能拖块的时候
@@ -424,7 +424,7 @@ section('老存档', () => {
   const OLD_LOG = [{ lv: 3, won: 1, moves: 20, sec: 60, ver: '0.9.13' }, { lv: 4, won: 0, moves: 25, sec: 80, ver: '0.9.13' }];
   const cases = {
     '现在这一版：打到第 12 关、铜雀和爆竹鼠': { save: OLD() },
-    '0.9.13 打到第 12 关、4 只宠物（没有 ch1new）': { reset: true, keepLog: OLD_LOG.length, save: JSON.stringify({ petTutDone: true, tutorialDone: true, petStage: 12, pets: { tongque: { lv: 4, exp: 1 }, baozhu: { lv: 2, exp: 1 }, modou: { lv: 1, exp: 1 }, qilin: { lv: 1, exp: 0 } }, petOrder: ['tongque', 'baozhu', 'modou', 'qilin'], activePet: 'tongque', dan: 5, introSeen: SEEN, cutSeen: { chapter0: true, chapter1: true }, playLog: OLD_LOG }) },
+    '0.9.13 打到第 12 关、4 只宠物（没有 ch1new）': { reset: true, keepLog: OLD_LOG.length, save: JSON.stringify({ petTutDone: true, tutorialDone: true, petStage: 12, pets: { tongque: { lv: 4, exp: 1 }, baozhu: { lv: 2, exp: 1 }, modou: { lv: 1, exp: 1 }, sanweihu: { lv: 1, exp: 0 } }, petOrder: ['tongque', 'baozhu', 'modou', 'sanweihu'], activePet: 'tongque', dan: 5, introSeen: SEEN, cutSeen: { chapter0: true, chapter1: true }, playLog: OLD_LOG }) },
     '0.9.8 刚拿到铜雀、没选过出战': { reset: true, save: JSON.stringify({ petTutDone: true, tutorialDone: true, petStage: 1, pets: { tongque: { lv: 1, exp: 0 } }, petOrder: ['tongque'], gourd: 3, dan: 1, introSeen: {}, cutSeen: { chapter0: true } }) },
     '更老的：过了 5 关、一只宠物都没有': { reset: true, save: JSON.stringify({ petTutDone: true, tutorialDone: true, petStage: 5, pets: {}, petOrder: [], introSeen: { monster: true } }) },
     // 下面三份是新版存档（有 ch1new，不清档）里写坏的字段：fixSave 要把它们理顺

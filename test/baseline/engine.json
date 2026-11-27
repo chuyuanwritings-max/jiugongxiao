@@ -29,7 +29,7 @@
   "moves": 7,
   "won": true
  },
- "2/11/shizi": {
+ "2/11/huli": {
   "hash": "58418ae0a75ba61e",
   "moves": 7,
   "won": true
@@ -54,7 +54,7 @@
   "moves": 25,
   "won": true
  },
- "2/22/shizi": {
+ "2/22/huli": {
   "hash": "b7f2f3758bf5c3b7",
   "moves": 25,
   "won": true
@@ -79,7 +79,7 @@
   "moves": 7,
   "won": true
  },
- "2/33/shizi": {
+ "2/33/huli": {
   "hash": "4774969086ac98df",
   "moves": 7,
   "won": true
@@ -104,7 +104,7 @@
   "moves": 22,
   "won": true
  },
- "3/11/shizi": {
+ "3/11/huli": {
   "hash": "60eb72ab27c5b048",
   "moves": 25,
   "won": true
@@ -129,7 +129,7 @@
   "moves": 30,
   "won": true
  },
- "3/22/shizi": {
+ "3/22/huli": {
   "hash": "2e3b08c0be185d6a",
   "moves": 24,
   "won": true
@@ -154,7 +154,7 @@
   "moves": 22,
   "won": true
  },
- "3/33/shizi": {
+ "3/33/huli": {
   "hash": "e9c47074a8778b97",
   "moves": 26,
   "won": true
@@ -179,7 +179,7 @@
   "moves": 22,
   "won": true
  },
- "4/11/shizi": {
+ "4/11/huli": {
   "hash": "216d4d11db5ef29a",
   "moves": 22,
   "won": true
@@ -204,7 +204,7 @@
   "moves": 37,
   "won": true
  },
- "4/22/shizi": {
+ "4/22/huli": {
   "hash": "1645e6532e7ef3d2",
   "moves": 43,
   "won": true
@@ -229,7 +229,7 @@
   "moves": 31,
   "won": true
  },
- "4/33/shizi": {
+ "4/33/huli": {
   "hash": "9be1b8546817a1f0",
   "moves": 25,
   "won": true
@@ -254,7 +254,7 @@
   "moves": 49,
   "won": true
  },
- "5/11/shizi": {
+ "5/11/huli": {
   "hash": "7b42d516911b679b",
   "moves": 64,
   "won": true
@@ -279,7 +279,7 @@
   "moves": 81,
   "won": true
  },
- "5/22/shizi": {
+ "5/22/huli": {
   "hash": "de3d28f4925a2552",
   "moves": 47,
   "won": true
@@ -304,7 +304,7 @@
   "moves": 32,
   "won": true
  },
- "5/33/shizi": {
+ "5/33/huli": {
   "hash": "77c9786b3710fa2a",
   "moves": 44,
   "won": true
@@ -329,7 +329,7 @@
   "moves": 77,
   "won": true
  },
- "6/11/shizi": {
+ "6/11/huli": {
   "hash": "af9891c0adf80dac",
   "moves": 28,
   "won": true
@@ -354,7 +354,7 @@
   "moves": 40,
   "won": true
  },
- "6/22/shizi": {
+ "6/22/huli": {
   "hash": "a9f64c5bfeb257ce",
   "moves": 43,
   "won": true
@@ -379,7 +379,7 @@
   "moves": 53,
   "won": true
  },
- "6/33/shizi": {
+ "6/33/huli": {
   "hash": "15b9bb8a808d1c9f",
   "moves": 49,
   "won": true
@@ -404,7 +404,7 @@
   "moves": 24,
   "won": true
  },
- "7/11/shizi": {
+ "7/11/huli": {
   "hash": "492f2c94a2b386fa",
   "moves": 24,
   "won": true
@@ -429,7 +429,7 @@
   "moves": 24,
   "won": true
  },
- "7/22/shizi": {
+ "7/22/huli": {
   "hash": "84aa1e1fcd49d27e",
   "moves": 24,
   "won": true
@@ -454,7 +454,7 @@
   "moves": 24,
   "won": true
  },
- "7/33/shizi": {
+ "7/33/huli": {
   "hash": "8fcbad9c45c61cce",
   "moves": 24,
   "won": true
@@ -479,7 +479,7 @@
   "moves": 16,
   "won": true
  },
- "8/11/shizi": {
+ "8/11/huli": {
   "hash": "dac7aebeeb15ad53",
   "moves": 16,
   "won": true
@@ -504,7 +504,7 @@
   "moves": 67,
   "won": true
  },
- "8/22/shizi": {
+ "8/22/huli": {
   "hash": "95820d43df923478",
   "moves": 23,
   "won": true
@@ -529,7 +529,7 @@
   "moves": 35,
   "won": true
  },
- "8/33/shizi": {
+ "8/33/huli": {
   "hash": "594a2539e3b2fa3a",
   "moves": 37,
   "won": true
@@ -554,7 +554,7 @@
   "moves": 58,
   "won": true
  },
- "9/11/shizi": {
+ "9/11/huli": {
   "hash": "e0953a7e011d6ba9",
   "moves": 55,
   "won": true
@@ -579,7 +579,7 @@
   "moves": 49,
   "won": true
  },
- "9/22/shizi": {
+ "9/22/huli": {
   "hash": "563becb43ecb8634",
   "moves": 36,
   "won": true
@@ -604,7 +604,7 @@
   "moves": 57,
   "won": true
  },
- "9/33/shizi": {
+ "9/33/huli": {
   "hash": "71e6973e65d81e42",
   "moves": 40,
   "won": true
@@ -629,7 +629,7 @@
   "moves": 62,
   "won": true
  },
- "10/11/shizi": {
+ "10/11/huli": {
   "hash": "cbcdc9794568932b",
   "moves": 55,
   "won": true
@@ -654,7 +654,7 @@
   "moves": 91,
   "won": true
  },
- "10/22/shizi": {
+ "10/22/huli": {
   "hash": "1a5e7d45a1f2febf",
   "moves": 64,
   "won": true
@@ -679,7 +679,7 @@
   "moves": 39,
   "won": true
  },
- "10/33/shizi": {
+ "10/33/huli": {
   "hash": "f2bea7cacfe635fa",
   "moves": 49,
   "won": true
@@ -704,7 +704,7 @@
   "moves": 28,
   "won": true
  },
- "11/11/shizi": {
+ "11/11/huli": {
   "hash": "1b0292818ed1772c",
   "moves": 18,
   "won": true
@@ -729,7 +729,7 @@
   "moves": 22,
   "won": true
  },
- "11/22/shizi": {
+ "11/22/huli": {
   "hash": "82710687af0596a4",
   "moves": 25,
   "won": true
@@ -754,7 +754,7 @@
   "moves": 15,
   "won": true
  },
- "11/33/shizi": {
+ "11/33/huli": {
   "hash": "3c0bdab66cc92451",
   "moves": 19,
   "won": true
@@ -779,7 +779,7 @@
   "moves": 44,
   "won": true
  },
- "12/11/shizi": {
+ "12/11/huli": {
   "hash": "45b12549850f57a6",
   "moves": 46,
   "won": true
@@ -804,7 +804,7 @@
   "moves": 36,
   "won": true
  },
- "12/22/shizi": {
+ "12/22/huli": {
   "hash": "81f4b7d077eabbe0",
   "moves": 43,
   "won": true
@@ -829,7 +829,7 @@
   "moves": 62,
   "won": true
  },
- "12/33/shizi": {
+ "12/33/huli": {
   "hash": "803045026dcb16a3",
   "moves": 46,
   "won": true
@@ -854,7 +854,7 @@
   "moves": 93,
   "won": true
  },
- "13/11/shizi": {
+ "13/11/huli": {
   "hash": "8f38552d0933f803",
   "moves": 40,
   "won": true
@@ -879,7 +879,7 @@
   "moves": 27,
   "won": true
  },
- "13/22/shizi": {
+ "13/22/huli": {
   "hash": "8e1360aad544b831",
   "moves": 28,
   "won": true
@@ -904,7 +904,7 @@
   "moves": 148,
   "won": true
  },
- "13/33/shizi": {
+ "13/33/huli": {
   "hash": "dc29769f1977b1d0",
   "moves": 29,
   "won": false
@@ -929,7 +929,7 @@
   "moves": 26,
   "won": true
  },
- "14/11/shizi": {
+ "14/11/huli": {
   "hash": "3dc2a071afa409f4",
   "moves": 16,
   "won": true
@@ -954,7 +954,7 @@
   "moves": 26,
   "won": true
  },
- "14/22/shizi": {
+ "14/22/huli": {
   "hash": "5642a5b2791e39bc",
   "moves": 17,
   "won": true
@@ -979,7 +979,7 @@
   "moves": 37,
   "won": true
  },
- "14/33/shizi": {
+ "14/33/huli": {
   "hash": "4614c4c948f5ac71",
   "moves": 16,
   "won": true
@@ -1004,7 +1004,7 @@
   "moves": 73,
   "won": true
  },
- "15/11/shizi": {
+ "15/11/huli": {
   "hash": "4da459193b727566",
   "moves": 55,
   "won": true
@@ -1029,7 +1029,7 @@
   "moves": 109,
   "won": true
  },
- "15/22/shizi": {
+ "15/22/huli": {
   "hash": "27bcd74c69866095",
   "moves": 41,
   "won": true
@@ -1054,7 +1054,7 @@
   "moves": 70,
   "won": true
  },
- "15/33/shizi": {
+ "15/33/huli": {
   "hash": "9c605e139e717b82",
   "moves": 68,
   "won": true
@@ -1079,7 +1079,7 @@
   "moves": 27,
   "won": true
  },
- "16/11/shizi": {
+ "16/11/huli": {
   "hash": "5c33d28ca3cb0a52",
   "moves": 27,
   "won": true
@@ -1104,7 +1104,7 @@
   "moves": 27,
   "won": true
  },
- "16/22/shizi": {
+ "16/22/huli": {
   "hash": "547cbb899bacb0ab",
   "moves": 27,
   "won": true
@@ -1129,7 +1129,7 @@
   "moves": 27,
   "won": true
  },
- "16/33/shizi": {
+ "16/33/huli": {
   "hash": "657f72519384b539",
   "moves": 27,
   "won": true
@@ -1154,7 +1154,7 @@
   "moves": 34,
   "won": true
  },
- "17/11/shizi": {
+ "17/11/huli": {
   "hash": "54b867ef987eb2a8",
   "moves": 34,
   "won": true
@@ -1179,7 +1179,7 @@
   "moves": 34,
   "won": true
  },
- "17/22/shizi": {
+ "17/22/huli": {
   "hash": "8a207a5bc322ee60",
   "moves": 34,
   "won": true
@@ -1204,7 +1204,7 @@
   "moves": 20,
   "won": true
  },
- "17/33/shizi": {
+ "17/33/huli": {
   "hash": "dc6f891b50132a59",
   "moves": 31,
   "won": true
@@ -1229,7 +1229,7 @@
   "moves": 23,
   "won": false
  },
- "18/11/shizi": {
+ "18/11/huli": {
   "hash": "82e371bb975335e2",
   "moves": 23,
   "won": false
@@ -1254,7 +1254,7 @@
   "moves": 29,
   "won": false
  },
- "18/22/shizi": {
+ "18/22/huli": {
   "hash": "4deef38144da7b6e",
   "moves": 61,
   "won": true
@@ -1279,7 +1279,7 @@
   "moves": 73,
   "won": true
  },
- "18/33/shizi": {
+ "18/33/huli": {
   "hash": "aa4cf57965ec540c",
   "moves": 40,
   "won": true
@@ -1304,7 +1304,7 @@
   "moves": 14,
   "won": false
  },
- "19/11/shizi": {
+ "19/11/huli": {
   "hash": "524ba0efb2612595",
   "moves": 14,
   "won": false
@@ -1329,7 +1329,7 @@
   "moves": 84,
   "won": true
  },
- "19/22/shizi": {
+ "19/22/huli": {
   "hash": "43371e0e24cd5ce6",
   "moves": 40,
   "won": true
@@ -1354,7 +1354,7 @@
   "moves": 85,
   "won": true
  },
- "19/33/shizi": {
+ "19/33/huli": {
   "hash": "8ade0768fab212de",
   "moves": 37,
   "won": true
@@ -1379,7 +1379,7 @@
   "moves": 60,
   "won": true
  },
- "20/11/shizi": {
+ "20/11/huli": {
   "hash": "53546e30ff508257",
   "moves": 50,
   "won": false
@@ -1404,7 +1404,7 @@
   "moves": 64,
   "won": true
  },
- "20/22/shizi": {
+ "20/22/huli": {
   "hash": "e96b71aefe10e91e",
   "moves": 41,
   "won": false
@@ -1429,7 +1429,7 @@
   "moves": 55,
   "won": true
  },
- "20/33/shizi": {
+ "20/33/huli": {
   "hash": "cd6258de09f3575b",
   "moves": 26,
   "won": false

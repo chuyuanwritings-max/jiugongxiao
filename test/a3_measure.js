@@ -7,7 +7,7 @@ const fs = require('fs'), path = require('path');
 const PG = require('../js/petgame.js'), PLV = require('../js/petlevels.js'), core = require('../js/core.js');
 const CELL = core.CELL, UNITS = core.UNITS;
 const N = +process.argv.find((a) => /^\d+$/.test(a)) || 40;
-const PETS5 = ['tongque', 'baozhu', 'modou', 'shizi', 'lvgui'];
+const PETS5 = ['tongque', 'baozhu', 'modou', 'huli', 'lvgui'];
 const EXP_NEED = [0, 4, 6, 6, 8, 10, 12, 13, 15, 16]; // 和 main.js 一样：丹价 4/6/6/8/10/12/13/15/16
 const lvOf = (dan) => { let lv = 1; while (lv < 10 && dan >= EXP_NEED[lv]) { dan -= EXP_NEED[lv]; lv++; } return lv; };
 // 「打到这一关大概几级」：第 10 关以前的丹都喂这一只，第 11 关起两只宠物，丹对半分

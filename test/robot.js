@@ -298,7 +298,7 @@ const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; i
   ok(st.won && st.spawns >= 2 && st.left === 0, '第 27 关：分身怪裂出 ' + st.spawns + ' 只小墨怪，全部抓光过关');
   // 火麒麟：放块攒能量，吐一颗火球进托盘
   // 第 21 关点名火麒麟：它不被偷（这关的墨怪不偷它），攒满吐技能块
-  await page.evaluate(() => { const G = window.__game; G.save.pets.qilin = { lv: 1, exp: 0 }; if (!G.save.petOrder.includes('qilin')) G.save.petOrder.push('qilin'); G.setSave({ petStage: 21, activePet: 'qilin' }); G.newPetLevel(20); });
+  await page.evaluate(() => { const G = window.__game; G.save.pets.sanweihu = { lv: 1, exp: 0 }; if (!G.save.petOrder.includes('sanweihu')) G.save.petOrder.push('sanweihu'); G.setSave({ petStage: 21, activePet: 'sanweihu' }); G.newPetLevel(20); });
   await page.waitForTimeout(300);
   await closeIntro();
   const gotFire = await petPlay(60, () => !!window.__game.g.hand[3]);

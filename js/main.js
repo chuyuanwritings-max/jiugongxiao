@@ -1979,7 +1979,7 @@ const INTRO = {
   boss3: { title: '分身王', lines: ['会冒小墨怪 · 爆竹鼠克它'], bossPic: 'split' },
   jumper: { title: '跳跳怪', lines: ['会跳 · 爆竹鼠克它'], jumperPic: true },
   wave: { title: '墨怪一波一波来', lines: ['抓光一波，下一波冒出来'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
-  qilin: { title: '火麒麟出战', lines: ['照亮下一批 · 火星烧 1 格'], pet: 'qilin' },
+  sanweihu: { title: '火麒麟出战', lines: ['照亮下一批 · 火星烧 1 格'], pet: 'sanweihu' },
   steal: { title: '墨怪会偷能量', lines: ['紫闪电 = 要偷能量 · 克它的不怕'], monPic: { t: 'shell', hp: 1 } },
   acts: { title: '让宠物多出手', lines: ['宠物出手几次才过关'], pet: null, actsPic: true },
 };
@@ -2060,7 +2060,7 @@ function drawStartCard() {
   button('startGo', px + 24, py + ph - 70, pw - 48, 52, '开打', { size: 20, fn: () => { mode = c.next || 'play'; startCard = null; g.startMs = P.now(); P.sound('select', 0.6); if (g._fresh && save.freshPet && save.freshPet[g._fresh]) { delete save.freshPet[g._fresh]; persist(); } } });
 }
 // 宠物登场卡：一段小动画把技能演一遍（0.9.13，Cc：「每个宠物的技能你要用图形动画来教学，全是字谁读啊」）。2.6 秒一轮
-const SKILL_DEMO = { pet: 1, baozhu: 1, modou: 1, qilin: 1 };
+const SKILL_DEMO = { pet: 1, baozhu: 1, modou: 1, sanweihu: 1 };
 function drawSkillDemo(pet, cx, cy, w) {
   const kind = PG.skillKind(pet), col = PG.PETS[pet].color, cs = Math.min(44, w / 6.2), a = (clock % 2.6) / 2.6;
   const x0 = cx - cs * 2.5, rowY = cy - cs * 0.55;
@@ -2380,7 +2380,7 @@ function drawSettings() {
 let petIdx = 0; // 宠物章节第几关（0 起）
 let petFx = { pop: {}, caption: null, banner: null, bossHit: -9, evolveFlash: -9 };
 let petMsg = null; // 地图 / 营地上的一句提示 { text, t }
-const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕', qilin: '麟' };
+const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕', sanweihu: '麟' };
 // 第 n 级升到 n+1 级要多少经验。经验从哪来：出战打一关（宠物每出手一次 +1，过关再 +3，没过 +1）、喂一颗丹 +2
 // Cc 11-24：「刚拿到宠物直接就升到 5 级……游戏时长会变得太短」→ 门槛提高，铜雀大约要打十几关才够进化
 // 0.9.8（Fable 宠物重做第五节）：只有丹能升级，出战不涨经验。升一级要几颗丹：到 5 级共 14 颗，到 10 级再 50 颗，到 15 级再 100 颗。rec.exp = 这一级已经喂了几颗
@@ -2451,7 +2451,7 @@ function petIcon(id, x, y, s, lv, pop) {
   if (lv) lvPips(x, y + r * 1.05, lv, s);
 }
 // 专属关（0.8）：点名的宠物有没有（进化后的也算）；这一关实际带谁、几级
-function ownedOf(id) { if (!id) return null; if (save.pets[id]) return id; const e = PG.PETS[id] && PG.PETS[id].evo; return e && save.pets[e] ? e : null; }
+function ownedOf(id) { for (let k = 0; id && k < 3; k++) { if (save.pets[id]) return id; id = PG.PETS[id] && PG.PETS[id].evo; } return null; } // 11-28：每只三个样子，顺着长大的链往下找
 function levelTeam(st, i, lendLv, lendId) {
   if (lendId && !st.only) { const o = ownedOf(lendId); return [{ id: o || lendId, lv: Math.max(o ? save.pets[o].lv : 1, lendLv || 3) }]; } // 0.9.12：连输两次「请对口的来帮忙」，借一只 3 级的（自己的更高就用自己的）
   if (!st.only) return ownedTeam();
@@ -3434,8 +3434,8 @@ function fixSave() {
   if (save.freshPet !== undefined && !obj(save.freshPet)) delete save.freshPet;
   ['dan', 'gourd', 'coins', 'plays'].forEach((k) => { save[k] = int(save[k], 0, 1e9); });
   save.petStage = int(save.petStage, 0, PLV.length);
-  // 段 1（附录 G）：老存档里 1 级就叫「火麒麟」的 qilin，现在是小狮子长大的样子；5 级以下的改回小狮子 shizi，等级照旧
-  if (obj(save.pets) && obj(save.pets.qilin) && !save.pets.shizi && int(save.pets.qilin.lv, 1, LV_CAP) < PG.EVO_LV) { save.pets.shizi = save.pets.qilin; delete save.pets.qilin; if (Array.isArray(save.petOrder)) save.petOrder = save.petOrder.map((x) => (x === 'qilin' ? 'shizi' : x)); if (save.activePet === 'qilin') save.activePet = 'shizi'; }
+  // 11-28 Cc 定 A 新阵容（全量设计第 207 条）：老存档里的旧编号换成新的。qilin（老的火麒麟 / 段 1 的麒麟）、shizi（段 1 的小狮子）都改成狐狸；5 级以上是三尾狐
+  if (obj(save.pets)) [['shizi', 'huli'], ['qilin', null]].forEach(([from, to0]) => { const r = save.pets[from]; if (!obj(r)) return; const to = to0 || (int(r.lv, 1, LV_CAP) >= PG.EVO_LV ? 'sanweihu' : 'huli'); if (!save.pets[to]) save.pets[to] = r; delete save.pets[from]; if (Array.isArray(save.petOrder)) save.petOrder = save.petOrder.map((x) => (x === from ? to : x)); if (save.activePet === from) save.activePet = to; });
   // 宠物：只留认得的；等级、经验落在范围里（经验的算法 0.9.8 改过：现在是「这一级喂了几颗丹」，老存档的数可能比一级要的还多）
   Object.keys(save.pets).forEach((id) => {
     const r = save.pets[id];
@@ -3443,8 +3443,8 @@ function fixSave() {
     r.lv = int(r.lv, 1, LV_CAP); r.exp = int(r.exp, 0, Math.max(0, (EXP_NEED[r.lv] || 999) - 1));
   });
   Object.keys(PG.PETS).forEach((id) => { const e = PG.PETS[id].evo; if (e && save.pets[id] && save.pets[e]) delete save.pets[id]; }); // 进化前后两只都在：留进化后的
-  // 0.9.25：够 5 级还没进化的（坏存档、手改的存档）：直接进化掉，不然这只既不能进化也不能再喂
-  Object.keys(save.pets).forEach((id) => { const d = PG.PETS[id]; if (d && d.evo && !save.pets[d.evo] && save.pets[id].lv >= d.evoLv) { save.pets[d.evo] = save.pets[id]; delete save.pets[id]; save.petOrder = save.petOrder.map((x) => (x === id ? d.evo : x)); if (save.activePet === id) save.activePet = d.evo; } });
+  // 0.9.25：够级还没进化的（坏存档、手改的存档、老存档）：直接进化掉；11-28 起每只有两次长大，所以过两遍
+  for (let pass = 0; pass < 2; pass++) Object.keys(save.pets).forEach((id) => { const d = PG.PETS[id]; if (d && d.evo && !save.pets[d.evo] && save.pets[id].lv >= d.evoLv) { save.pets[d.evo] = save.pets[id]; delete save.pets[id]; save.petOrder = save.petOrder.map((x) => (x === id ? d.evo : x)); if (save.activePet === id) save.activePet = d.evo; } });
   save.petOrder = save.petOrder.filter((id, n, a) => save.pets[id] && a.indexOf(id) === n);
   Object.keys(save.pets).forEach((id) => { if (save.petOrder.indexOf(id) < 0) save.petOrder.push(id); });
   // 过了送宠物的那一关、手里却没有那只（0.9.8 以前铜雀是第 3 关才送）：补上，不然后面要打铁石的关没有宠物永远过不了

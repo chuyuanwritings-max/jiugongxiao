@@ -1,7 +1,7 @@
 // 段 1 规则 6–8：墨斗蚕 / 蝴蝶、小狮子 / 麒麟、绿龟 / 大龟（规则细设计第三节 T70–T96，龟的 5、10 级照 Cc 段 1 定）。用法：node test/rules_pets.js
 const fs = require('fs'), path = require('path');
 const { PG, core, CELL, P, ok, t, done, mk, K, giveSkill } = require('./rules_lib.js');
-const md = (lv) => [{ id: lv >= 5 ? 'hudie' : 'modou', lv }], sz = (lv) => [{ id: lv >= 5 ? 'qilin' : 'shizi', lv }], lg = (lv) => [{ id: lv >= 5 ? 'dagui' : 'lvgui', lv }];
+const md = (lv) => [{ id: lv >= 5 ? 'hudie' : 'modou', lv }], sz = (lv) => [{ id: lv >= 5 ? 'sanweihu' : 'huli', lv }], lg = (lv) => [{ id: lv >= 5 ? 'dagui' : 'lvgui', lv }];
 const JAM = (() => { const z = [[0, 0], [1, 3], [2, 6], [3, 1], [4, 4], [5, 7], [6, 2], [7, 5], [8, 8]]; const rows = []; for (let r = 0; r < 9; r++) { let s = ''; for (let c = 0; c < 9; c++) s += z.some(([a, b]) => a === r && b === c) ? 'Z' : (r === 0 && c === 1) || (r === 8 && c === 7) ? '.' : '#'; rows.push(s); } return rows; })();
 const shape = (p) => p.cells.map(([r, c]) => r + ',' + c).sort().join(' ');
 const turned = (p, n) => { let cells = p.cells, h = p.h; for (let i = 0; i < n; i++) { cells = cells.map(([r, c]) => [c, h - 1 - r]); h = Math.max(...cells.map((x) => x[0])) + 1; } return cells.map(([r, c]) => r + ',' + c).sort().join(' '); };

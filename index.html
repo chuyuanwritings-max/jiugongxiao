@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '739a5e94cb6b';</script>
+<script>window.__BUILD = '7165ec1a86df';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -362,7 +362,7 @@ module.exports = {
   // 0.8.1 Midjourney 第 1 批（画风 BDL-02-a 无主之地2 简化版，需求单 生图/需求_主视觉与宠物头像_20261124.md）：
   // 图放进 images/ 后把文件名写在这里就自动换上；空着或读不到，就用代码画的（圆章一个字、九宫格徽记）
   homeArt: 'home.jpg', // 主菜单主视觉，9:16（第 1 批 Cc 选第 1 张）
-  petArt: { tongque: 'pet_tongque.png', jinchique: 'pet_jinchique.png', baozhu: 'pet_baozhu.png', modou: 'pet_modou.png', qilin: 'pet_qilin.png' }, // 抠好底、256×256
+  petArt: { tongque: 'pet_tongque.png', jinchique: 'pet_jinchique.png', baozhu: 'pet_baozhu.png', modou: 'pet_modou.png', sanweihu: 'pet_qilin.png' }, // 抠好底、256×256
 
   // 块的颜色：每发一块换一种宝石色，放下以后保留（黄铜金、朱砂、青铜绿、青金、紫晶、赤铜、水银青）
   blockColors: [
@@ -3829,7 +3829,7 @@ const INTRO = {
   boss3: { title: '分身王', lines: ['会冒小墨怪 · 爆竹鼠克它'], bossPic: 'split' },
   jumper: { title: '跳跳怪', lines: ['会跳 · 爆竹鼠克它'], jumperPic: true },
   wave: { title: '墨怪一波一波来', lines: ['抓光一波，下一波冒出来'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
-  qilin: { title: '火麒麟出战', lines: ['照亮下一批 · 火星烧 1 格'], pet: 'qilin' },
+  sanweihu: { title: '火麒麟出战', lines: ['照亮下一批 · 火星烧 1 格'], pet: 'sanweihu' },
   steal: { title: '墨怪会偷能量', lines: ['紫闪电 = 要偷能量 · 克它的不怕'], monPic: { t: 'shell', hp: 1 } },
   acts: { title: '让宠物多出手', lines: ['宠物出手几次才过关'], pet: null, actsPic: true },
 };
@@ -3910,7 +3910,7 @@ function drawStartCard() {
   button('startGo', px + 24, py + ph - 70, pw - 48, 52, '开打', { size: 20, fn: () => { mode = c.next || 'play'; startCard = null; g.startMs = P.now(); P.sound('select', 0.6); if (g._fresh && save.freshPet && save.freshPet[g._fresh]) { delete save.freshPet[g._fresh]; persist(); } } });
 }
 // 宠物登场卡：一段小动画把技能演一遍（0.9.13，Cc：「每个宠物的技能你要用图形动画来教学，全是字谁读啊」）。2.6 秒一轮
-const SKILL_DEMO = { pet: 1, baozhu: 1, modou: 1, qilin: 1 };
+const SKILL_DEMO = { pet: 1, baozhu: 1, modou: 1, sanweihu: 1 };
 function drawSkillDemo(pet, cx, cy, w) {
   const kind = PG.skillKind(pet), col = PG.PETS[pet].color, cs = Math.min(44, w / 6.2), a = (clock % 2.6) / 2.6;
   const x0 = cx - cs * 2.5, rowY = cy - cs * 0.55;
@@ -4230,7 +4230,7 @@ function drawSettings() {
 let petIdx = 0; // 宠物章节第几关（0 起）
 let petFx = { pop: {}, caption: null, banner: null, bossHit: -9, evolveFlash: -9 };
 let petMsg = null; // 地图 / 营地上的一句提示 { text, t }
-const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕', qilin: '麟' };
+const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕', sanweihu: '麟' };
 // 第 n 级升到 n+1 级要多少经验。经验从哪来：出战打一关（宠物每出手一次 +1，过关再 +3，没过 +1）、喂一颗丹 +2
 // Cc 11-24：「刚拿到宠物直接就升到 5 级……游戏时长会变得太短」→ 门槛提高，铜雀大约要打十几关才够进化
 // 0.9.8（Fable 宠物重做第五节）：只有丹能升级，出战不涨经验。升一级要几颗丹：到 5 级共 14 颗，到 10 级再 50 颗，到 15 级再 100 颗。rec.exp = 这一级已经喂了几颗
@@ -4301,7 +4301,7 @@ function petIcon(id, x, y, s, lv, pop) {
   if (lv) lvPips(x, y + r * 1.05, lv, s);
 }
 // 专属关（0.8）：点名的宠物有没有（进化后的也算）；这一关实际带谁、几级
-function ownedOf(id) { if (!id) return null; if (save.pets[id]) return id; const e = PG.PETS[id] && PG.PETS[id].evo; return e && save.pets[e] ? e : null; }
+function ownedOf(id) { for (let k = 0; id && k < 3; k++) { if (save.pets[id]) return id; id = PG.PETS[id] && PG.PETS[id].evo; } return null; } // 11-28：每只三个样子，顺着长大的链往下找
 function levelTeam(st, i, lendLv, lendId) {
   if (lendId && !st.only) { const o = ownedOf(lendId); return [{ id: o || lendId, lv: Math.max(o ? save.pets[o].lv : 1, lendLv || 3) }]; } // 0.9.12：连输两次「请对口的来帮忙」，借一只 3 级的（自己的更高就用自己的）
   if (!st.only) return ownedTeam();
@@ -5284,8 +5284,8 @@ function fixSave() {
   if (save.freshPet !== undefined && !obj(save.freshPet)) delete save.freshPet;
   ['dan', 'gourd', 'coins', 'plays'].forEach((k) => { save[k] = int(save[k], 0, 1e9); });
   save.petStage = int(save.petStage, 0, PLV.length);
-  // 段 1（附录 G）：老存档里 1 级就叫「火麒麟」的 qilin，现在是小狮子长大的样子；5 级以下的改回小狮子 shizi，等级照旧
-  if (obj(save.pets) && obj(save.pets.qilin) && !save.pets.shizi && int(save.pets.qilin.lv, 1, LV_CAP) < PG.EVO_LV) { save.pets.shizi = save.pets.qilin; delete save.pets.qilin; if (Array.isArray(save.petOrder)) save.petOrder = save.petOrder.map((x) => (x === 'qilin' ? 'shizi' : x)); if (save.activePet === 'qilin') save.activePet = 'shizi'; }
+  // 11-28 Cc 定 A 新阵容（全量设计第 207 条）：老存档里的旧编号换成新的。qilin（老的火麒麟 / 段 1 的麒麟）、shizi（段 1 的小狮子）都改成狐狸；5 级以上是三尾狐
+  if (obj(save.pets)) [['shizi', 'huli'], ['qilin', null]].forEach(([from, to0]) => { const r = save.pets[from]; if (!obj(r)) return; const to = to0 || (int(r.lv, 1, LV_CAP) >= PG.EVO_LV ? 'sanweihu' : 'huli'); if (!save.pets[to]) save.pets[to] = r; delete save.pets[from]; if (Array.isArray(save.petOrder)) save.petOrder = save.petOrder.map((x) => (x === from ? to : x)); if (save.activePet === from) save.activePet = to; });
   // 宠物：只留认得的；等级、经验落在范围里（经验的算法 0.9.8 改过：现在是「这一级喂了几颗丹」，老存档的数可能比一级要的还多）
   Object.keys(save.pets).forEach((id) => {
     const r = save.pets[id];
@@ -5293,8 +5293,8 @@ function fixSave() {
     r.lv = int(r.lv, 1, LV_CAP); r.exp = int(r.exp, 0, Math.max(0, (EXP_NEED[r.lv] || 999) - 1));
   });
   Object.keys(PG.PETS).forEach((id) => { const e = PG.PETS[id].evo; if (e && save.pets[id] && save.pets[e]) delete save.pets[id]; }); // 进化前后两只都在：留进化后的
-  // 0.9.25：够 5 级还没进化的（坏存档、手改的存档）：直接进化掉，不然这只既不能进化也不能再喂
-  Object.keys(save.pets).forEach((id) => { const d = PG.PETS[id]; if (d && d.evo && !save.pets[d.evo] && save.pets[id].lv >= d.evoLv) { save.pets[d.evo] = save.pets[id]; delete save.pets[id]; save.petOrder = save.petOrder.map((x) => (x === id ? d.evo : x)); if (save.activePet === id) save.activePet = d.evo; } });
+  // 0.9.25：够级还没进化的（坏存档、手改的存档、老存档）：直接进化掉；11-28 起每只有两次长大，所以过两遍
+  for (let pass = 0; pass < 2; pass++) Object.keys(save.pets).forEach((id) => { const d = PG.PETS[id]; if (d && d.evo && !save.pets[d.evo] && save.pets[id].lv >= d.evoLv) { save.pets[d.evo] = save.pets[id]; delete save.pets[id]; save.petOrder = save.petOrder.map((x) => (x === id ? d.evo : x)); if (save.activePet === id) save.activePet = d.evo; } });
   save.petOrder = save.petOrder.filter((id, n, a) => save.pets[id] && a.indexOf(id) === n);
   Object.keys(save.pets).forEach((id) => { if (save.petOrder.indexOf(id) < 0) save.petOrder.push(id); });
   // 过了送宠物的那一关、手里却没有那只（0.9.8 以前铜雀是第 3 关才送）：补上，不然后面要打铁石的关没有宠物永远过不了
@@ -5760,25 +5760,26 @@ const at = (arr, lv) => arr[Math.min(arr.length, Math.max(1, lv)) - 1];
 // 每升一级只变一样（打得多 / 攒得快 / 5 级长大 / 10 级绝招）；没有「开局带能量」（Cc 11-27「B 轮流两样」）
 // 绿龟只涨表盘、一颗水珠永远转 1 块，5 级学翻面、10 级学变形（Cc 段 1 定，替换细设计里龟那一行）
 const SKILL = {
-  n: { tongque: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], baozhu: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], modou: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], shizi: [1, 1, 1, 1, 1, 2, 2, 3, 3, 3], lvgui: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
-  ring: { tongque: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], baozhu: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], modou: [9, 8, 7, 7, 7, 6, 6, 5, 4, 4], shizi: [10, 9, 8, 7, 7, 7, 6, 6, 5, 5], lvgui: [10, 9, 8, 7, 7, 6, 5, 4, 3, 3] },
-  kind: { tongque: 'peck', baozhu: 'gnaw', modou: 'silk', shizi: 'fire', lvgui: 'turn' },
+  n: { tongque: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], baozhu: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], modou: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], huli: [1, 1, 1, 1, 1, 2, 2, 3, 3, 3], lvgui: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
+  ring: { tongque: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], baozhu: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], modou: [9, 8, 7, 7, 7, 6, 6, 5, 4, 4], huli: [10, 9, 8, 7, 7, 7, 6, 6, 5, 5], lvgui: [10, 9, 8, 7, 7, 6, 5, 4, 3, 3] },
+  kind: { tongque: 'peck', baozhu: 'gnaw', modou: 'silk', huli: 'fire', lvgui: 'turn' },
   intro: 1, // 登场关 / 升级后第一关（fastCharge）：开局只差几格就满
 };
 const EVO_LV = 5, ULT_LV = 10; // 5 级长大、10 级学绝招
 // 长大版映回小时候版
-const BASE_OF = { jinchique: 'tongque', baozhuwang: 'baozhu', hudie: 'modou', qilin: 'shizi', dagui: 'lvgui' };
+const BASE_OF = { jinchique: 'tongque', dapeng: 'tongque', baozhuwang: 'baozhu', dilong: 'baozhu', canjian: 'modou', hudie: 'modou', sanweihu: 'huli', jiuweihu: 'huli', dagui: 'lvgui', xuanwu: 'lvgui' };
 const baseId = (id) => BASE_OF[id] || id;
 const skillKind = (id) => SKILL.kind[baseId(id)];
 const skillN = (id, lv) => at(SKILL.n[baseId(id)], lv);
 const ringOf = (id, lv) => at(SKILL.ring[baseId(id)], lv);
-// 五只宠物，每只「小时候」「长大」两个样子（编号不动，只改名字；规则 10）
+// 五只宠物，每只三个样子：1 级小时候 → 5 级长大 → 10 级完全体（11-28 Cc 定 A 新阵容，全量设计第 207 条；长大要像宝可梦那样有质变）
+// 编号是内部用的，不改老编号，只改名字；规则（本事、升级表）一点不变
 const PETS = {
-  tongque: { name: '铜雀', color: 0, evo: 'jinchique', evoLv: EVO_LV }, jinchique: { name: '金凤凰', color: 0 },
-  baozhu: { name: '爆竹鼠', color: 1, evo: 'baozhuwang', evoLv: EVO_LV }, baozhuwang: { name: '鼠王', color: 1 },
-  modou: { name: '墨斗蚕', color: 2, evo: 'hudie', evoLv: EVO_LV }, hudie: { name: '蝴蝶', color: 2 },
-  shizi: { name: '小狮子', color: 5, evo: 'qilin', evoLv: EVO_LV }, qilin: { name: '麒麟', color: 5 },
-  lvgui: { name: '绿龟', color: 6, evo: 'dagui', evoLv: EVO_LV }, dagui: { name: '大龟', color: 6 },
+  tongque: { name: '小铜雀', color: 0, evo: 'jinchique', evoLv: EVO_LV }, jinchique: { name: '铜隼', color: 0, evo: 'dapeng', evoLv: ULT_LV }, dapeng: { name: '金翅大鹏', color: 0 }, // 金：啄
+  baozhu: { name: '小穿山甲', color: 1, evo: 'baozhuwang', evoLv: EVO_LV }, baozhuwang: { name: '穿山甲', color: 1, evo: 'dilong', evoLv: ULT_LV }, dilong: { name: '地龙', color: 1 }, // 土：啃一口、把土堆挖塌
+  modou: { name: '蚕宝宝', color: 2, evo: 'canjian', evoLv: EVO_LV }, canjian: { name: '蚕茧', color: 2, evo: 'hudie', evoLv: ULT_LV }, hudie: { name: '蝴蝶', color: 2 }, // 木：吐丝补空格
+  huli: { name: '一尾狐', color: 5, evo: 'sanweihu', evoLv: EVO_LV }, sanweihu: { name: '三尾狐', color: 5, evo: 'jiuweihu', evoLv: ULT_LV }, jiuweihu: { name: '九尾狐', color: 5 }, // 火：狐火烫墨怪（女性）
+  lvgui: { name: '小龟', color: 6, evo: 'dagui', evoLv: EVO_LV }, dagui: { name: '灵龟', color: 6, evo: 'xuanwu', evoLv: ULT_LV }, xuanwu: { name: '玄武', color: 6 }, // 水：转手上的块
 };
 // 升到下一级变的是哪一样（段 1 附录 D 丁；给升级演示 R-087 和 T107 用）：'n' 打得多 / 'ring' 攒得快 / 'evo' 5 级长大 / 'ult' 10 级绝招；满级返回 ''
 function petGain(id, lv) {
@@ -5794,7 +5795,7 @@ function petGain(id, lv) {
 function bestPetFor(st) {
   let metal = 0, dirt = 0;
   st.board.forEach((row) => row.split('').forEach((ch) => { if (ch === 'Z') metal++; else if (ch === 'D') dirt++; }));
-  const out = [{ id: 'tongque', n: metal }, { id: 'baozhu', n: dirt }, { id: 'modou', n: 0 }, { id: 'qilin', n: 0 }].sort((x, y) => y.n - x.n);
+  const out = [{ id: 'tongque', n: metal }, { id: 'baozhu', n: dirt }, { id: 'modou', n: 0 }, { id: 'sanweihu', n: 0 }].sort((x, y) => y.n - x.n);
   return out[0].n > 0 ? out : [];
 }
 // 技能块：每只宠物都是这个 1 格的模子

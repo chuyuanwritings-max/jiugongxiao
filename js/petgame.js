@@ -108,6 +108,15 @@ function gnawPiece(p, j) {
   const mud = p.mud === undefined || p.mud === j ? undefined : p.mud > j ? p.mud - 1 : p.mud;
   return { id: p.id + '~', cat: p.cat, cells, h: Math.max(...cells.map((x) => x[0])) + 1, w: Math.max(...cells.map((x) => x[1])) + 1, gnawed: (p.gnawed || 0) + 1, mud, mudded: p.mudded };
 }
+// 段 1 规则 8：绿龟改手上那块的样子、不改格数。rot = 顺时针几个四分之一圈，flip = 左右镜像（先翻再转）；格子顺序不变，所以泥、小爆竹跟着走
+function turnPiece(p, rot, flip) {
+  let cells = p.cells.map(([r, c]) => [r, c]), h = p.h, w = p.w;
+  if (flip) cells = cells.map(([r, c]) => [r, w - 1 - c]);
+  for (let i = 0; i < rot; i++) { cells = cells.map(([r, c]) => [c, h - 1 - r]); const t = h; h = w; w = t; }
+  return Object.assign({}, p, { id: p.id + (flip ? 'f' : '') + (rot ? 'r' + rot : ''), cells, h, w });
+}
+const shapeKey = (cells) => cells.map(([r, c]) => r + ',' + c).sort().join(' ');
+const orientKeys = (p) => { const out = new Set(); for (const f of [false, true]) for (let r = 0; r < 4; r++) out.add(shapeKey(turnPiece(p, r, f).cells)); return out; };
 const near4 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; if (r > 0) out.push(k - 9); if (r < 8) out.push(k + 9); if (c > 0) out.push(k - 1); if (c < 8) out.push(k + 1); return out; };
 // 铜雀的同一类：metal 金属 / ink 墨块 / block 普通块（你放的、旧块、泥巴格）；别的啄不到
 const peckKindOf = (v, col) => (v === CELL.METAL ? 'metal' : v === CELL.BLOCK ? (col === -2 ? 'ink' : 'block') : null);
@@ -132,6 +141,7 @@ function createPetGame(opts) {
     team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: st.fastCharge ? ringOf(p.id, p.lv || 1) - SKILL.intro : 0 })), // 段 1 规则 9：不带开局能量，只有登场关 / 升级后第一关差 1 格
     bigHp: 0, bigCells: [], boss: null, skillUses: 0,
     mon: new Array(81).fill(null), // 墨怪的种类和状态
+    silkHp: new Array(81).fill(0), // 蝴蝶 10 级的丝：2 = 新丝（消一次变旧丝）、1 = 旧丝（再消一次才没）
     monStats: { moss: 0 }, // 这一关墨怪干了几回（测试和以后的统计用）
     playStats: { clearMoves: 0, dry: 0, maxDry: 0, bossByPlayer: 0, units: 0, firstClear: 0, firstGoal: 0, goalsByPet: 0, goalsByPlayer: 0 }, // 0.9.6 记录器：第几手第一次消 / 第一次碰到目标、目标谁完成的； // 手感统计：几手有消、最长几手没消、头目的心谁打掉的
     caught: 0, petActsTotal: {},
@@ -328,7 +338,7 @@ function createPetGame(opts) {
     const nBox = [3, 2, 1][Math.min(2, g.revivesUsed - 1)];
     const boxes = [...Array(9).keys()].map((bx) => ({ bx, n: UNITS[18 + bx].filter((k) => b[k] === CELL.BLOCK).length })).sort((x, y) => y.n - x.n || x.bx - y.bx).slice(0, nBox).filter((x) => x.n > 0).map((x) => x.bx);
     const cells = [];
-    boxes.forEach((bx) => UNITS[18 + bx].forEach((k) => { if (b[k] === CELL.BLOCK) { b[k] = 0; g.color[k] = 0; cells.push(k); } }));
+    boxes.forEach((bx) => UNITS[18 + bx].forEach((k) => { if (b[k] === CELL.BLOCK) { b[k] = 0; g.color[k] = 0; g.silkHp[k] = 0; cells.push(k); } }));
     for (let i = 0; i < 3; i++) {
       let q = null;
       for (let t = 0; t < 30 && !q; t++) { const c = core.PIECES[SMALL[Math.floor(g.rand() * SMALL.length)]]; if (core.anyPlacement(b, c)) q = c; }
@@ -366,6 +376,8 @@ function createPetGame(opts) {
         if (byPet) g.playStats.goalsByPet++; else g.playStats.goalsByPlayer++;
         if ('monster' in g.got) g.got.monster++; g.caught++; ev.collected.push({ k, what: 'monster', t: g.mon[k] ? g.mon[k].t : 'ink' }); g.mon[k] = null;
       }
+      if (v === CELL.BLOCK && g.silkHp[k] > 1) { g.silkHp[k] = 1; (ev.oldSilk = ev.oldSilk || []).push(k); continue; } // 段 1 规则 6 蝴蝶 10 级「丝不断」：消一次变旧丝，仍算有块
+      g.silkHp[k] = 0;
       b[k] = 0;
     }
   }
@@ -388,24 +400,30 @@ function createPetGame(opts) {
     ev.openClear = { units, cells };
     return units;
   }
-  // 一次「消掉」（一排 / 一个大格）碰到了头目：掉一颗心
-  function unitTouches(b, cells, ev) {
-    if (g.boss && g.bigHp > 0 && cells.some((k) => b[k] === CELL.BOSS)) {
-      const dmg = 1; // 0.9.17：「破绽」砍掉，新头目挨一下就是 1 颗心
-      g.bigHp = Math.max(0, g.bigHp - dmg);
-      g.boss.hp = g.bigHp;
-      ev.bigHits.push({ k: g.bigCells[0], dmg });
-      g.playStats.bossByPlayer += dmg; g.playStats.goalsByPlayer += dmg;
-      // 0.9.17（Fable 新版第一章第 10 关）：每挨 st.bossEvery 下跳一次，跳之前落脚的 2×2 先亮红框一手
-      if (st.bossEvery && g.bigHp > 0) { g.boss.hits = (g.boss.hits || 0) + dmg; if (g.boss.hits >= st.bossEvery && g.boss.jumpTo === null) { g.boss.hits = 0; planBossJump(b, ev); } }
-      if (g.bigHp === 0) {
-        g.bigCells.forEach((k) => (b[k] = 0));
-        g.caught += 3;
-        if ('boss' in g.got) g.got.boss = 1;
-        ev.collected.push({ k: g.bigCells[0], what: 'boss' });
-        ev.bossDown = true;
-      }
+  // 头目掉心。o.hit：算它「挨了一下」（凑够 bossEvery 下跳）；o.byPet：宠物打的（小狮子的火）
+  function bossHit(b, ev, dmg, o) {
+    o = o || {};
+    g.bigHp = Math.max(0, g.bigHp - dmg);
+    g.boss.hp = g.bigHp;
+    ev.bigHits.push({ k: g.bigCells[0], dmg, fire: !!o.fire });
+    if (o.byPet || o.fire) g.playStats.goalsByPet += dmg; else { g.playStats.bossByPlayer += dmg; g.playStats.goalsByPlayer += dmg; }
+    // 0.9.17（Fable 新版第一章第 10 关）：每挨 st.bossEvery 下跳一次，跳之前落脚的 2×2 先亮红框一手
+    if (o.hit && st.bossEvery && g.bigHp > 0) { g.boss.hits = (g.boss.hits || 0) + dmg; if (g.boss.hits >= st.bossEvery && g.boss.jumpTo === null) { g.boss.hits = 0; planBossJump(b, ev); } }
+    if (g.bigHp === 0) {
+      g.bigCells.forEach((k) => (b[k] = 0));
+      g.caught += 3;
+      if ('boss' in g.got) g.got.boss = 1;
+      ev.collected.push({ k: g.bigCells[0], what: 'boss' });
+      ev.bossDown = true;
     }
+  }
+  // 一次「消掉」（一排 / 一个大格）碰到了头目：掉一颗心（0.9.17：「破绽」砍掉，挨一下就是 1 颗心）
+  function unitTouches(b, cells, ev) {
+    if (!(g.boss && g.bigHp > 0 && cells.some((k) => b[k] === CELL.BOSS))) return;
+    bossHit(b, ev, 1, { hit: true });
+    // 段 1 规则 7 麒麟 10 级「引火」：身上还有火苗时凑满穿过它的排，火再多烫 1 颗、火苗回满（这一手不再另烧，取弱的读法）
+    const bs = g.boss;
+    if (bs.fire > 0 && bs.fireUlt && g.bigHp > 0) { bossHit(b, ev, 1, { fire: true }); bs.fire = bs.fireMax; bs.fireLit = g.moves; (ev.bossFire = ev.bossFire || []).push({ left: bs.fire, lit: true }); }
   }
   function planBossJump(b, ev) {
     const opts2 = [];
@@ -445,6 +463,18 @@ function createPetGame(opts) {
         if ((pc.lv || 1) >= EVO_LV) q.blast8 = true; // 鼠王啃过的块：小爆竹炸周围一圈 8 格
         return { hand: tg.hand, cell: tg.cell, to: q, cells: [], fill: [] };
       }
+      if (kind === 'turn') {
+        // 段 1 规则 8 + Cc 段 1 定：1 级转、5 级大龟还能翻面、10 级还能变形（同样格数的另一种形状，3 种里选）。转了等于没转的不算用掉
+        const lv = pc.lv || 1;
+        if (tg.shape !== undefined) {
+          if (lv < ULT_LV) return null;
+          const id = g.turnShapes(tg.hand)[tg.shape]; if (!id) return null;
+          return { hand: tg.hand, to: Object.assign({}, core.PIECES[id], { id: id + '*', gnawed: p.gnawed, blast8: p.blast8, mudded: p.mudded }), shape: id, cells: [], fill: [] }; // 变形：泥没了，小爆竹还在
+        }
+        const flip = !!tg.flip && lv >= EVO_LV, rot = tg.rot === undefined ? (tg.flip ? 0 : 1) : ((tg.rot % 4) + 4) % 4;
+        const q = turnPiece(p, rot, flip);
+        return shapeKey(q.cells) === shapeKey(p.cells) ? null : { hand: tg.hand, to: q, rot, flip, cells: [], fill: [] };
+      }
       return null;
     }
     const k = tg.r * 9 + tg.c;
@@ -460,14 +490,41 @@ function createPetGame(opts) {
     if (kind === 'silk') {
       if (b[k] !== CELL.EMPTY) return null;
       const fill = UNITS[tg.r].filter((x) => b[x] === CELL.EMPTY).sort((x, y) => Math.abs((x % 9) - tg.c) - Math.abs((y % 9) - tg.c) || x - y).slice(0, n);
-      return { cells: [], fill };
+      // 段 1 规则 6：蚕的丝不抓怪（Cc 11-27：除了火，宠物的技能不抓怪）。5 级蝴蝶：挨着的墨怪里缠住一只（最快要动的那只），头目缠不住
+      let tie = null;
+      if ((pc.lv || 1) >= EVO_LV) { const adj = [...new Set(fill.flatMap(near4))].filter((x) => b[x] === CELL.MON && g.mon[x]).sort((x, y) => urgency(x) - urgency(y) || x - y); tie = adj.length ? adj[0] : null; }
+      return { cells: [], fill, tie };
+    }
+    if (kind === 'fire') {
+      // 段 1 规则 7：火珠拖到墨怪或头目身上，烫一下；5 级麒麟朝 dir（u d l r）喷一道火，穿过空格和怪，撞到方块、障碍、头目或盘边为止
+      if (b[k] !== CELL.MON && b[k] !== CELL.BOSS) return null;
+      const cells = [k], line = [];
+      const step = { u: [-1, 0], d: [1, 0], l: [0, -1], r: [0, 1] }[(pc.lv || 1) >= EVO_LV ? tg.dir : null];
+      if (step && b[k] !== CELL.BOSS) {
+        let r = tg.r + step[0], c = tg.c + step[1];
+        while (r >= 0 && r < 9 && c >= 0 && c < 9) {
+          const x = r * 9 + c; line.push(x);
+          if (b[x] === CELL.MON) cells.push(x); else if (b[x] === CELL.BOSS) { cells.push(x); break; } else if (b[x] !== CELL.EMPTY) break;
+          r += step[0]; c += step[1];
+        }
+      }
+      return { cells, fill: [], dir: step ? tg.dir : null, line };
     }
     return null; // 鼠只啃手上的块、不上盘（0.9.20 Cc 定）；火的新写法在段 1 第 9 步
   }
   const peckKind = (b, x) => peckKindOf(b[x], g.color[x]);
+  // 墨怪还剩几手要动（蝴蝶缠「最快要动的那只」；粘墨怪看吐泥的倒数）
+  const urgency = (x) => { const m = g.mon[x]; if (!m) return 99; if (m.t === 'sticky') return m.cd; if (m.step !== undefined && m.step !== null) return 0; return m.walk === undefined ? st.crawl || 99 : m.walk; };
+  // 大龟 10 级变形的 3 种候选（同样格数、不是这块转 / 翻得到的样子）；每块技能块对每一块只抽一次
+  g.turnShapes = (j) => {
+    const pc = g.hand[3], p = g.hand[j]; if (!pc || !p) return [];
+    pc.shapes = pc.shapes || {}; const key = j + ':' + p.id;
+    if (!pc.shapes[key]) { const own = orientKeys(p), pool = core.IDS.filter((id) => core.PIECES[id].cells.length === p.cells.length && !own.has(shapeKey(core.PIECES[id].cells))), out = []; while (pool.length && out.length < 3) out.push(pool.splice(Math.floor(g.rand() * pool.length), 1)[0]); pc.shapes[key] = out; }
+    return pc.shapes[key];
+  };
   g.skillPlan = (tg) => (g.hand[3] ? skillPlan(g.hand[3], tg) : null);
   // 0.9.25 修卡死：手上只剩斜着连的块（哪一格都啃不了）时，原来还当技能能用、不判堵死，玩家就卡在那儿（全流程测试「手生」那趟查出来的）
-  g.skillUsable = () => { const pc = g.hand[3]; if (!pc) return false; if (pc.kind === 'gnaw') return [0, 1, 2].some((j) => g.hand[j] && g.hand[j].cells.some((_, n) => !!g.skillPlan({ hand: j, cell: n }))); return pc.kind === 'silk' ? g.board.some((v) => v === CELL.EMPTY) : pc.kind === 'peck' ? g.board.some(PECKABLE) : false; };
+  g.skillUsable = () => { const pc = g.hand[3]; if (!pc) return false; if (pc.kind === 'gnaw') return [0, 1, 2].some((j) => g.hand[j] && g.hand[j].cells.some((_, n) => !!g.skillPlan({ hand: j, cell: n }))); if (pc.kind === 'turn') return [0, 1, 2].some((j) => g.hand[j] && ([1, 2, 3].some((rot) => !!g.skillPlan({ hand: j, rot })) || !!g.skillPlan({ hand: j, rot: 0, flip: true }))); return pc.kind === 'silk' ? g.board.some((v) => v === CELL.EMPTY) : pc.kind === 'peck' ? g.board.some(PECKABLE) : pc.kind === 'fire' ? g.board.some((v) => v === CELL.MON || v === CELL.BOSS) : false; }; // 防卡死：火要盘上有怪，龟要手上有一块转了会变样
   // 小土块也算「手上的块」：盘上有空格就不算堵死（附录 C）
   const baseStuck = g.stuck;
   g.stuck = () => baseStuck() && !(g.crumb && g.board.some((v) => v === CELL.EMPTY));
@@ -484,12 +541,25 @@ function createPetGame(opts) {
     if (plan.hand !== undefined) {
       g.skillStats.hand++;
       g.hand[plan.hand] = plan.to;
+      if (p.kind === 'turn') ev.turn = { hand: plan.hand, to: plan.to, rot: plan.rot, flip: plan.flip, shape: plan.shape };
       // 10 级绝招：啃下来的那一格变成一块 1 格小土块，放在宠物格旁边的小位子（最多存 1 块，有了就不留）
       if (p.kind === 'gnaw' && (p.lv || 1) >= ULT_LV && !g.crumb) { g.crumb = { id: 'crumb', cat: 0, cells: [[0, 0]], h: 1, w: 1, crumb: true }; ev.crumb = true; }
       if (!g.hand.slice(0, 3).some(Boolean)) { const keep = g.hand[3]; g.deal(); g.hand[3] = keep; } // 啃光了最后一块：发新的
+    } else if (p.kind === 'fire') {
+      // 小狮子：烫走小墨怪 / 墨苔怪（不留墨）/ 粘墨怪，算你抓的；头目掉 1 心、算挨了一下；6 级起头目身上留火苗（n − 1 个），每放一块再烧 1 心，头目一跳就灭
+      g.skillStats.board++;
+      ev.burn = [];
+      let bossDone = false;
+      for (const x of cells) {
+        if (b[x] === CELL.MON) { clearCells(b, [x], ev, true, p.pet); ev.burn.push({ k: x, what: 'caught' }); }
+        else if (b[x] === CELL.BOSS && !bossDone && g.bigHp > 0) {
+          bossDone = true; bossHit(b, ev, 1, { hit: true, byPet: true }); ev.burn.push({ k: x, what: 'heart' });
+          if (p.n > 1 && g.bigHp > 0) { g.boss.fire = g.boss.fireMax = p.n - 1; g.boss.fireUlt = (p.lv || 1) >= ULT_LV; (ev.bossFire = ev.bossFire || []).push({ left: g.boss.fire }); }
+        }
+      }
     } else {
       g.skillStats.board++;
-      if (plan.fill.length) plan.fill.forEach((k) => { b[k] = 1; g.color[k] = PETS[p.pet].color; });
+      if (plan.fill.length) plan.fill.forEach((k) => { b[k] = 1; g.color[k] = PETS[p.pet].color; if ((p.lv || 1) >= ULT_LV) g.silkHp[k] = 2; });
       const before = cells.filter((k) => CLEARABLE(b[k]));
       clearCells(b, cells, ev, true, p.pet);
       ev.cells = before.filter((k) => b[k] === CELL.EMPTY);
@@ -505,6 +575,7 @@ function createPetGame(opts) {
           ev.units = units; ev.cells = ev.cells.concat(was.filter((k) => b[k] === CELL.EMPTY)); g.skillStats.silkUnits = (g.skillStats.silkUnits || 0) + units.length;
         }
       }
+      if (plan.tie !== null && plan.tie !== undefined && b[plan.tie] === CELL.MON && g.mon[plan.tie]) { g.mon[plan.tie].tied = 3; ev.tied = { k: plan.tie, n: 3 }; } // 蝴蝶：缠住 3 手（已经缠着的回到 3，不叠）
     }
     g.skillCaught = (g.skillCaught || 0) + g.caught - c0; g.skillStats.caught += g.caught - c0;
     p.uses--; g.skillStats.uses++;
@@ -549,7 +620,7 @@ function createPetGame(opts) {
     const claimed = new Set();
     for (let k = 0; k < 81; k++) {
       const m = g.mon[k];
-      if (b[k] !== CELL.MON || !m || m.moved === g.moves || (m.t !== 'ink' && m.t !== 'moss')) continue;
+      if (b[k] !== CELL.MON || !m || m.moved === g.moves || m.held === g.moves || (m.t !== 'ink' && m.t !== 'moss')) continue;
       if (m.step !== undefined && m.step !== null) {
         const t = m.step; m.step = null; m.walk = st.crawl;
         if (b[t] === CELL.EMPTY && !claimed.has(t)) {
@@ -593,7 +664,7 @@ function createPetGame(opts) {
   }
   // 每放一块，泥怪的倒数减 1（画面读 m.cd / boss.mudCd：3、2、1 越抖越快，归段 4）
   function mudCount() {
-    g.mon.forEach((m) => { if (m && m.t === 'sticky' && !(m.tied > 0)) m.cd--; });
+    g.mon.forEach((m) => { if (m && m.t === 'sticky' && m.held !== g.moves) m.cd--; }); // 缠住时倒数停住
     if (g.boss && g.bigHp > 0 && st.bossMud) g.boss.mudCd--;
   }
   // 结算顺序第 10 步：手空了先发新三块，再吐泥（不然每次卡着最后一块放，就永远躲得掉）
@@ -610,6 +681,8 @@ function createPetGame(opts) {
     if (bs && g.bigHp > 0 && st.bossMud && bs.mudCd <= 0) { spitMud(g.bigCells[0], ev); bs.mudCd = BOSS_MUD_CD; }
   }
   function monsterTurn(b, ev) {
+    // 被蝴蝶的丝缠住的：这一手不爬、不吐泥、不留墨，一手掉一圈丝
+    g.mon.forEach((m) => { if (m && m.tied > 0) { m.tied--; m.held = g.moves; } });
     crawlTurn(b, ev);
     mudCount();
     // 头目
@@ -627,7 +700,10 @@ function createPetGame(opts) {
       g.bigCells = cells;
       ev.bossJump = { from: old[0], to: tl, crushed };
       bs.jumpTo = null;
+      if (bs.fire > 0) { bs.fire = 0; (ev.bossFire = ev.bossFire || []).push({ left: 0, out: true }); } // 头目一跳，火就灭
     }
+    // 身上还有火苗：每放一块烧 1 心（段 1 规则 7，6 级起）
+    if (bs.fire > 0 && bs.fireLit !== g.moves && g.bigHp > 0) { bs.fire--; bossHit(b, ev, 1, { fire: true }); (ev.bossFire = ev.bossFire || []).push({ left: bs.fire }); }
   }
 
   // 目标「抓光盘上的墨怪」：all = 1 表示抓光了；monLeft = 还剩几只（顶上显示这个数）

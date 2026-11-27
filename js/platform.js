@@ -174,7 +174,9 @@ function unlockAudio() {
 // 0.9.18：同一瞬间好几声，消除和弦最优先，别的自动变小（声音包装方案第四节第 6 条）
 const BIG = /^(clear\d|sweep|dong|line|box|combo\d|five)$/;
 let lastBigAt = -9;
+const soundLog = []; // 0.9.23 最近放过的 40 个声音（测试用：查连消声对不对）
 function sound(name, volume) {
+  soundLog.push(name); if (soundLog.length > 40) soundLog.shift();
   if (muted) return;
   const a = audioCtx();
   if (!a) return;
@@ -421,4 +423,4 @@ function onVisibility(cb) {
     }
   } catch (e) { /* 拿不到就不记 */ }
 }
-module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm, openPrivacy };
+module.exports = { soundLog, onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm, openPrivacy };

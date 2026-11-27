@@ -2345,7 +2345,7 @@ const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
 const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
-const VERSION = '0.9.22'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.23'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -4659,6 +4659,10 @@ const INTRO = {
 };
 // 关卡卡片：第几关、难不难、目标、谁出战（被点名换人时演一下换人），点「开打」进关
 // 0.9.21 冲锋关进关前（关牌、选宠物）：整个画面跟着鼓点一下一下抖、发热（Cc 11-27：「效果能不能做的不一样一点？让整个界面都在抖动」）
+// 0.9.23 冲锋关泛的光照这一章的五行颜色（Cc 11-27：「那局爽关犯的光，是跟那一关五行颜色相匹配的光」；先说了「泛蓝光……不要泛红光」）
+// 五行本色：金白、土黄、木青、火赤、水蓝（第一章金、第二章土、第三章木、第四章火、第五章水）
+const RUSH_GLOW = [[236, 242, 255], [240, 184, 64], [96, 214, 140], [255, 106, 58], [74, 140, 255], [190, 150, 255]];
+const rushGlow = (i) => RUSH_GLOW[Math.min(RUSH_GLOW.length - 1, Math.floor((i === undefined ? petIdx : i) / 10))];
 function rushPhase() { const b = P.bgm.beat ? P.bgm.beat() : null; return b === null ? (clock * 2.4) % 1 : b; } // 跟着音乐的拍子；没音乐就照冲锋关的速度自己打拍
 function rushCardBeat() {
   if (mode !== 'start' || !startCard || !PLV[startCard.i] || !PLV[startCard.i].rush) return null;
@@ -5436,7 +5440,7 @@ function drawPetCaption() {
 }
 function juicePets(ev, colorsBefore) {
   // 先照原来的一套：放下弹一下、消掉的碎掉、收到的东西飞向顶上
-  if (!ev.skill || (ev.units && ev.units.length)) juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? (ev.units.length >= 2 ? 3 : 2) : 1), collected: ev.collected }); // 技能块（0.9.12）只有吐丝补满了一排才走消除那一套，别的由 juicePK 演
+  if (!ev.skill || (ev.units && ev.units.length)) juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, rushStep: ev.rushStep, beat: ev.beat || (ev.skill ? (ev.units.length >= 2 ? 3 : 2) : 1), collected: ev.collected }); // 技能块（0.9.12）只有吐丝补满了一排才走消除那一套，别的由 juicePK 演
   if (ev.fire) { const c = boxCenter(ev.fire.box); rings.push({ t: clock, big: false, at: c }); flash = 0.25; P.sound('combo3', 0.7); shake = Math.max(shake, 8); }
   // 0.9.17：墨怪爬（从原来那格蹦过去）、冒脚印、金属被啄碎、冲锋关补格子
   (ev.crawl || []).forEach((e, j) => { monSlide[e.to] = { from: e.from, t: clock + 0.12 + j * 0.05 }; timeline.push({ t: clock + 0.12 + j * 0.05, fn: () => P.sound('skitter', 0.4) }); });
@@ -6713,11 +6717,11 @@ function frameBody() {
     drawTutorial();
     ctx.restore();
     if (flash > 0) { ctx.fillStyle = 'rgba(255,244,214,' + flash + ')'; ctx.fillRect(0, 0, W, H); }
-    { const rp = rushPlayPulse(); if (rp > 0.01) { ctx.fillStyle = 'rgba(255,110,50,' + (0.03 + rp * 0.09) + ')'; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = 'rgba(255,190,90,' + (rp * 0.55) + ')'; ctx.lineWidth = 6 + rp * 6; ctx.strokeRect(L.bx - 6, L.by - 6, L.board + 12, L.board + 12); } }
+    { const rp = rushPlayPulse(); if (rp > 0.01) { const gc = rushGlow().join(','); ctx.fillStyle = 'rgba(' + gc + ',' + (0.05 + rp * 0.15) + ')'; ctx.fillRect(0, 0, W, H); ctx.save(); ctx.shadowColor = 'rgba(' + gc + ',0.95)'; ctx.shadowBlur = 10 + rp * 30; ctx.strokeStyle = 'rgba(' + gc + ',' + (0.35 + rp * 0.65) + ')'; ctx.lineWidth = 5 + rp * 7; ctx.strokeRect(L.bx - 7, L.by - 7, L.board + 14, L.board + 14); ctx.restore(); } }
     if (mode === 'over' || mode === 'share' || (mode === 'ad' && result)) drawOver();
     if (mode === 'share') { buttons = buttons.filter((b) => b.id === 'map'); drawShareCard(); }
     if (mode === 'intro') drawIntro();
-    if (mode === 'start') { const rb = rushCardBeat(); ctx.save(); if (rb) ctx.translate(rb.x * 1.4, rb.y * 1.4); drawStartCard(); ctx.restore(); if (rb) { ctx.fillStyle = 'rgba(255,96,40,' + (0.06 + rb.pulse * 0.1) + ')'; ctx.fillRect(0, 0, W, H); } }
+    if (mode === 'start') { const rb = rushCardBeat(); ctx.save(); if (rb) ctx.translate(rb.x * 1.4, rb.y * 1.4); drawStartCard(); ctx.restore(); if (rb) { ctx.fillStyle = 'rgba(' + rushGlow(startCard.i).join(',') + ',' + (0.06 + rb.pulse * 0.1) + ')'; ctx.fillRect(0, 0, W, H); } }
     if (mode === 'play' && g.siege) { drawCaption(); drawSiegeChoose(); }
     if ((mode === 'play' || mode === 'intro') && g.pets) drawPetCaption();
     if (g.pets) drawInfo();
@@ -6775,7 +6779,7 @@ P.exposeForTest('__game', {
   reset() { save = freshSave(); persist(); newStage(0); },
   setSave(o) { Object.assign(save, o); persist(); },
   get cutPlaying() { return CUT.playing; }, levelUpPet, danToLevel, get CUT() { return CUT; }, playCuts, skipCuts() { while (mode === 'cut') { CUT.skip(); if (!CUT.playing) endCuts(); } if (mode === 'start' && startCard) { mode = startCard.next || 'play'; startCard = null; } },
-  newGame, endGame, core, T, fixSave, get capsule() { return CAP; }, get uiTop() { return uiTop(); }, get drag() { return drag; },
+  soundLog: () => P.soundLog.slice(), clearSoundLog: () => { P.soundLog.length = 0; }, rushPulse: () => rushPlayPulse(), newGame, endGame, core, T, fixSave, get capsule() { return CAP; }, get uiTop() { return uiTop(); }, get drag() { return drag; },
 });
 
 });
@@ -9733,7 +9737,9 @@ function unlockAudio() {
 // 0.9.18：同一瞬间好几声，消除和弦最优先，别的自动变小（声音包装方案第四节第 6 条）
 const BIG = /^(clear\d|sweep|dong|line|box|combo\d|five)$/;
 let lastBigAt = -9;
+const soundLog = []; // 0.9.23 最近放过的 40 个声音（测试用：查连消声对不对）
 function sound(name, volume) {
+  soundLog.push(name); if (soundLog.length > 40) soundLog.shift();
   if (muted) return;
   const a = audioCtx();
   if (!a) return;
@@ -9980,7 +9986,7 @@ function onVisibility(cb) {
     }
   } catch (e) { /* 拿不到就不记 */ }
 }
-module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm, openPrivacy };
+module.exports = { soundLog, onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm, openPrivacy };
 
 });
 __def("js/sfx.js", function (module, exports, require) {

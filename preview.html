@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '3d26a08f860d';</script>
+<script>window.__BUILD = '5c0eebbd21d9';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -6527,16 +6527,37 @@ function createPetGame(opts) {
   return g;
 }
 
-// ---------- 机器人 ----------
+// ---------- 机器人（段 1 附录 F：会开障碍、会造爆竹块、别往死格里放；加分的数都没校准，黄灯）----------
+// 这只宠物开得了哪种障碍
+const opensOf = (g) => { const ids = g.team.map((pt) => baseId(pt.id)); return { metal: ids.includes('tongque'), dirt: ids.includes('baozhu') }; };
+const deadFor = (g, v) => { const o = opensOf(g); return (v === CELL.METAL && !o.metal) || (v === CELL.DIRT && !o.dirt); };
+// 一格的排、列、大格全被开不了的障碍堵着：放进去就再也消不掉（规则 11 的「死格」）
+function isDeadCell(g, b, k) {
+  const r = Math.floor(k / 9), c = k % 9;
+  return [r, 9 + c, 18 + core.boxOf(r, c)].every((u) => UNITS[u].some((x) => deadFor(g, b[x])));
+}
+// 照规则放一块（爆竹先炸开挨着的土堆，再判满），不改原盘面
+function simPlace(board, p, r, c) {
+  const b = board.slice(), placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc);
+  placed.forEach((k) => { b[k] = CELL.BLOCK; });
+  const opened = p.gnawed ? [...new Set(placed.flatMap(p.blast8 ? near8 : near4))].filter((x) => b[x] === CELL.DIRT) : [];
+  opened.forEach((x) => { b[x] = CELL.BLOCK; });
+  const units = []; for (let u = 0; u < 27; u++) if (core.unitFull(b, u)) units.push(u);
+  const set = new Set(); units.forEach((u) => UNITS[u].forEach((x) => set.add(x)));
+  const cells = [...set].filter((x) => b[x] !== CELL.BOSS);
+  cells.forEach((x) => { b[x] = CELL.EMPTY; });
+  return { board: b, units, cells, opened, placed };
+}
 function bestMove(g, skill) {
   const left = core.goalLeft(g);
   const cands = [];
-  g.hand.forEach((p, i) => {
+  const hand = g.hand.slice(0, 3).map((p, i) => ({ p, i })).concat(g.crumb ? [{ p: g.crumb, i: 4 }] : []);
+  hand.forEach(({ p, i }) => {
     if (!p || p.special) return;
     for (const [r, c] of core.placements(g.board, p)) {
-      const res = core.placeAndClear(g.board, p, r, c);
+      const res = simPlace(g.board, p, r, c);
       const board = res.board;
-      let v = res.units.length * 9 + core.evalBoard(res.board);
+      let v = res.units.length * 9 + core.evalBoard(res.board) + res.opened.length * 40; // 炸开一个土堆 +40
       // 墨怪：抓到加分；墨苔怪会留墨，值得先打
       for (const k of res.cells) {
         const m = g.board[k] === CELL.MON && g.mon[k];
@@ -6545,7 +6566,9 @@ function bestMove(g, skill) {
         if (m.t === 'moss') v += 6;
       }
       if (left.boss > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === CELL.BOSS))) v += 16;
-      const ci = g.handColor[i];
+      // 别往死格里放：每格 −2.5
+      v -= res.placed.filter((k) => board[k] && isDeadCell(g, board, k)).length * 2.5;
+      const ci = i === 4 ? PETS.baozhu.color : g.handColor[i];
       if (g.team.some((pt) => PETS[pt.id].color === ci)) v += res.cells.length ? 2 : 0;
       cands.push({ i, r, c, v, board });
     }
@@ -6554,7 +6577,7 @@ function bestMove(g, skill) {
   cands.sort((a, b) => b.v - a.v);
   const top = cands.slice(0, 10);
   for (const m of top) {
-    const rest = g.hand.filter((p, k) => p && !p.special && k !== m.i);
+    const rest = g.hand.filter((p, k) => p && !p.special && k !== m.i && k < 3);
     if (rest.length && !core.solvable(m.board, rest)) m.v -= 100;
   }
   top.sort((a, b) => b.v - a.v);
@@ -6565,6 +6588,7 @@ function bestMove(g, skill) {
 function simulate(opts) {
   const o = Object.assign({ skill: 1, secPerMove: () => 3 }, opts);
   const g = createPetGame(o);
+  if (o.openMode) g.openMode = o.openMode; // 'asap' 见了就开（默认）/ 'fill' 先补满再开（段 3 量两种打法差几手）
   let guard = 0;
   while (!g.over && guard++ < 400) {
     if (useSkillIfGood(g)) continue;
@@ -6586,8 +6610,11 @@ function skillBest(g) {
   let best = null; const seen = new Set();
   const offer = (tg, v) => { if (!best || v > best.v) best = Object.assign({ v }, tg); };
   const scoreHit = (cells, nb) => { // 技能块碰到的格子值多少；顺手把「打完以后的盘面」写进 nb
-    let v = 0;
-    for (const x of cells) if (b[x] === CELL.BLOCK) { v += g.color[x] === -2 ? 2 : 0.5; nb[x] = 0; }
+    let v = 0; const opened = [];
+    for (const x of cells) { if (b[x] === CELL.BLOCK) { v += g.color[x] === -2 ? 2 : 0.5; nb[x] = 0; } else if (b[x] === CELL.METAL) { nb[x] = CELL.BLOCK; opened.push(x); } }
+    // 附录 F：啄开金属 100 分（先补满再开：只在当场满了才给）；当场满了每处再 +80、排里每只怪 +60
+    const full = []; for (let u = 0; u < 27; u++) if (UNITS[u].some((x) => opened.includes(x)) && core.unitFull(nb, u)) full.push(u);
+    if (opened.length) v += (g.openMode === 'fill' && !full.length ? 5 : 100) + full.length * 80 + full.reduce((a, u) => a + UNITS[u].filter((x) => b[x] === CELL.MON).length * 60, 0);
     return v;
   };
   const unstick = (nb, hs) => (!fitsNow && (hs || hands).some((h) => core.anyPlacement(nb, h)) ? 1000 : 0);
@@ -6618,7 +6645,33 @@ function skillBest(g) {
       offer({ r: Math.floor(k / 9), c: k % 9 }, v + unstick(nb));
     }
   }
+  if (p.kind === 'fire') {
+    // 狮：烫「最难抓的那只」（它的排、列、大格里最空的）；头目关优先烫头目
+    const empt = (k) => { const r = Math.floor(k / 9), c = k % 9; return [r, 9 + c, 18 + core.boxOf(r, c)].reduce((a, u) => a + UNITS[u].filter((x) => !b[x]).length, 0); };
+    for (let k = 0; k < 81; k++) for (const dir of (p.lv || 1) >= EVO_LV ? ['u', 'd', 'l', 'r'] : [null]) {
+      const tg = { r: Math.floor(k / 9), c: k % 9, dir }; const pl = g.skillPlan(tg); if (!pl) continue;
+      let v = 0; for (const x of pl.cells) v += b[x] === CELL.BOSS ? (left.boss > 0 ? 150 : 0) : (wantMon ? 100 : 20) + empt(x);
+      offer(tg, v);
+    }
+  }
+  if (p.kind === 'turn') {
+    // 龟：手上有放不下的块、转了就放得下 → 1000；转了能多消一处 → 100
+    const most = (q) => { let m = 0; for (const [r, c] of core.placements(b, q)) m = Math.max(m, simPlace(b, q, r, c).units.length); return m; };
+    [0, 1, 2].forEach((i) => {
+      const h = g.hand[i]; if (!h) return;
+      const fit0 = core.anyPlacement(b, h), m0 = fit0 ? most(h) : 0;
+      for (const tg of [{ rot: 1 }, { rot: 2 }, { rot: 3 }, { rot: 0, flip: true }, { rot: 1, flip: true }, { rot: 2, flip: true }, { rot: 3, flip: true }, { shape: 0 }, { shape: 1 }, { shape: 2 }]) {
+        const pl = g.skillPlan(Object.assign({ hand: i }, tg)); if (!pl) continue;
+        const fit1 = core.anyPlacement(b, pl.to);
+        const v = !fit0 && fit1 ? (fitsNow ? 40 : 1000) : fit1 && most(pl.to) > m0 ? 100 : 0;
+        if (v > 0 || !fitsNow) offer(Object.assign({ hand: i }, tg), v || 1); // 三块都放不下：转一下也算一种走法（转完还放不下就照常判输）
+      }
+    });
+  }
   if (p.kind === 'gnaw') {
+    // 附录 F 造爆竹块：盘上有土堆、手上没有带爆竹的块时，啃一口，要求啃完有一个贴着土堆的放法
+    const dirt = b.some((v) => v === CELL.DIRT) && !hands.some((h) => h.gnawed);
+    const nearDirt = (q) => core.placements(b, q).some(([r, c]) => q.cells.some(([dr, dc]) => (q.blast8 ? near8 : near4)((r + dr) * 9 + c + dc).some((x) => b[x] === CELL.DIRT)));
     // 啃手上的块：① 它本来放不下，啃一口就放得下；② 啃一口以后正好能消掉一排带墨怪的（原来那块办不到）
     const catchOf = (q) => { let m = 0; for (const [r, c] of core.placements(b, q)) { const res = core.placeAndClear(b, q, r, c); if (!res.units.length) continue; let n = 0; for (const x of res.cells) if (b[x] === CELL.MON) n++; for (const u of res.units) if (UNITS[u].some((x) => b[x] === CELL.BOSS && left.boss > 0)) n++; if (n + res.units.length * 0.1 > m) m = n + res.units.length * 0.1; } return m; };
     [0, 1, 2].forEach((i) => {
@@ -6629,6 +6682,7 @@ function skillBest(g) {
         let v = 0;
         if (!q) v = fitsNow ? 0 : 20; // 整块吃掉
         else { const fit1 = core.anyPlacement(b, q); if (!fit0 && fit1) v = fitsNow ? 40 : 1000; else if (!fit0) v = fitsNow ? 0 : 10 - q.cells.length; if (fit1 && (wantMon || left.boss > 0)) { const c1 = catchOf(q); if (c1 >= 1 && c1 > c0 + 0.5) v += 100 + (c1 - c0) * 10; } }
+        if (dirt && q && nearDirt(q)) v = Math.max(v, 100 + q.cells.length);
         if (v > 0) offer({ hand: i, cell: j }, v);
       });
     });

@@ -395,7 +395,10 @@ function createPetGame(opts) {
     for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
       const tl = r * 9 + c, cells = [tl, tl + 1, tl + 9, tl + 10];
       if (cells.some((k) => g.bigCells.includes(k))) continue;
-      if (cells.every((k) => b[k] === CELL.EMPTY || b[k] === CELL.BLOCK)) opts2.push(tl);
+      if (!cells.every((k) => b[k] === CELL.EMPTY || b[k] === CELL.BLOCK)) continue;
+      // 段 1 规则 1：穿过它的 2 排 2 列里至少留 2 条没被障碍堵的，不然你打不到它（都不行就这次不跳）
+      const open = [r, r + 1, 9 + c, 9 + c + 1].filter((u) => !UNITS[u].some((k) => core.BLOCKS_CLEAR(b[k]))).length;
+      if (open >= 2) opts2.push(tl);
     }
     if (opts2.length) { g.boss.jumpTo = opts2[Math.floor(g.rand() * opts2.length)]; g.boss.planMove = g.moves; ev.bossJumpPlan = g.boss.jumpTo; }
   }

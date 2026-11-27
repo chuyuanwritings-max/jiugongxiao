@@ -122,4 +122,17 @@ t('T13', () => {
   ok(ev && ev.units.includes(4) && g.bigHp === hp - 1, 'T13 炸开那个土堆：整排消，头目掉 1 颗心');
 });
 
+// ---------- 头目跳位：不跳到「穿过它的 2 排 2 列全被堵」的地方 ----------
+t('T15', () => {
+  // 盘上只有两处能落脚：A（左上角 2×2，它的第 0、1 排和第 0、1 列都有金属）、B（第 6–7 排、第 6–7 列，没被堵）
+  const rows = { 0: '..mmZmmmm', 1: '..mmZmmmm', 2: 'mmmmmmmmm', 3: 'mmmKKmmm.', 4: 'ZZmKKmmmm', 5: 'mmmmmmmmZ', 6: 'mmmmmm..m', 7: 'mmmmmm..m', 8: 'mmmmmmmmm' };
+  let toB = 0, n = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const g = mk(rows, { hand: ['1'], seed, stage: { bossEvery: 1, bigHp: 9 } });
+    g.place(0, 3, 8); n++; // 凑满第 3 排：头目挨一下，该跳了
+    if (g.boss.jumpTo === K(6, 6)) toB++;
+  }
+  ok(toB === n, 'T15 头目该跳了、一处四条线全被堵：' + n + ' 局都跳到另一处（' + toB + ' 局）');
+});
+
 done();

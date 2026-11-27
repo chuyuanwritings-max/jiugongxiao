@@ -2,3 +2,4 @@ test/shots/
 node_modules/
 .DS_Store
 生图/Midjourney/**/*.png
+test/baseline/shots/

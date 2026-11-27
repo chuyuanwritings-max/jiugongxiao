@@ -1,0 +1,452 @@
+{
+ "1/11/-": {
+  "hash": "62d4c6a521f11984",
+  "moves": 7,
+  "won": true
+ },
+ "1/22/-": {
+  "hash": "f5060a070d57d6dc",
+  "moves": 10,
+  "won": true
+ },
+ "1/33/-": {
+  "hash": "0d1c3f696f9e56e8",
+  "moves": 10,
+  "won": true
+ },
+ "2/11/tongque": {
+  "hash": "58e624f1452fa2e9",
+  "moves": 10,
+  "won": true
+ },
+ "2/22/tongque": {
+  "hash": "8628d15848fd6189",
+  "moves": 26,
+  "won": true
+ },
+ "2/33/tongque": {
+  "hash": "9b10b316e76426f1",
+  "moves": 7,
+  "won": true
+ },
+ "3/11/tongque": {
+  "hash": "6e4b7ef642e3c3dd",
+  "moves": 23,
+  "won": true
+ },
+ "3/22/tongque": {
+  "hash": "fa8084592bb688e3",
+  "moves": 31,
+  "won": true
+ },
+ "3/33/tongque": {
+  "hash": "055a27069a0f6f31",
+  "moves": 34,
+  "won": true
+ },
+ "4/11/tongque": {
+  "hash": "9320f76bfddc8450",
+  "moves": 40,
+  "won": true
+ },
+ "4/22/tongque": {
+  "hash": "a2657b5ddde0f95a",
+  "moves": 31,
+  "won": true
+ },
+ "4/33/tongque": {
+  "hash": "53e36462160d9d0e",
+  "moves": 21,
+  "won": true
+ },
+ "5/11/tongque": {
+  "hash": "3cfb615269b8c4ae",
+  "moves": 64,
+  "won": true
+ },
+ "5/22/tongque": {
+  "hash": "bab0fe941f8469da",
+  "moves": 61,
+  "won": true
+ },
+ "5/33/tongque": {
+  "hash": "2209b234836dc314",
+  "moves": 130,
+  "won": true
+ },
+ "6/11/tongque": {
+  "hash": "fd406096447a1cf8",
+  "moves": 46,
+  "won": true
+ },
+ "6/22/tongque": {
+  "hash": "55db749bd4317dd4",
+  "moves": 19,
+  "won": true
+ },
+ "6/33/tongque": {
+  "hash": "81c8229807e3debe",
+  "moves": 49,
+  "won": true
+ },
+ "7/11/tongque": {
+  "hash": "63dfe5189099c711",
+  "moves": 24,
+  "won": true
+ },
+ "7/22/tongque": {
+  "hash": "84aa1e1fcd49d27e",
+  "moves": 24,
+  "won": true
+ },
+ "7/33/tongque": {
+  "hash": "78b68f5a39973d17",
+  "moves": 24,
+  "won": true
+ },
+ "8/11/tongque": {
+  "hash": "7efa8856668e114d",
+  "moves": 23,
+  "won": true
+ },
+ "8/22/tongque": {
+  "hash": "b4da37be17a3731b",
+  "moves": 25,
+  "won": true
+ },
+ "8/33/tongque": {
+  "hash": "88dae4cc013ebb97",
+  "moves": 25,
+  "won": true
+ },
+ "9/11/tongque": {
+  "hash": "52af68812f1672e0",
+  "moves": 85,
+  "won": true
+ },
+ "9/22/tongque": {
+  "hash": "760ddc81f5a30895",
+  "moves": 57,
+  "won": true
+ },
+ "9/33/tongque": {
+  "hash": "be5b04145993b86c",
+  "moves": 58,
+  "won": true
+ },
+ "10/11/tongque": {
+  "hash": "dbf5765451199e14",
+  "moves": 61,
+  "won": true
+ },
+ "10/22/tongque": {
+  "hash": "57b2e28c9b321411",
+  "moves": 67,
+  "won": true
+ },
+ "10/33/tongque": {
+  "hash": "58a922c9bf5e591d",
+  "moves": 55,
+  "won": true
+ },
+ "11/11/tongque": {
+  "hash": "f893d752a2b4e592",
+  "moves": 46,
+  "won": true
+ },
+ "11/11/baozhu": {
+  "hash": "e2a3f731aa752077",
+  "moves": 55,
+  "won": true
+ },
+ "11/22/tongque": {
+  "hash": "78d38792d6ac17b9",
+  "moves": 13,
+  "won": true
+ },
+ "11/22/baozhu": {
+  "hash": "d123c37c3e1d4bbe",
+  "moves": 13,
+  "won": true
+ },
+ "11/33/tongque": {
+  "hash": "8b0bc8aae68e2035",
+  "moves": 57,
+  "won": true
+ },
+ "11/33/baozhu": {
+  "hash": "a8f3d6268931d3d5",
+  "moves": 52,
+  "won": true
+ },
+ "12/11/tongque": {
+  "hash": "ee64290f7740f51f",
+  "moves": 23,
+  "won": true
+ },
+ "12/11/baozhu": {
+  "hash": "fd2fee23d0080281",
+  "moves": 37,
+  "won": true
+ },
+ "12/22/tongque": {
+  "hash": "cdc63a79af2bc115",
+  "moves": 10,
+  "won": true
+ },
+ "12/22/baozhu": {
+  "hash": "52f70716f5771e7f",
+  "moves": 32,
+  "won": true
+ },
+ "12/33/tongque": {
+  "hash": "5df212e6143c4a3a",
+  "moves": 76,
+  "won": true
+ },
+ "12/33/baozhu": {
+  "hash": "e59c036fbc3f9945",
+  "moves": 73,
+  "won": true
+ },
+ "13/11/tongque": {
+  "hash": "dff4fd9ab9858050",
+  "moves": 40,
+  "won": true
+ },
+ "13/11/baozhu": {
+  "hash": "406ccf22b7dbe850",
+  "moves": 116,
+  "won": true
+ },
+ "13/22/tongque": {
+  "hash": "d54740d167456822",
+  "moves": 82,
+  "won": true
+ },
+ "13/22/baozhu": {
+  "hash": "2db90f3ad29d4c80",
+  "moves": 52,
+  "won": true
+ },
+ "13/33/tongque": {
+  "hash": "5bfc0efff3befebf",
+  "moves": 56,
+  "won": true
+ },
+ "13/33/baozhu": {
+  "hash": "f560f94e579dc5de",
+  "moves": 34,
+  "won": true
+ },
+ "14/11/tongque": {
+  "hash": "50da4657c744cd89",
+  "moves": 30,
+  "won": true
+ },
+ "14/11/baozhu": {
+  "hash": "c79077944f281b45",
+  "moves": 25,
+  "won": true
+ },
+ "14/22/tongque": {
+  "hash": "366882b04649ca64",
+  "moves": 24,
+  "won": true
+ },
+ "14/22/baozhu": {
+  "hash": "366882b04649ca64",
+  "moves": 24,
+  "won": true
+ },
+ "14/33/tongque": {
+  "hash": "caf44325bd837e77",
+  "moves": 15,
+  "won": true
+ },
+ "14/33/baozhu": {
+  "hash": "ce0d79a74a9348f1",
+  "moves": 22,
+  "won": true
+ },
+ "15/11/tongque": {
+  "hash": "d73b38528a9f8b46",
+  "moves": 75,
+  "won": true
+ },
+ "15/11/baozhu": {
+  "hash": "53aa3492f3db76a0",
+  "moves": 32,
+  "won": true
+ },
+ "15/22/tongque": {
+  "hash": "4c86eda080b7f573",
+  "moves": 67,
+  "won": true
+ },
+ "15/22/baozhu": {
+  "hash": "2a2e6a3d17c30131",
+  "moves": 66,
+  "won": true
+ },
+ "15/33/tongque": {
+  "hash": "4aa15f88324afc49",
+  "moves": 64,
+  "won": true
+ },
+ "15/33/baozhu": {
+  "hash": "8e323f5969d8d7ae",
+  "moves": 56,
+  "won": true
+ },
+ "16/11/tongque": {
+  "hash": "4543f4ab61df5059",
+  "moves": 27,
+  "won": true
+ },
+ "16/11/baozhu": {
+  "hash": "26cb4fa89b3aa66d",
+  "moves": 27,
+  "won": true
+ },
+ "16/22/tongque": {
+  "hash": "547cbb899bacb0ab",
+  "moves": 27,
+  "won": true
+ },
+ "16/22/baozhu": {
+  "hash": "547cbb899bacb0ab",
+  "moves": 27,
+  "won": true
+ },
+ "16/33/tongque": {
+  "hash": "657f72519384b539",
+  "moves": 27,
+  "won": true
+ },
+ "16/33/baozhu": {
+  "hash": "8354e641867af535",
+  "moves": 27,
+  "won": true
+ },
+ "17/11/tongque": {
+  "hash": "b64ecb62a80712f9",
+  "moves": 131,
+  "won": true
+ },
+ "17/11/baozhu": {
+  "hash": "a0d0b42fd5fd53cd",
+  "moves": 40,
+  "won": true
+ },
+ "17/22/tongque": {
+  "hash": "d3edeeeacdc02212",
+  "moves": 44,
+  "won": true
+ },
+ "17/22/baozhu": {
+  "hash": "303da83531de0fe5",
+  "moves": 55,
+  "won": true
+ },
+ "17/33/tongque": {
+  "hash": "7f834587873e0741",
+  "moves": 13,
+  "won": true
+ },
+ "17/33/baozhu": {
+  "hash": "6c7411091d8c5c72",
+  "moves": 46,
+  "won": true
+ },
+ "18/11/tongque": {
+  "hash": "06e4a5c18c669ee5",
+  "moves": 61,
+  "won": true
+ },
+ "18/11/baozhu": {
+  "hash": "b4b3c636644fd84c",
+  "moves": 70,
+  "won": true
+ },
+ "18/22/tongque": {
+  "hash": "f0fce8f8df9f23ae",
+  "moves": 58,
+  "won": true
+ },
+ "18/22/baozhu": {
+  "hash": "39b6ca7089c91bb7",
+  "moves": 33,
+  "won": true
+ },
+ "18/33/tongque": {
+  "hash": "fe29a56a9c294047",
+  "moves": 58,
+  "won": true
+ },
+ "18/33/baozhu": {
+  "hash": "00a0dcc12bba7e8d",
+  "moves": 49,
+  "won": true
+ },
+ "19/11/tongque": {
+  "hash": "2fef61a77aa5d152",
+  "moves": 103,
+  "won": true
+ },
+ "19/11/baozhu": {
+  "hash": "fca15757c146aba9",
+  "moves": 73,
+  "won": true
+ },
+ "19/22/tongque": {
+  "hash": "03117c2790714718",
+  "moves": 75,
+  "won": true
+ },
+ "19/22/baozhu": {
+  "hash": "4128047cca13df57",
+  "moves": 68,
+  "won": true
+ },
+ "19/33/tongque": {
+  "hash": "23044d8a13c5d462",
+  "moves": 70,
+  "won": true
+ },
+ "19/33/baozhu": {
+  "hash": "2e5f7a20d571af70",
+  "moves": 61,
+  "won": true
+ },
+ "20/11/tongque": {
+  "hash": "d4e6c380d6e1afae",
+  "moves": 94,
+  "won": true
+ },
+ "20/11/baozhu": {
+  "hash": "4867863036b7bacc",
+  "moves": 64,
+  "won": true
+ },
+ "20/22/tongque": {
+  "hash": "90bc6bb35321959c",
+  "moves": 58,
+  "won": true
+ },
+ "20/22/baozhu": {
+  "hash": "820428e3bda8cb03",
+  "moves": 54,
+  "won": true
+ },
+ "20/33/tongque": {
+  "hash": "3ac6c4c657e799b0",
+  "moves": 79,
+  "won": true
+ },
+ "20/33/baozhu": {
+  "hash": "f7640ed3b1507bf9",
+  "moves": 87,
+  "won": true
+ }
+}

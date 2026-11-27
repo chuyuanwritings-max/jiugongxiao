@@ -2,9 +2,8 @@
 const P = require('./platform.js');
 const C = require('./config.js');
 const core = require('./core.js');
+const CELL = core.CELL;
 const art = require('./art.js');
-const LV = require('./levels.js');
-const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
@@ -153,30 +152,6 @@ let chipPos = {}; // 顶上每个计数的位置（每帧画的时候记下）
 let chipPop = {}; // 计数收到东西时弹一下
 let introKind = null; // 正在看的说明卡
 
-function newGame(endless) {
-  const single = !endless && save.buySingle && save.coins >= C.singleCost;
-  if (single) { save.coins -= C.singleCost; save.buySingle = false; }
-  paintIdx = save.wins % art.COUNT;
-  g = core.createGame({
-    level: endless ? 2 : Math.min(save.wins, 4), endless, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0,
-    items: save.items, single, tutorial: !save.tutorialDone,
-  });
-  stageIdx = -1;
-  startCommon();
-}
-// 旅程第 i 关
-function newStage(i) {
-  stageIdx = Math.max(0, Math.min(LV.length - 1, i));
-  const st = LV[stageIdx];
-  g = core.createGame({
-    stage: st, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0,
-    tutorial: stageIdx === 0 && !save.tutorialDone,
-  });
-  startCommon();
-  // 预放的块是旧木色
-  for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = -1;
-  if (st.intro && !save.introSeen[st.intro]) { introKind = st.intro; mode = 'intro'; }
-}
 function startCommon() {
   setLayout(g && g.siege ? 'siege' : g && g.pets && g.team.length ? 'pets' : 'normal'); // 没带宠物的关不留宠物栏
   g.seedColor = save.plays % 7;
@@ -612,7 +587,7 @@ function drawMonHints() {
   };
   const bubbles = (k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 3; n++) { const a = (clock * 1.5 + n / 3) % 1; ctx.globalAlpha = 1 - a; ctx.fillStyle = '#2f5a3c'; ctx.beginPath(); ctx.arc(x + (n - 1) * 8, y + 8 - a * 18, 4 + a * 5, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; };
   g.mon.forEach((m, k) => {
-    if (!m || g.board[k] !== 3) return;
+    if (!m || g.board[k] !== CELL.MON) return;
     if (m.step !== undefined && m.step !== null && !monSlide[k]) footprints(k, m.step); // 0.9.17 会爬的墨怪：下一手要去的那格冒脚印
     if (m.t === 'eat' && m.tgt !== null) bite(m.tgt);
     if (m.t === 'moss' && m.tgt !== null) bubbles(m.tgt);
@@ -810,7 +785,7 @@ function onTouchBody(type, id, x, y, live) {
       if (g.board[k] >= 2) { showInfo({ k }); return; }
       if (info) { info = null; return; }
     }
-    if (mode === 'play' && !g.over && !(g.siege && (g.phase !== 'play' || siegeBusy())) && y > L.trayY - 20) {
+    if (mode === 'play' && !g.over && y > L.trayY - 20) {
       const i = slotAt(x);
       if (g.hand[i]) {
         drag = { slot: i, x, y, id, x0: x, y0: y };
@@ -851,7 +826,7 @@ function drop() {
     const colorsBefore = colorAt.slice();
     const pev = g.useSkill(tg);
     if (!pev) return;
-    for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
+    for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK) colorAt[k] = g.color[k];
     T.rec('k', pev.skill.pet, tg.hand !== undefined ? 'h' + tg.hand : tg.r, tg.hand !== undefined ? tg.cell : tg.c, pev.skill.cells.length + (pev.skill.fill || []).length, (pev.counter || []).length, (pev.petMiss || []).length);
     if (pev.rescue) T.rec('r', pev.rescue);
     if (pev.wave) T.rec('w', pev.wave.no, pev.wave.of);
@@ -878,19 +853,10 @@ function drop() {
     if (pev.rescue) T.rec('r', pev.rescue);
     if (pev.drain && pev.drain.length) T.rec('n', pev.drain.length);
     if (pev.wave) T.rec('w', pev.wave.no, pev.wave.of);
-    for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
+    for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK) colorAt[k] = g.color[k];
     if (!save.petTutDone) { save.petTutDone = true; save.tutorialDone = true; persist(); }
     if (pev.win && !g._settled) settlePet(); // 赢了马上记账，结算页等动画演完再出
     juicePets(pev, colorsBefore);
-    return;
-  }
-  if (g.siege) {
-    const colorsBefore = colorAt.slice();
-    p.cells.forEach(([dr, dc]) => (colorsBefore[(s.r + dr) * 9 + s.c + dc] = ci));
-    const sev = g.place(i, s.r, s.c);
-    if (!sev) return;
-    p.cells.forEach(([dr, dc]) => (colorAt[(s.r + dr) * 9 + s.c + dc] = ci));
-    juiceSiege(sev, colorsBefore);
     return;
   }
   const ev = g.place(i, s.r, s.c);
@@ -1000,36 +966,7 @@ function endGame() {
   haptic('heavy'); // 过关、输了都是大事
   stats.overs.push(P.now());
   drag = null;
-  if (g.siege) return endSiege();
-  if (g.pets) return endPet();
-  if (g.stage) {
-    // 旅程：过关 → 记进度、给金币；输 → 差一点就写还差几个
-    if (g.won) save.stage = Math.max(save.stage, stageIdx + 1);
-    coinsGot = Math.floor(g.score * C.coinPerScore) + (g.won ? C.coinStageWin : 0);
-    save.coins += coinsGot;
-    persist();
-    result = { won: g.won, reason: g.reason, near: g.nearMiss(), left: g.goalLeft(), doubled: false };
-    mode = 'over';
-    if (!g.won) { P.sound('lose', 0.6); say('堵住了'); }
-    return;
-  }
-  const lit = g.litCount();
-  if (!g.endless) g.lit.forEach((v, b) => v && (save.litEver[paintIdx][b] = true));
-  let unlocked = null;
-  if (g.won) {
-    save.won[paintIdx] = true;
-    save.wins++;
-    const it = ITEMS[save.wins - 1];
-    if (it && !save.items[it.id]) { save.items[it.id] = true; unlocked = it; }
-  }
-  coinsGot = Math.floor(g.score * C.coinPerScore) + (g.endless ? 0 : lit * C.coinPerBox) + (g.won ? C.coinWin : 0);
-  save.coins += coinsGot;
-  if (g.endless) save.bestEndless = Math.max(save.bestEndless, g.score);
-  else save.best = Math.max(save.best, g.score);
-  persist();
-  result = { won: g.won, reason: g.reason, lit, near: g.nearMiss(), unlocked, doubled: false };
-  mode = 'over';
-  if (!g.won) { P.sound('lose', 0.6); say(g.reason === 'time' ? '时辰到' : '堵住了'); }
+  return endPet(); // 0.9.25 旅程、经典拼画的结算拆掉了，只剩宠物关
 }
 function continueAfterAd(fn) {
   ad = { until: clock + C.adSec, done: fn };
@@ -1208,44 +1145,7 @@ function drawScoreStars(y) {
   if (burn < 1) { const gl = 4 + Math.sin(clock * 9) * 1.5; ctx.fillStyle = 'rgba(255,140,60,0.45)'; ctx.beginPath(); ctx.arc(bx1, by, gl + 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffcf6a'; ctx.beginPath(); ctx.arc(bx1, by, gl * 0.6, 0, Math.PI * 2); ctx.fill(); for (let w = 0; w < 3; w++) { const a = (clock * 0.7 + w / 3) % 1; ctx.globalAlpha = (1 - a) * 0.5; ctx.fillStyle = '#d8d0e0'; ctx.beginPath(); ctx.arc(bx1 + Math.sin(a * 6 + w) * 5, by - 6 - a * 22, 2 + a * 3, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; }
 }
 function drawHud() {
-  if (g.siege) return drawSiegeHud();
-  if (g.pets) return drawStageHud(); // 0.9.14：顶上只放过关条件，宠物住在右下角宠物格（Cc：「把宠物就放在右下角这一个地方就行了」）
-  if (g.stage) return drawStageHud();
-  const y = L.top;
-  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); else if (!g.over && g.moves > 0) logPlay(true); timeline = []; if (g.won && g.pets) { CUT.clear(); openCamp(); } else mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账；过了关一律回营地
-  // 分数
-  text(String(Math.round(displayScore)), 80, y + 18, 30, COL.text, 'left');
-  text('最高 ' + (g.endless ? save.bestEndless : save.best), 80, y + 46, 13, COL.dim, 'left', 'normal');
-  // 九宫小图：哪几宫亮了
-  if (!g.endless) {
-    const s = 12, mx = W / 2 - s * 1.5 - 2, my = y + 4;
-    for (let b = 0; b < 9; b++) {
-      const x = mx + (b % 3) * (s + 2), yy = my + Math.floor(b / 3) * (s + 2);
-      const la = litAnim.find((a) => a.b === b);
-      const pop = la ? 1 + Math.max(0, 0.6 - (clock - la.t)) : 1;
-      ctx.fillStyle = COL.ink;
-      ctx.fillRect(x - 1, yy - 1, s + 2, s + 2);
-      ctx.fillStyle = g.lit[b] ? (b === 4 ? COL.red : COL.brassLight) : COL.woodDark;
-      ctx.fillRect(x + (s - s * pop) / 2, yy + (s - s * pop) / 2, s * pop, s * pop);
-    }
-    text(art.PAINTINGS[paintIdx].name, W / 2, y + 54, 12, COL.dim, 'center', 'normal');
-  } else {
-    text('无尽', W / 2, y + 20, 18, COL.brassLight);
-  }
-  // 时间
-  if (!g.endless) {
-    const tl = Math.ceil(g.timeLeft);
-    const urgent = g.timeLeft <= 10;
-    const txt = Math.floor(tl / 60) + ':' + String(tl % 60).padStart(2, '0');
-    const sz = urgent ? 30 + Math.sin(clock * 12) * 3 : 28;
-    text(txt, W - 64, y + 20, sz, urgent ? COL.red : COL.text, 'right');
-    // 时间条
-    const bw = W - 36, frac = Math.min(1, g.timeLeft / g.timeLimit);
-    ctx.fillStyle = COL.ink; rr(18, L.by - 24, bw, 7, 3); ctx.fill();
-    ctx.fillStyle = urgent ? COL.red : COL.copper; rr(18, L.by - 24, Math.max(4, bw * frac), 7, 3); ctx.fill();
-  }
-  // 画册按钮
-  button('album', W - 52, y + 2, 40, 36, '册', { size: 18, bg: COL.copper, fn: () => openAlbum() });
+  return drawStageHud(); // 0.9.25 只剩宠物关（经典拼画的顶栏拆掉了）
 }
 function drawBoard(showGhost) {
   const { bx, by, cell, board: B } = L;
@@ -1349,11 +1249,11 @@ function drawBoard(showGhost) {
     const entS = ent < 1 ? 1 + 2.2 * Math.pow(ent - 1, 3) + 1.2 * Math.pow(ent - 1, 2) : 1; // 先冲过头一点再落定
     const sc = (pop ? 1 + 0.18 * (1 - (clock - pop.t) / 0.15) : 1) * entS;
     const s = cell * sc, x = cellX(k % 9) + (cell - s) / 2, y = cellY(Math.floor(k / 9)) + (cell - s) / 2;
-    if (g.board[k] === 6) { metalPlate(x, y, s, k); continue; } // 0.9.17 金属
-    if (g.board[k] === 7) { dirtMound(x, y, s, k); continue; } // 0.9.20 一堆土
-    if (g.board[k] === 8) { const ca = cellIn[k] !== undefined ? (clock - cellIn[k]) / 0.28 : 9; if (ca < 0) continue; if (ca < 1) { const e = 1 - Math.pow(1 - ca, 3), ss = cell * e; rushBrick(cellX(k % 9) + (cell - ss) / 2, cellY(Math.floor(k / 9)) + (cell - ss) / 2 - (1 - e) * cell * 0.6, ss); continue; } delete cellIn[k]; rushBrick(x, y, s); continue; } // 0.9.21 铜砖
+    if (g.board[k] === CELL.METAL) { metalPlate(x, y, s, k); continue; } // 0.9.17 金属
+    if (g.board[k] === CELL.DIRT) { dirtMound(x, y, s, k); continue; } // 0.9.20 一堆土
+    if (g.board[k] === CELL.BRICK) { const ca = cellIn[k] !== undefined ? (clock - cellIn[k]) / 0.28 : 9; if (ca < 0) continue; if (ca < 1) { const e = 1 - Math.pow(1 - ca, 3), ss = cell * e; rushBrick(cellX(k % 9) + (cell - ss) / 2, cellY(Math.floor(k / 9)) + (cell - ss) / 2 - (1 - e) * cell * 0.6, ss); continue; } delete cellIn[k]; rushBrick(x, y, s); continue; } // 0.9.21 铜砖
     if (cellIn[k] !== undefined) { const ca = (clock - cellIn[k]) / 0.28; if (ca < 0) continue; if (ca < 1) { const e = 1 - Math.pow(1 - ca, 3), ss = cell * e; block(cellX(k % 9) + (cell - ss) / 2, cellY(Math.floor(k / 9)) + (cell - ss) / 2 - (1 - e) * cell * 0.6, ss, 1, colorAt[k], false); continue; } delete cellIn[k]; } // 冲锋关补进来的格子：一格格弹进来
-    if (g.board[k] === 3) {
+    if (g.board[k] === CELL.MON) {
       const sl = monSlide[k]; if (sl) { const sa = (clock - sl.t) / 0.32; if (sa >= 1) delete monSlide[k]; else if (sa >= 0) { const e = sa * sa * (3 - 2 * sa), fx0 = cellX(sl.from % 9), fy0 = cellY(Math.floor(sl.from / 9)), hop = Math.sin(sa * Math.PI) * cell * 0.25; drawMon(g.mon && g.mon[k], k, fx0 + (x - fx0) * e + s / 2, fy0 + (y - fy0) * e + s / 2 - hop, s * 0.4); continue; } } // 爬：从原来那格蹦过去
       const ma = monIn[k] !== undefined ? (clock - monIn[k]) / 0.45 : 9;
       if (ma < 0) continue;
@@ -1364,8 +1264,8 @@ function drawBoard(showGhost) {
       const jx = amp ? Math.sin(clock * fq + k) * amp : 0, jy = rem === 1 ? -Math.abs(Math.sin(clock * fq * 0.5 + k)) * s * 0.06 : 0;
       drawMon(mm, k, x + s / 2 + jx, y + s / 2 + jy, s * 0.4); continue;
     }
-    if (g.board[k] === 5) { ironRock(x, y, s); if (rockCall) { ctx.strokeStyle = 'rgba(243,210,122,' + (0.55 + Math.sin(clock * 5) * 0.35) + ')'; ctx.lineWidth = 3; rr(x + 1.5, y + 1.5, s - 3, s - 3, 6); ctx.stroke(); } if (g.rockHp && g.rockHp[k] > 1) { ctx.strokeStyle = '#8a90a0'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, y + 4, s - 8, s - 8); ctx.strokeRect(x + 8, y + 8, s - 16, s - 16); } continue; }
-    if (g.board[k] === 4) {
+    if (g.board[k] === CELL.ROCK) { ironRock(x, y, s); if (rockCall) { ctx.strokeStyle = 'rgba(243,210,122,' + (0.55 + Math.sin(clock * 5) * 0.35) + ')'; ctx.lineWidth = 3; rr(x + 1.5, y + 1.5, s - 3, s - 3, 6); ctx.stroke(); } if (g.rockHp && g.rockHp[k] > 1) { ctx.strokeStyle = '#8a90a0'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, y + 4, s - 8, s - 8); ctx.strokeRect(x + 8, y + 8, s - 16, s - 16); } continue; }
+    if (g.board[k] === CELL.BOSS) {
       // 大墨怪：2×2 画成一只，只在左上那格画
       if (g.bigCells && g.bigCells[0] === k) {
         const hit = petFx.bossHit && clock - petFx.bossHit < 0.3 ? Math.sin(clock * 70) * 5 : 0;
@@ -1383,7 +1283,7 @@ function drawBoard(showGhost) {
       }
       continue;
     }
-    if (g.board[k] === 2) {
+    if (g.board[k] === CELL.CHEST) {
       // 机关匣：要被消的那一下亮一圈
       chest(x, y, s);
       if (willClear && willClear.has(k)) { ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.strokeRect(x + 2, y + 2, s - 4, s - 4); }
@@ -1396,7 +1296,7 @@ function drawBoard(showGhost) {
   if (ghost && ghost.p.special === 'skill' && willClear) {
     const pet = { act: PG.PETS[ghost.p.pet].kind, color: PG.PETS[ghost.p.pet].color };
     willClear.forEach((k) => {
-      if (g.board[k] !== 3 || !g.mon[k]) return;
+      if (g.board[k] !== CELL.MON || !g.mon[k]) return;
       const x = cellX(k % 9), y = cellY(Math.floor(k / 9));
       if (PG.isCounter(g.mon[k], pet)) { ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + cell / 2, y + cell / 2, cell * 0.46, 0, Math.PI * 2); ctx.stroke(); }
       else { ctx.strokeStyle = 'rgba(200,205,215,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + cell * 0.2, y + cell * 0.2); ctx.lineTo(x + cell * 0.8, y + cell * 0.8); ctx.moveTo(x + cell * 0.8, y + cell * 0.2); ctx.lineTo(x + cell * 0.2, y + cell * 0.8); ctx.stroke(); }
@@ -1415,13 +1315,12 @@ function drawBoard(showGhost) {
       if (ghost.hg && ghost.hg.cell === n) gem(cellX(ghost.s.c + dc), cellY(ghost.s.r + dr), cell, ghost.hg.kind, 0.6);
     });
   }
-  if (g.siege) drawSiegeBoard();
   if (g.pets) drawPetBoard();
   // 泡泡压在最上面（下面有块时也看得见）
   for (let k = 0; k < 81; k++) if (g.bubble[k]) bubbleAt(cellX(k % 9), cellY(Math.floor(k / 9)), cell, willClear && willClear.has(k) ? 0.5 + Math.sin(clock * 12) * 0.3 : 1);
   // 正在碎掉的块：变白、缩小
   // 0.9.21 冲锋关宠物修之前：那个空里先多画一块铜砖，铜雀一啄就碎
-  if (rushPatch && g.rush && clock < rushPatch.until && g.board[rushPatch.k] === 0) rushBrick(cellX(rushPatch.k % 9), cellY(Math.floor(rushPatch.k / 9)), cell);
+  if (rushPatch && g.rush && clock < rushPatch.until && g.board[rushPatch.k] === CELL.EMPTY) rushBrick(cellX(rushPatch.k % 9), cellY(Math.floor(rushPatch.k / 9)), cell);
   clearing.forEach((cl) => {
     const a = (clock - cl.t) / 0.3;
     if (a < 0) return;
@@ -1631,7 +1530,6 @@ function drawFoot() {
   }
 }
 function drawFx() {
-  if (g && g.siege) drawMissiles();
   if (g && g.pets) drawPetRuns();
   flyers.forEach((f) => {
     const a = (clock - f.t) / 0.55;
@@ -1721,7 +1619,7 @@ function snapState() {
   const out = { mode, ver: VERSION };
   if (g && g.pets) {
     const rows = [];
-    for (let r = 0; r < 9; r++) { let ln = ''; for (let c = 0; c < 9; c++) { const k = r * 9 + c, v = g.board[k]; ln += v === 0 ? '.' : v === 1 ? (g.color[k] === -2 ? '~' : String(g.color[k] >= 0 ? g.color[k] : '#')) : v === 2 ? 'X' : v === 3 ? ((g.mon[k] && MCH[g.mon[k].t]) || 'm') : v === 4 ? 'B' : v === 5 ? 'R' : '?'; } rows.push(ln); }
+    for (let r = 0; r < 9; r++) { let ln = ''; for (let c = 0; c < 9; c++) { const k = r * 9 + c, v = g.board[k]; ln += v === CELL.EMPTY ? '.' : v === CELL.BLOCK ? (g.color[k] === -2 ? '~' : String(g.color[k] >= 0 ? g.color[k] : '#')) : v === CELL.CHEST ? 'X' : v === CELL.MON ? ((g.mon[k] && MCH[g.mon[k].t]) || 'm') : v === CELL.BOSS ? 'B' : v === CELL.ROCK ? 'R' : '?'; } rows.push(ln); }
     Object.assign(out, { lv: g.stage && g.stage.evolve ? 'evo' : petIdx + 1, moves: g.moves, wave: (g.waveNo || 0) + '/' + (g.waveTotal || 0), over: !!g.over, board: rows,
       hand: g.hand.slice(0, 3).map((p) => (p ? p.id : '-')), skill: g.hand[3] ? g.hand[3].kind + (g.hand[3].uses > 1 ? '×' + g.hand[3].uses : '') : '-',
       pets: g.team.map((t) => t.id + ' ' + t.lv + '级 能量' + t.energy + '/' + PG.energyMax(g, t)), left: g.goalLeft(), next: g.previewN && g.nextHand ? g.nextHand.slice(0, g.previewN).map((p) => p.id) : undefined });
@@ -1760,14 +1658,14 @@ function drawInfo() {
   let pic = null, name = '', line = '', pets = [];
   const k = info.k;
   if (info.pet) { const pt = g.team.find((x) => x.id === info.pet) || { lv: 1 }; name = PG.PETS[info.pet].name + ' Lv' + pt.lv; line = PG.petDesc(info.pet, pt.lv); pic = () => petIcon(info.pet, 0, 0, 40, 0, 0); }
-  else if (k !== undefined && g.board[k] === 3 && g.mon[k]) { const m = g.mon[k], mi = MON_INFO[m.t] || MON_INFO.ink; name = mi[0]; line = mi[1]; pets = counterPets(m.t, m.col); pic = () => drawMon(m, -1, 0, 0, 18);
+  else if (k !== undefined && g.board[k] === CELL.MON && g.mon[k]) { const m = g.mon[k], mi = MON_INFO[m.t] || MON_INFO.ink; name = mi[0]; line = mi[1]; pets = counterPets(m.t, m.col); pic = () => drawMon(m, -1, 0, 0, 18);
     if (g.stage.crawl && (m.t === 'ink' || m.t === 'moss')) { pets = []; pic = () => introPic(m.t === 'moss' ? 'moss' : 'crawl', 70, 2, 150); }
     if (m.t === 'sticky') { pets = []; pic = () => introPic('sticky', 70, 2, 150); } } // 0.9.20 无字：气泡里放它干什么的小动画（会爬 / 爬过留墨）；第一章宠物不抓怪，不画「克它」
-  else if (k !== undefined && g.board[k] === 6) { pic = () => introPic('metal', 70, 2, 150); }
-  else if (k !== undefined && g.board[k] === 7) { pic = () => introPic('dirt', 70, 2, 150); }
-  else if (k !== undefined && g.board[k] === 5) { name = '铁石'; line = '消不掉，只有宠物的技能打得碎'; pets = ['baozhu', 'tongque', 'modou', 'qilin']; pic = () => ironRock(-18, -18, 36); }
-  else if (k !== undefined && g.board[k] === 2) { name = '机关匣'; line = '它那一排每消一次，收一个'; pic = () => chest(-18, -18, 36); }
-  else if (k !== undefined && g.board[k] === 4) { const bk = (g.boss && g.boss.kind) || 'spit'; name = (BOSS_CARD[bk] || {}).name || '大墨怪'; line = '它那一排每消一次，打掉一颗心'; const a = PG.RULES.bossWeak[bk]; pets = a ? [ACT_PET[a]] : []; pic = () => { inkMonster(0, 0, 18, true); bossDress(bk, 0, 0, 18); }; }
+  else if (k !== undefined && g.board[k] === CELL.METAL) { pic = () => introPic('metal', 70, 2, 150); }
+  else if (k !== undefined && g.board[k] === CELL.DIRT) { pic = () => introPic('dirt', 70, 2, 150); }
+  else if (k !== undefined && g.board[k] === CELL.ROCK) { name = '铁石'; line = '消不掉，只有宠物的技能打得碎'; pets = ['baozhu', 'tongque', 'modou', 'qilin']; pic = () => ironRock(-18, -18, 36); }
+  else if (k !== undefined && g.board[k] === CELL.CHEST) { name = '机关匣'; line = '它那一排每消一次，收一个'; pic = () => chest(-18, -18, 36); }
+  else if (k !== undefined && g.board[k] === CELL.BOSS) { const bk = (g.boss && g.boss.kind) || 'spit'; name = (BOSS_CARD[bk] || {}).name || '大墨怪'; line = '它那一排每消一次，打掉一颗心'; const a = PG.RULES.bossWeak[bk]; pets = a ? [ACT_PET[a]] : []; pic = () => { inkMonster(0, 0, 18, true); bossDress(bk, 0, 0, 18); }; }
   else if (info.goal === 'evolve') { pic = () => goalIcon('evolve', 0, 0, 30); name = '点亮正中间'; line = '用' + PG.COLOR_NAME[g.evColor] + '方块，一格格点亮'; } // 0.9.14 debug：进化关的目标原来冒的是「收宝石」
   else if (info.goal) { const key = info.goal; pic = () => goalIcon(key, 0, 0, 30); name = key === 'lines' ? '消掉几排' : key === 'monster' || key === 'all' ? '抓墨怪' : key === 'rock' ? '打碎铁石' : key === 'boss' ? '打倒头目' : key === 'box' ? '收机关匣' : '收宝石'; line = key === 'lines' ? '凑满一排、一竖或一个大格就消掉' : key === 'rock' ? '只有宠物的技能打得碎' : key === 'boss' ? '它那一排每消一次，掉一颗心' : '消掉它们那一排就收走'; }
   else { info = null; return; }
@@ -1818,134 +1716,8 @@ function drawTutorial() {
   ctx.globalAlpha = 1;
 }
 
-// 结算页：把画亮出来，没亮的宫闪着
-function drawPainting(idx, x, y, s, litArr, blink) {
-  ctx.imageSmoothingEnabled = paintSmooth[idx];
-  ctx.fillStyle = COL.ink; ctx.fillRect(x - 4, y - 4, s + 8, s + 8);
-  ctx.drawImage(paintCanvas[idx], 0, 0, paintSize[idx], paintSize[idx], x, y, s, s);
-  const q = s / 3;
-  for (let b = 0; b < 9; b++) {
-    if (litArr[b]) continue;
-    const bx = x + (b % 3) * q, by = y + Math.floor(b / 3) * q;
-    ctx.fillStyle = COL.shade + '0.86)'; ctx.fillRect(bx, by, q, q);
-    if (blink) {
-      ctx.strokeStyle = 'rgba(226,85,59,' + (0.5 + Math.sin(clock * 8) * 0.4) + ')';
-      ctx.lineWidth = 3; ctx.strokeRect(bx + 3, by + 3, q - 6, q - 6);
-    }
-  }
-  ctx.strokeStyle = COL.brass; ctx.lineWidth = 2;
-  for (let i = 1; i < 3; i++) {
-    ctx.beginPath(); ctx.moveTo(x + i * q, y); ctx.lineTo(x + i * q, y + s); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x, y + i * q); ctx.lineTo(x + s, y + i * q); ctx.stroke();
-  }
-}
-// 旅程的结算：过关卡 / 差一点卡
-function drawStageOver() {
-  const age = clock - overAt;
-  const r = result;
-  // 过关：先让「过关！」和飞的宝石放完，再出卡（照 Woodoku：变暗 → WELL DONE → 第 N 关完成）
-  const wait = r.won ? 1.1 : 0.35;
-  ctx.fillStyle = COL.shade + Math.min(r.won ? 0.55 : 0.85, age * 2) + ')';
-  ctx.fillRect(0, 0, W, H);
-  if (r.won && age < wait) {
-    // 「过关！」压在暗层上面，弹一下
-    const k = Math.min(1, age / 0.15);
-    const sz = Math.round(64 * (0.6 + k * 0.5 - Math.max(0, age - 0.15) * 0.1));
-    ctx.globalAlpha = age > wait - 0.15 ? Math.max(0, (wait - age) / 0.15) : 1;
-    text('过关！', W / 2, L.by + L.board * 0.45, sz, COL.brassLight);
-    ctx.globalAlpha = 1;
-  }
-  if (age < wait) return;
-  const pw = Math.min(W - 40, 340), ph = 330, px = (W - pw) / 2, py = Math.max(L.top + 40, (H - ph) / 2 - 40);
-  const k = Math.min(1, (age - wait) / 0.18);
-  ctx.save();
-  ctx.translate(W / 2, py + ph / 2); ctx.scale(0.85 + k * 0.15, 0.85 + k * 0.15); ctx.translate(-W / 2, -(py + ph / 2));
-  ctx.globalAlpha = k;
-  panel(px, py, pw, ph);
-  const keys = Object.keys(g.stage.goal);
-  if (r.won) {
-    text('第 ' + (stageIdx + 1) + ' 关完成！', W / 2, py + 44, 28, COL.brassLight);
-    // 目标图标排一排，都打勾
-    const cw = 64, x0 = W / 2 - (cw * keys.length) / 2;
-    keys.forEach((key, n) => {
-      const cx = x0 + cw * n + cw / 2, cy = py + 112;
-      if (key === 'score') text(String(g.score), cx, cy, 34, COL.text);
-      else { goalIcon(key, cx, cy - 4, 38 + Math.sin(clock * 4 + n) * 2); text('✓', cx + 20, cy + 18, 20, COL.jade); }
-    });
-  } else {
-    text(r.near ? '差一点！' : '堵住了', W / 2, py + 44, 30, r.near ? COL.red : COL.text);
-    // 还差几个
-    const cw = 70, x0 = W / 2 - (cw * keys.length) / 2;
-    text('还差', W / 2, py + 82, 15, COL.dim, 'center', 'normal');
-    keys.forEach((key, n) => {
-      const cx = x0 + cw * n + cw / 2, cy = py + 118;
-      if (key === 'score') text(r.left.score + ' 分', cx, cy, 26, COL.red);
-      else if (r.left[key] === 0) { goalIcon(key, cx - 12, cy, 26); text('✓', cx + 16, cy, 20, COL.jade); }
-      else { goalIcon(key, cx - 12, cy, 26); text(String(r.left[key]), cx + 16, cy, 22, COL.red); }
-    });
-  }
-  const cy = py + 168;
-  if (coinsGot > 0) text('+' + coinsGot * (r.doubled ? 2 : 1) + ' 金', W / 2 - 40, cy, 20, COL.brassLight);
-  if (coinsGot > 0 && !r.doubled && g.adsUsed < C.adMax) {
-    button('double', W / 2 + 18, cy - 17, 88, 34, '翻倍', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { save.coins += coinsGot; persist(); r.doubled = true; g.adsUsed++; mode = 'over'; P.sound('coin'); }) });
-  }
-  const bw = pw - 48, bx = px + 24;
-  if (r.won) {
-    const last = stageIdx >= LV.length - 1;
-    button('next', bx, py + 200, bw, 60, last ? '旅程走完了' : '下一关', { size: 26, fn: () => (last ? (mode = 'map') : newStage(stageIdx + 1)) });
-    button('tomap', bx, py + 270, bw, 40, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-  } else {
-    button('again', bx, py + 200, bw, 60, '再试一次', { size: 26, fn: () => newStage(stageIdx) });
-    if (g.adsUsed < C.adMax) {
-      button('revive', bx, py + 270, bw * 0.6 - 6, 44, '清空正中间', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { reviveFx(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
-      button('tomap', bx + bw * 0.6 + 6, py + 270, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-    } else button('tomap', bx, py + 270, bw, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-  }
-  ctx.restore();
-  ctx.globalAlpha = 1;
-}
 function drawOver() {
-  if (g.siege) return drawSiegeOver();
-  if (g.pets) return drawPetOver();
-  if (g.stage) return drawStageOver();
-  const age = clock - overAt;
-  ctx.fillStyle = COL.shade + Math.min(0.92, age * 3) + ')';
-  ctx.fillRect(0, 0, W, H);
-  if (age < 0.25) return; // 让碎块飞一下再出结算
-  const r = result;
-  const s = Math.min(W - 80, 260);
-  const px0 = (W - s) / 2, py0 = L.top + 70;
-  let title;
-  if (g.endless) title = g.score + ' 分';
-  else if (r.won) title = '拼成了！';
-  else if (9 - r.lit <= 2) title = '只差 ' + (9 - r.lit) + ' 块画！';
-  else title = '亮了 ' + r.lit + ' / 9 块画';
-  text(title, W / 2, L.top + 30, 34, r.won ? COL.brassLight : r.near ? COL.red : COL.text);
-  drawPainting(paintIdx, px0, py0, s, r.won ? new Array(9).fill(true) : g.lit, !r.won && !g.endless);
-  let y = py0 + s + 30;
-  text((g.endless ? '' : g.score + ' 分  ·  ') + '最高 ' + (g.endless ? save.bestEndless : save.best), W / 2, y, 18, COL.text, 'center', 'normal');
-  y += 30;
-  text('+' + coinsGot * (r.doubled ? 2 : 1) + ' 金', W / 2 - 40, y, 20, COL.brassLight);
-  if (!r.doubled && g.adsUsed < C.adMax) {
-    button('double', W / 2 + 20, y - 17, 92, 34, '翻倍', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { save.coins += coinsGot; persist(); r.doubled = true; g.adsUsed++; mode = 'over'; P.sound('coin'); }) });
-  }
-  y += 34;
-  if (r.unlocked) {
-    gearIcon(W / 2 - 80, y, 10, clock * 2, COL.jade);
-    text('得到 ' + r.unlocked.name + '：' + r.unlocked.tip, W / 2 + 8, y, 16, COL.jade);
-    y += 30;
-  }
-  // 按钮：再来最大
-  const bw = Math.min(W - 60, 300);
-  const by = Math.max(y + 8, H - 210);
-  button('again', (W - bw) / 2, by, bw, 64, r.won ? '下一张' : '再来', { size: 28, fn: () => newGame(g.endless) });
-  if (!r.won && g.adsUsed < C.adMax) {
-    const lbl = g.reason === 'time' ? '+20 秒' : '清空正中间';
-    button('revive', (W - bw) / 2, by + 76, bw * 0.62 - 6, 50, lbl, { size: 19, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { reviveFx(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
-    button('album2', (W - bw) / 2 + bw * 0.62 + 6, by + 76, bw * 0.38 - 6, 50, '画册', { size: 19, bg: COL.wood, fn: () => openAlbum() });
-  } else {
-    button('album2', (W - bw) / 2, by + 76, bw, 50, '画册', { size: 19, bg: COL.wood, fn: () => openAlbum() });
-  }
+  return drawPetOver(); // 0.9.25 只剩宠物关
 }
 function drawAd() {
   ctx.fillStyle = 'rgba(0,0,0,0.9)';
@@ -1975,99 +1747,6 @@ function mapPicture(i, x, y, s) {
     ctx.fillStyle = COL.shade + '0.82)'; ctx.fillRect(x - s / 2, y - s / 2, s, s);
     text('?', x, y, s * 0.4, COL.dim);
   }
-}
-function drawMap() {
-  drawBg();
-  const cur = Math.min(save.petStage, PLV.length - 1);
-  const done = save.petStage >= PLV.length;
-  const lo = Math.max(0, Math.min(cur - 1, PLV.length - MAP_SHOW));
-  const hi = lo + MAP_SHOW - 1;
-  // 路：先画整条（往两头多画一节，像能接着走），过了的那段是黄铜色
-  for (let i = lo - 1; i <= hi; i++) {
-    if (i < 0 || i + 1 >= PLV.length) continue;
-    const a = mapNodePos(i, lo), b = mapNodePos(i + 1, lo);
-    const passed = i + 1 <= save.petStage;
-    for (const [w, col] of [[22, COL.ink], [16, passed ? COL.brass : COL.woodDark]]) {
-      ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(a.x, a.y);
-      ctx.bezierCurveTo(a.x, (a.y + b.y) / 2, b.x, (a.y + b.y) / 2, b.x, b.y);
-      ctx.stroke();
-    }
-    // 两关中间的小图，放在路的外侧
-    const pic = Math.min(84, a.step * 0.6, W / 2 - 110);
-    const side = i % 2 ? -1 : 1;
-    if (i >= lo && i < hi) mapPicture(i, W / 2 + side * (W / 2 - pic / 2 - 22), (a.y + b.y) / 2, pic);
-  }
-  // 关卡圆圈
-  for (let i = lo; i <= hi; i++) {
-    const { x, y } = mapNodePos(i, lo);
-    const passed = i < save.petStage, isCur = i === cur && !done;
-    const rad = isCur ? 30 + Math.sin(clock * 4) * 2 : 26;
-    if (isCur) {
-      ctx.strokeStyle = 'rgba(111,208,168,' + (0.5 + Math.sin(clock * 4) * 0.3) + ')'; ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.arc(x, y, rad + 8, 0, Math.PI * 2); ctx.stroke();
-    }
-    const hd = PLV[i].hard || 0;
-    if (hd) {
-      // 难关（学 Royal Match）：头上两只红角；超难再多一圈紫、顶上一个小骷髅
-      ctx.fillStyle = hd > 1 ? '#7a3fa0' : COL.red;
-      for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + sx * rad * 0.35, y - rad * 0.8); ctx.lineTo(x + sx * rad * 0.95, y - rad * 1.45); ctx.lineTo(x + sx * rad * 0.8, y - rad * 0.5); ctx.fill(); }
-      ctx.strokeStyle = hd > 1 ? '#7a3fa0' : COL.red; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, rad + 6, 0, Math.PI * 2); ctx.stroke();
-      if (hd > 1 && i % 5 !== 4) skullIcon(x, y - rad - 16, 9);
-    }
-    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x, y + 3, rad + 3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = passed ? COL.brass : isCur ? COL.red : COL.woodDark; // 当前关用朱砂：全屏唯一一点高饱和
-    ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
-    text(petNodeLabel(i), x, y + 1, isCur ? 22 : 18, passed ? COL.ink : isCur ? COL.text : COL.dim);
-    if (passed) text('✓', x + 20, y - 20, 16, COL.jade);
-    // 每 5 关一个齿轮奖章（拼成一张画）
-    if (i % 5 === 4) gearIcon(x, y - rad - 16, 11, passed ? clock : 0, passed ? COL.brassLight : COL.woodLine);
-    // 过了的关和当前关能点
-    if (i <= cur) buttons.push({ id: 'node' + i, x: x - rad, y: y - rad, w: rad * 2, h: rad * 2, fn: () => newPetLevel(i) });
-  }
-  // 顶栏压在路上面：标题、进度、金币
-  const hg = ctx.createLinearGradient(0, 0, 0, L.top + 110);
-  hg.addColorStop(0, COL.bg); hg.addColorStop(0.75, COL.bg); hg.addColorStop(1, 'rgba(14,19,48,0)');
-  ctx.fillStyle = hg; ctx.fillRect(0, 0, W, L.top + 110);
-  // 第一行：左「‹ 主菜单」、右齿轮（设置）；第二行：章节名；第三行：进度和金币（Cc 11-24：「这个页面里应该也能返回主菜单」）
-  button('home', 10, L.top + 2, 92, 38, '‹ 主菜单', { size: 15, bg: COL.wood, fn: () => { mode = 'home'; } });
-  button('settings', W - 56, L.top + 2, 44, 38, '', { bg: COL.wood, fn: () => { settingsAsk = 0; settingsFrom = 'map'; mode = 'settings'; } });
-  gearIcon(W - 34, L.top + 21, 9, clock * 0.5, COL.brassLight);
-  text(chapterName(Math.min(save.petStage, PLV.length - 1)), W / 2, L.top + 62, 22, COL.brassLight);
-  text('已过 ' + Math.min(save.petStage, PLV.length) + ' / ' + PLV.length + ' 关　·　' + save.coins + ' 金', W / 2, L.top + 90, 13, COL.dim, 'center', 'normal');
-  // 底栏同样压住路
-  const fg = ctx.createLinearGradient(0, H - 215, 0, H);
-  fg.addColorStop(0, 'rgba(9,12,32,0)'); fg.addColorStop(0.2, COL.bgLow); fg.addColorStop(1, COL.bgLow);
-  ctx.fillStyle = fg; ctx.fillRect(0, H - 215, W, 215);
-  // 下一关要干什么：目标图标
-  const st = PLV[cur].evolveLevel ? PLV.evolveStage(PLV[cur].evolveLevel, 0) : PLV[cur];
-  const keys = Object.keys(st.goal);
-  const gy = H - 186;
-  const cw = 58, x0 = W / 2 - (cw * keys.length) / 2;
-  keys.forEach((key, n) => {
-    const cx = x0 + cw * n + cw / 2;
-    if (key === 'score') text(st.goal.score + ' 分', cx, gy, 18, COL.text);
-    else { goalIcon(key, cx - 12, gy, 20); text(key === 'all' ? '抓光' : '×' + st.goal[key], cx + (key === 'all' ? 20 : 14), gy, key === 'all' ? 14 : 16, COL.text); }
-  });
-  const bestId = !st.team && st.best ? (save.pets[st.best] ? st.best : save.pets[PG.PETS[st.best].evo] ? PG.PETS[st.best].evo : null) : null;
-  if (bestId) {
-    // 头像 + 右边一行小字，同一行，不压下面的大按钮
-    const bx = Math.min(W - 70, x0 + cw * keys.length + 30), on = save.activePet === bestId;
-    petIcon(bestId, bx, gy, 28, 0, 0);
-    text(on ? '✓ 带着它' : '带它最顺', bx + 19, gy, 12, on ? COL.jade : COL.brassLight, 'left', 'normal');
-    buttons.push({ id: 'bestPet', x: bx - 18, y: gy - 18, w: 86, h: 36, fn: () => openCamp() });
-  }
-  if (st.hard) text(st.hard > 1 ? '超难关' : '难关', W / 2, H - 168, 12, st.hard > 1 ? '#c58ae0' : '#f08a70');
-  const bw = Math.min(W - 60, 300);
-  button('play', (W - bw) / 2, H - 160, bw, 64, done ? '再玩' + petNodeLabel(PLV.length - 1) : petLevelName(cur), { size: 28, fn: () => newPetLevel(cur) });
-  // 底下三个：营地（葫芦、喂宠物）、经典拼画、画册。守城收起来了（Cc 11-24：「这个没意思，就不要加塔防了」）
-  const b3w = Math.min(W - 24, 360), b3 = (b3w - 12) / 3, bx3 = (W - b3w) / 2;
-  const campNew = canLevelAny();
-  button('camp', bx3, H - 82, b3, 46, '营地', { size: 18, bg: '#3f9a7c', fn: () => openCamp() });
-  if (campNew) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.arc(bx3 + b3 - 6, H - 82, 8, 0, Math.PI * 2); ctx.fill(); }
-  button('classic', bx3 + b3 + 6, H - 82, b3, 46, '经典拼画', { size: 15, bg: COL.copper, fn: () => newGame(false) });
-  button('album3', bx3 + (b3 + 6) * 2, H - 82, b3, 46, '画册', { size: 17, bg: COL.wood, fn: () => openAlbum() });
-  text('葫芦里 ' + save.gourd + ' 只怪 · ' + save.dan + ' 颗丹', W / 2, H - 22, 12, COL.dim, 'center', 'normal');
 }
 
 // ---------- 章页（0.8，照 ../九宫消_关卡页专属关与UI对照_20261124.md 第二节；学《小丑牌》「全部亮出来、只有当前那个能点」） ----------
@@ -2604,54 +2283,6 @@ function drawIntro() {
 }
 
 // ---------- 画册 ----------
-let albumFrom = 'play';
-function openAlbum() {
-  albumFrom = mode === 'over' ? 'over' : mode === 'map' ? 'map' : mode === 'home' ? 'home' : 'play';
-  if (albumFrom === 'play' && g && !g.over) { /* 画册打开时时间也走：原型里先这样，开局前看 */ }
-  mode = 'album';
-}
-function drawAlbum() {
-  drawBg();
-  text('画册', W / 2, L.top + 22, 28, COL.brassLight);
-  text(save.coins + ' 金', W - 20, L.top + 22, 18, COL.brassLight, 'right');
-  const s = Math.min((W - 60) / 3, 120);
-  const gap = (W - s * 3) / 4;
-  for (let i = 0; i < 3; i++) {
-    const x = gap + i * (s + gap), y = L.top + 64;
-    drawPainting(i, x, y, s, save.won[i] ? new Array(9).fill(true) : save.litEver[i], false);
-    const n = save.litEver[i].filter(Boolean).length;
-    text(art.PAINTINGS[i].name, x + s / 2, y + s + 18, 14, COL.text, 'center', 'normal');
-    text(save.won[i] ? '✓ 拼成' : n + ' / 9', x + s / 2, y + s + 38, 13, save.won[i] ? COL.jade : COL.dim, 'center', 'normal');
-  }
-  // 三件收藏
-  let y = L.top + 64 + s + 80;
-  text('机关收藏', W / 2, y, 18, COL.brassLight);
-  y += 30;
-  ITEMS.forEach((it, i) => {
-    const have = !!save.items[it.id];
-    const yy = y + i * 44;
-    gearIcon(44, yy, 12, have ? clock : 0, have ? COL.brass : COL.woodLine);
-    text(have ? it.name : '？？？', 68, yy, 17, have ? COL.text : COL.dim, 'left');
-    text(have ? it.tip : '拼成第 ' + (i + 1) + ' 张画', W - 24, yy, 14, have ? COL.jade : COL.dim, 'right', 'normal');
-  });
-  y += 3 * 44 + 16;
-  // 当局小道具
-  const on = save.buySingle;
-  button('single', 24, y, W - 48, 46, (on ? '✓ ' : '') + '下局带一个单格块 · ' + C.singleCost + ' 金', {
-    size: 16, bg: on ? COL.jade : COL.wood, fg: on ? COL.ink : COL.text,
-    fn: () => { if (on || save.coins >= C.singleCost) { save.buySingle = !on; persist(); } },
-  });
-  y += 60;
-  const endlessOpen = save.wins >= 2;
-  button('endless', 24, y, W - 48, 46, endlessOpen ? '无尽模式 · 最高 ' + save.bestEndless : '无尽模式（拼成 2 张画开放）', {
-    size: 16, bg: endlessOpen ? COL.copper : COL.woodDark, fg: endlessOpen ? COL.text : COL.dim,
-    fn: () => endlessOpen && newGame(true),
-  });
-  const bw = Math.min(W - 60, 300);
-  button('back', (W - bw) / 2, H - 96, bw, 60, albumFrom === 'over' && !g.stage ? '再来' : '回去', {
-    size: 24, fn: () => (albumFrom === 'home' ? (mode = 'home') : albumFrom === 'map' ? (mode = 'map') : albumFrom === 'over' ? (g.stage ? (mode = 'over') : newGame(g.endless && save.wins >= 2)) : (mode = 'play')),
-  });
-}
 
 // ---------- 主菜单：标题 + 继续 + 设置 ----------
 // （正式的标题背景图等 Midjourney 主页图到了再换；现在是代码画的九宫格 + 宠物）
@@ -3000,7 +2631,7 @@ function startPet(st) {
   startCommon();
   enterAt = clock + 0.15; monIn = {}; handSeen = [null, null, null, null];
   timeline = []; ghosts = []; petRuns = []; rushPatch = null; rushMud = null; beams = []; colBolts = []; petInk = []; drainInk = []; // 上一关没演完的动画清掉，免得新盘面上闪一下
-  for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
+  for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK) colorAt[k] = g.color[k];
   petFx = { pop: {}, caption: null, banner: st.line ? { text: st.line, t: clock + 0.3 } : null, bossHit: -9, evolveFlash: -9 };
   if (st.intro && !save.introSeen[st.intro]) { introKind = st.intro; mode = 'intro'; }
 }
@@ -3137,7 +2768,7 @@ function drawPetCaption() {
 }
 function juicePets(ev, colorsBefore) {
   // 先照原来的一套：放下弹一下、消掉的碎掉、收到的东西飞向顶上
-  if (!ev.skill || (ev.units && ev.units.length)) juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, rushStep: ev.rushStep, beat: ev.beat || (ev.skill ? (ev.units.length >= 2 ? 3 : 2) : 1), collected: ev.collected }); // 技能块（0.9.12）只有吐丝补满了一排才走消除那一套，别的由 juicePK 演
+  if (!ev.skill || (ev.units && ev.units.length)) juice(Object.assign({}, ev, { newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? (ev.units.length >= 2 ? 3 : 2) : 1) })); // 0.9.25 收拾：规则给的结果整张往下传，只改这几样（0.9.22 漏传 rushStep 就是一个字段一个字段抄出的错） // 技能块（0.9.12）只有吐丝补满了一排才走消除那一套，别的由 juicePK 演
   if (ev.fire) { const c = boxCenter(ev.fire.box); rings.push({ t: clock, big: false, at: c }); flash = 0.25; P.sound('combo3', 0.7); shake = Math.max(shake, 8); }
   // 0.9.17：墨怪爬（从原来那格蹦过去）、冒脚印、金属被啄碎、冲锋关补格子
   (ev.crawl || []).forEach((e, j) => { monSlide[e.to] = { from: e.from, t: clock + 0.12 + j * 0.05 }; timeline.push({ t: clock + 0.12 + j * 0.05, fn: () => P.sound('skitter', 0.4) }); });
@@ -3149,7 +2780,7 @@ function juicePets(ev, colorsBefore) {
   (ev.mudGlare || []).forEach(() => timeline.push({ t: clock + 0.2, fn: () => P.sound('skitter', 0.35) }));
   if (ev.rushFix && !ev.rushBoard) playRushFix(ev.rushFix, clock + 0.25); // 0.9.22 每放一块，宠物都从右下角飞出去修一下剩下的
   if (ev.rushBurst) { ev.rushBurst.forEach((k) => clearing.push({ k, t: clock + 0.06 + ((k % 9) + Math.floor(k / 9)) * 0.008 })); timeline.push({ t: clock + 0.08, fn: () => { P.sound('dong', 0.75); flash = Math.max(flash, 0.25); shake = Math.max(shake, 8); haptic('heavy'); } }); } // 0.9.21 三块塞完：剩下的铜砖整盘炸开
-  if (ev.rushBoard) { for (let k = 0; k < 81; k++) if (g.board[k] === 1 || g.board[k] === 8) { colorAt[k] = g.color[k]; cellIn[k] = clock + 0.45 + ((k % 9) + Math.floor(k / 9)) * 0.018; } timeline.push({ t: clock + 0.45, fn: () => { P.sound('deal', 0.6); haptic('light'); } }); playRushFix(ev.rushFix, clock + 0.55); } // 冲锋关整盘换新：从左上角一路铺过去，宠物马上飞上去修
+  if (ev.rushBoard) { for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK || g.board[k] === CELL.BRICK) { colorAt[k] = g.color[k]; cellIn[k] = clock + 0.45 + ((k % 9) + Math.floor(k / 9)) * 0.018; } timeline.push({ t: clock + 0.45, fn: () => { P.sound('deal', 0.6); haptic('light'); } }); playRushFix(ev.rushFix, clock + 0.55); } // 冲锋关整盘换新：从左上角一路铺过去，宠物马上飞上去修
   (ev.crawlClear || []).forEach((cc) => timeline.push({ t: clock + 0.45, fn: () => { const monK = new Set(cc.collected.filter((c) => c.what === 'monster').map((c) => c.k)); cc.cells.forEach((k) => clearing.push({ k, t: clock, mon: monK.has(k) })); P.sound('clear' + Math.min(4, Math.max(0, (g.streak || 1) - 1)), 0.7); if (monK.size) setTimeout(() => P.sound('pop', 0.55), 250); shake = Math.max(shake, 5); flash = Math.max(flash, 0.15); haptic('medium'); } })); // 墨怪爬进去凑满：当场消
   if (ev.bossJumpPlan !== undefined) timeline.push({ t: clock + 0.15, fn: () => { P.sound('skitter', 0.5); haptic('medium'); } });
   juicePK(ev);
@@ -3212,7 +2843,7 @@ function juicePets(ev, colorsBefore) {
     cells.forEach((k, j) => {
       const reach = t + jump + j * per;
       const bite = style === 'spin' ? spinEnd : reach; // 蚕：一路补满，补完整排一起消
-      ghosts.push({ k, t: bite, appear: inkCells.has(k) ? reach : 0, ci: colorsBefore[k] === undefined ? 0 : colorsBefore[k], ink: inkCells.has(k), rock: g.board[k] === 0 && (ev.rocks || []).includes(k), mon: monAt[k] || null });
+      ghosts.push({ k, t: bite, appear: inkCells.has(k) ? reach : 0, ci: colorsBefore[k] === undefined ? 0 : colorsBefore[k], ink: inkCells.has(k), rock: g.board[k] === CELL.EMPTY && (ev.rocks || []).includes(k), mon: monAt[k] || null });
       if (j % 2 === 0 && style !== 'spin') timeline.push({ t: bite, fn: () => { P.sound(style === 'fly' ? 'tap' : 'pick', 0.5); const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let c2 = 0; c2 < 4; c2++) { const a2 = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 90; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 60, t: clock, life: 0.45, s: 3 + Math.random() * 3 }); } } });
     });
     timeline.push({ t, fn: () => { P.sound(style === 'spit' ? 'combo2' : 'select', 0.6); if (act.rescue) flash = 0.3; } });
@@ -3271,7 +2902,7 @@ function juicePK(ev) {
   (ev.petMiss || []).forEach((m) => { petFx.petMiss = petFx.petMiss || {}; petFx.petMiss[m.k] = clock; burst(m.k, '#9aa0b0', 5, 70); P.sound('deny', 0.5); }); // 打不动：灰光挡住
   (ev.drain || []).forEach((d, j) => {
     const n = Math.max(0, g.team.findIndex((p) => p.id === d.id));
-    const from = g.board[d.from] === 4 ? { x: cellX(d.from % 9) + L.cell, y: cellY(Math.floor(d.from / 9)) + L.cell } : at(d.from);
+    const from = g.board[d.from] === CELL.BOSS ? { x: cellX(d.from % 9) + L.cell, y: cellY(Math.floor(d.from / 9)) + L.cell } : at(d.from);
     drainInk.push({ from, to: petPos(n), t: clock + 0.15 + j * 0.12, id: d.id, bomb: d.kind === 'bomb' });
   });
   if (ev.drain && ev.drain.length) timeline.push({ t: clock + 0.65, fn: () => haptic('heavy') }); // 被偷能量 = 被打：第一团墨打到宠物时重重震一下，几团只震一次
@@ -3821,196 +3452,14 @@ function feedPet(id) {
   persist();
 }
 
-// ---------- 守城（肉鸽试玩版）：画面 ----------
-// 规则在 siege.js。这里管：车道和攻城车、机关栏、机关一件件发动的动画、三选一卡、结算。
-const SCHOOL_COL = { bow: '#4470c0', fire: COL.red, luoshu: COL.brass, star: '#8a62bf', ink: '#3f9a7c' };
+// ---------- 排好时间的动画小事件（守城画面已在 0.9.25 拆掉，这些是宠物关也在用的） ----------
 let timeline = []; // 排好时间的小事件 { t, fn }
 let ghosts = []; // 被机关打掉、还没轮到它碎的格子 { k, t, ci }
 let relicPop = {}; // 机关栏图标跳一下 { id: 时刻 }
 let beams = []; // 机关栏连到棋盘的一道光 { from, to, t, col }
 let colBolts = []; // 竖着射的连弩 { col, t }
-let siegeFx = { cartStep: 0, cartHit: -9, cartDead: -9, banner: null, chooseAt: 0, tip: null, lastWave: -1 };
-function runTimeline() {
-  if (!timeline.length) return;
-  const due = timeline.filter((e) => clock >= e.t);
-  timeline = timeline.filter((e) => clock < e.t);
-  due.forEach((e) => { try { e.fn(); } catch (err) { logErr('timeline', err); } }); // 0.9.13：一件小事出错，后面的照常演（Cc 11-26 第 2 关过关卡死）
-}
-const siegeBusy = () => timeline.length > 0;
-// 每日一城：北京时间的日期。每天 3 次，看广告多 1 次，记当天最好的波数
-const DAILY_TRIES = 3;
-function todayKey() { return new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); }
-function dailyRec() {
-  const key = todayKey();
-  if (!save.daily || save.daily.date !== key) save.daily = { date: key, tries: 0, extra: 0, best: 0, bestHit: 0 };
-  return save.daily;
-}
-const dailyLeft = () => { const d = dailyRec(); return DAILY_TRIES + d.extra - d.tries; };
-function newDaily() {
-  const d = dailyRec();
-  if (dailyLeft() <= 0) return;
-  d.tries++;
-  newSiege(+d.date.replace(/-/g, ''));
-}
-function newSiege(daily) {
-  stageIdx = -1;
-  g = daily ? SG.createSiege({ daily }) : SG.createSiege({ seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: !save.siegeDone, runNo: save.siegeRuns || 0 });
-  startCommon();
-  for (const k of g.prefilled) colorAt[k] = -1;
-  timeline = []; ghosts = []; relicPop = {}; beams = []; colBolts = [];
-  siegeFx = { cartStep: 0, hpShow: undefined, cartHit: -9, cartDead: -9, banner: null, chooseAt: clock + (g.phase === 'choose' ? 0.2 : 0), tip: null, lastWave: -1 }; missiles = [];
-  waveBanner();
-}
-function waveBanner() {
-  const w = g.waveDef;
-  const sub = w.bossLine || (g.firstRun && g.wave === 0 ? '把方块消掉，就是在打攻城车' : '');
-  siegeFx.banner = { text: '第 ' + (g.wave + 1) + ' 波 · ' + w.name, sub, t: clock, boss: !!w.bossLine };
-}
-// 机关第一次发动：屏幕中间打一句大白话，告诉你刚才发生了什么
-function firstTimeCaption(id) {
-  if (save.relicSeen[id] || !SG.RELICS[id]) return;
-  save.relicSeen[id] = true; persist();
-  siegeFx.caption = { text: SG.RELICS[id].first, t: clock };
-}
-// 战场：上面一条路，攻城车从上往下压；下面是城墙，机关装在城墙上，城墙下面就是棋盘（城里）
-function siegeGeo() {
-  const wallY = L.by - 46; // 城墙上沿
-  const roadTop = L.top + 92, roadBot = wallY - 42; // 车能走的范围（4 步）
-  return { wallY, roadTop, roadBot };
-}
-function cartPos() {
-  const G2 = siegeGeo();
-  return { x: W / 2, y: G2.roadTop + siegeFx.cartStep * (G2.roadBot - G2.roadTop) / (SG.ROUNDS - 1) };
-}
-// 机关栏里第 n 格的中心：嵌在城墙上，中间留给城门
-function relicSlotPos(n) {
-  const s = 36, G2 = siegeGeo();
-  const xs = [W / 2 - 150, W / 2 - 98, W / 2 + 98, W / 2 + 150, W / 2 - 46].map((x) => Math.max(s / 2 + 4, Math.min(W - s / 2 - 4, x)));
-  return { x: xs[n], y: G2.wallY + 18, s };
-}
+// 小工具（原来放在守城画面那一段里，0.9.25 拆守城时挪出来，宠物关也在用）
 function boxCenter(b) { return { x: cellX((b % 3) * 3) + L.cell * 1.5, y: cellY(Math.floor(b / 3) * 3) + L.cell * 1.5 }; }
-function lineCenter(l) { return l.axis === 'row' ? { x: L.bx + L.board / 2, y: cellY(l.idx) + L.cell / 2 } : { x: cellX(l.idx) + L.cell / 2, y: L.by + L.board / 2 }; }
-let missiles = []; // 消除打出去的弩箭：从棋盘飞到车上 { x0, y0, t, dmg, hp }
-function juiceSiege(sev, colorsBefore) {
-  const res = sev.res;
-  const nRelic = res.steps.filter((x) => x.kind === 'relic').length + (res.mults || []).length;
-  const clearStep = res.steps.find((x) => x.kind === 'clear');
-  // 先照原来的一套放：放下弹一下、消掉的碎掉、声音（借用 juice）
-  const center = (res.mults || []).some((m) => m.id === 'center5');
-  const units = clearStep ? clearStep.units : [];
-  const beat = !units.length ? 1 : nRelic >= 3 || center ? 5 : nRelic >= 1 || units.length >= 2 ? 4 : units.some((u) => u >= 18) ? 3 : 2;
-  juice({ piece: sev.piece, r: sev.r, c: sev.c, units, cells: clearStep ? clearStep.cells : [], gained: clearStep ? clearStep.dmg : res.base,
-    newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: units.length, streak: g.streak, beat }); // ×5 由下面的倍率徽章来放
-  // 机关一件件发动：每件隔 0.22 秒
-  let t = clock + 0.18;
-  res.steps.filter((x) => x.kind === 'relic').forEach((st) => {
-    const slot = g.relics.findIndex((r) => r.id === st.id);
-    const from = relicSlotPos(Math.max(0, slot));
-    (st.cells || []).forEach((k) => ghosts.push({ k, t, ci: colorsBefore[k] === undefined ? 0 : colorsBefore[k], ink: st.id === 'inkline' && !(colorsBefore[k] !== undefined && g.board[k]) }));
-    const at = t;
-    timeline.push({ t: at, fn: () => {
-      relicPop[st.id] = clock;
-      firstTimeCaption(st.id);
-      const col = SCHOOL_COL[SG.RELICS[st.id].school];
-      if (st.id === 'crossbow') {
-        st.lines.forEach((l) => { if (l.axis === 'row') bolts.push({ row: l.idx + 0.5, t: clock, dir: 1 }); else colBolts.push({ col: l.idx + 0.5, t: clock }); beams.push({ from, to: lineCenter(l), t: clock, col }); });
-        P.sound('bolt', 0.6);
-      } else if (st.id === 'inkline') {
-        st.lines.forEach((l) => beams.push({ from, to: lineCenter(l), t: clock, col }));
-        P.sound('line', 0.6);
-      } else if (st.id === 'thunder' || st.id === 'chain') {
-        (st.boxes || []).forEach((b) => { const c = boxCenter(b); beams.push({ from, to: c, t: clock, col }); rings.push({ t: clock, big: false, at: c }); });
-        P.sound('combo3', 0.6); shake = Math.max(shake, 7); haptic('medium');
-      } else if (st.id === 'loader') {
-        texts.push({ s: '上弦！', x: from.x, y: from.y + 34, t: clock, size: 18, col: COL.brassLight });
-        P.sound('select', 0.5);
-      }
-      if (st.dmg) texts.push({ s: '+' + st.dmg, x: (st.lines && st.lines[0] ? lineCenter(st.lines[0]) : st.boxes ? boxCenter(st.boxes[0]) : from).x, y: (st.lines && st.lines[0] ? lineCenter(st.lines[0]) : st.boxes ? boxCenter(st.boxes[0]) : from).y, t: clock, size: 22, col });
-    } });
-    t += 0.22;
-  });
-  // 倍率徽章：×5、×3、上弦 ×2
-  (res.mults || []).forEach((m) => {
-    const at = t;
-    timeline.push({ t: at, fn: () => {
-      relicPop[m.id] = clock;
-      firstTimeCaption(m.id);
-      const lbl = '×' + (Math.round(m.m * 100) / 100);
-      texts.push({ s: lbl, x: W / 2, y: L.by + L.board * 0.38, t: clock, size: 52, col: m.id === 'star' ? '#d3bdf0' : COL.brassLight, big: true });
-      P.sound('five', 0.5);
-    } });
-    t += 0.2;
-  });
-  // 最后：从棋盘射出一支大弩箭，飞上去扎在车上；血条这时才掉
-  const hpAfter = g.hp;
-  timeline.push({ t, fn: () => {
-    if (res.dmg > 0) {
-      const from = clearStep ? lineCenter(clearStep.units[0] < 9 ? { axis: 'row', idx: clearStep.units[0] } : clearStep.units[0] < 18 ? { axis: 'col', idx: clearStep.units[0] - 9 } : { axis: 'row', idx: Math.floor((clearStep.units[0] - 18) / 3) * 3 + 1 }) : { x: W / 2, y: L.by + L.board / 2 };
-      missiles.push({ x0: from.x, y0: from.y, t: clock, dmg: res.dmg });
-      P.sound('bolt', 0.5);
-      if (nRelic >= 2) say(nRelic >= 4 ? '好一串！' : '连上了');
-    }
-  } });
-  timeline.push({ t: t + 0.4, fn: () => {
-    if (res.dmg > 0) {
-      siegeFx.cartHit = clock; siegeFx.hpShow = hpAfter;
-      const cp = cartPos();
-      texts.push({ s: '-' + res.dmg, x: cp.x + 70, y: cp.y - 4, t: clock, size: 26 + Math.min(20, res.dmg / 10), col: COL.red, big: res.dmg >= 60 });
-      P.sound(res.dmg >= 60 ? 'combo4' : 'place', 0.6);
-      shake = Math.max(shake, res.dmg >= 60 ? 6 : 2);
-    }
-    if (sev.killed) {
-      siegeFx.cartDead = clock;
-      const cp = cartPos();
-      for (let n = 0; n < 16; n++) { const a = Math.random() * Math.PI * 2, sp = 100 + Math.random() * 180; fx.push({ kind: 'gear', x: cp.x, y: cp.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 100, t: clock, life: 0.9, s: 5 + Math.random() * 7, a: 0 }); }
-      texts.push({ s: '打掉了！', x: W / 2, y: cp.y + 30, t: clock + 0.05, size: 30, col: COL.brassLight, big: true });
-      P.sound('win', 0.6); flash = 0.3; haptic('heavy');
-      say('打掉了！');
-      siegeFx.chooseAt = clock + 0.6;
-    }
-    if (g.over) endGame();
-  } });
-}
-// 星：发光的星 + 一道虚线指向下一站
-function drawSiegeBoard() {
-  // 被机关打掉、还没轮到它碎的格子先照原样画着
-  ghosts = ghosts.filter((gh) => {
-    if (clock >= gh.t) { clearing.push({ k: gh.k, t: clock }); return false; }
-    const x = cellX(gh.k % 9), y = cellY(Math.floor(gh.k / 9));
-    if (gh.ink) { ctx.fillStyle = COL.ink; ctx.fillRect(x + 3, y + 3, L.cell - 6, L.cell - 6); }
-    else block(x, y, L.cell, 1, gh.ci);
-    return true;
-  });
-  if (g.lvOf('star')) {
-    const c = boxCenter(g.starBox);
-    const next = boxCenter(SG.STAR_PATH[(g.starStep + 1) % 9]);
-    ctx.save();
-    ctx.strokeStyle = 'rgba(211,189,240,0.45)'; ctx.lineWidth = 2; ctx.setLineDash([5, 6]);
-    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(next.x, next.y); ctx.stroke();
-    ctx.setLineDash([]);
-    const bx = cellX((g.starBox % 3) * 3), by = cellY(Math.floor(g.starBox / 3) * 3);
-    ctx.strokeStyle = 'rgba(211,189,240,' + (0.55 + Math.sin(clock * 5) * 0.3) + ')'; ctx.lineWidth = 3;
-    ctx.strokeRect(bx + 2, by + 2, L.cell * 3 - 4, L.cell * 3 - 4);
-    starShape(c.x, c.y, L.cell * 0.55 + Math.sin(clock * 4) * 2, '#efe2ff');
-    ctx.restore();
-  }
-  // 竖着射的连弩
-  colBolts = colBolts.filter((b) => clock - b.t < 0.5);
-  colBolts.forEach((b) => {
-    const a = (clock - b.t) / 0.5, x = L.bx + b.col * L.cell;
-    const head = L.by + L.board + 40 - a * (L.board + 80);
-    ctx.fillStyle = 'rgba(255,240,200,' + (1 - a) + ')'; ctx.fillRect(x - 2, head, 4, 70);
-    ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.moveTo(x, head - 12); ctx.lineTo(x - 6, head); ctx.lineTo(x + 6, head); ctx.fill();
-  });
-  // 机关栏连到棋盘的光
-  beams = beams.filter((b) => clock - b.t < 0.35);
-  beams.forEach((b) => {
-    const a = (clock - b.t) / 0.35;
-    ctx.strokeStyle = b.col; ctx.globalAlpha = 1 - a; ctx.lineWidth = 6 * (1 - a) + 1;
-    ctx.beginPath(); ctx.moveTo(b.from.x, b.from.y); ctx.lineTo(b.to.x, b.to.y); ctx.stroke();
-    ctx.globalAlpha = 1;
-  });
-}
 function starShape(x, y, r, col) {
   ctx.fillStyle = COL.ink; ctx.beginPath();
   for (let n = 0; n < 10; n++) { const a = -Math.PI / 2 + (n * Math.PI) / 5, rr2 = (n % 2 ? 0.45 : 1) * (r + 2); ctx.lineTo(x + Math.cos(a) * rr2, y + Math.sin(a) * rr2); }
@@ -4019,298 +3468,11 @@ function starShape(x, y, r, col) {
   for (let n = 0; n < 10; n++) { const a = -Math.PI / 2 + (n * Math.PI) / 5, rr2 = (n % 2 ? 0.45 : 1) * r; ctx.lineTo(x + Math.cos(a) * rr2, y + Math.sin(a) * rr2); }
   ctx.closePath(); ctx.fill();
 }
-// 机关图标：黄铜圆章 + 一个字 + 等级小点
-function relicIcon(id, x, y, s, lvl, pop) {
-  const R = SG.RELICS[id];
-  const k = 1 + (pop || 0) * 0.35;
-  const r = (s / 2) * k;
-  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x, y + 2, r + 1.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = SCHOOL_COL[R.school]; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = COL.copper; ctx.beginPath(); ctx.arc(x, y, r * 0.78, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(255,246,214,0.8)'; ctx.fillRect(x - r * 0.45, y - r * 0.62, r * 0.5, Math.max(2, r * 0.1));
-  text(R.glyph, x, y + 1, Math.round(s * 0.5 * k), COL.text);
-  for (let n = 0; n < (lvl || 0); n++) {
-    ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(x - (lvl - 1) * 4 + n * 8, y + r + 4, 2.6, 0, Math.PI * 2); ctx.fill();
-  }
-}
-function drawSiegeHud() {
-  const G2 = siegeGeo();
-  const top = L.top;
-  // 战场底色：远山剪影
-  ctx.fillStyle = 'rgba(42,55,104,0.55)';
-  ctx.beginPath(); ctx.moveTo(0, G2.wallY); ctx.lineTo(0, top + 60); ctx.lineTo(W * 0.18, top + 26); ctx.lineTo(W * 0.32, top + 70); ctx.lineTo(W * 0.5, top + 8); ctx.lineTo(W * 0.68, top + 64); ctx.lineTo(W * 0.84, top + 30); ctx.lineTo(W, top + 72); ctx.lineTo(W, G2.wallY); ctx.closePath(); ctx.fill();
-  // 路：从远处一直通到城门，越近越宽
-  ctx.fillStyle = '#4d3c2a';
-  ctx.beginPath(); ctx.moveTo(W / 2 - 22, top + 6); ctx.lineTo(W / 2 + 22, top + 6); ctx.lineTo(W / 2 + 62, G2.wallY + 4); ctx.lineTo(W / 2 - 62, G2.wallY + 4); ctx.closePath(); ctx.fill();
-  // 路上的 4 个站点（车一轮走一步）
-  for (let k = 0; k < SG.ROUNDS; k++) {
-    const y = G2.roadTop + k * (G2.roadBot - G2.roadTop) / (SG.ROUNDS - 1);
-    ctx.fillStyle = k < siegeFx.cartStep ? 'rgba(0,0,0,0.25)' : 'rgba(255,240,200,0.18)';
-    ctx.fillRect(W / 2 - 30 - k * 6, y + 26, 60 + k * 12, 3);
-  }
-  // 车：一轮走一步，平滑地挪
-  if (siegeFx.lastWave !== g.wave) { siegeFx.lastWave = g.wave; siegeFx.cartStep = 0; siegeFx.hpShow = g.hp; waveBanner(); }
-  const target = g.round - 1;
-  siegeFx.cartStep += (target - siegeFx.cartStep) * 0.12;
-  if (siegeFx.hpShow === undefined || siegeFx.hpShow > g.hpMax) siegeFx.hpShow = g.hp;
-  const dead = g.phase !== 'play' || clock - siegeFx.cartDead < 0.6;
-  const cp = cartPos();
-  if (!dead) {
-    const hitA = clock - siegeFx.cartHit;
-    const jig = hitA < 0.3 ? Math.sin(hitA * 70) * 5 : 0;
-    drawCart(cp.x + jig, cp.y, g.waveDef.boss, hitA < 0.12);
-    // 大血条：固定在顶上第二行，整条宽，写着车名和剩多少血
-    const bw = W - 120, bh = 18, bx = 78, by = L.top + 36;
-    const frac = Math.max(0, siegeFx.hpShow / g.hpMax);
-    ctx.fillStyle = COL.ink; rr(bx - 2, by - 2, bw + 4, bh + 4, 8); ctx.fill();
-    ctx.fillStyle = '#2a1414'; rr(bx, by, bw, bh, 7); ctx.fill();
-    ctx.fillStyle = frac < 0.3 ? '#ff7a4a' : COL.red; rr(bx, by, Math.max(6, bw * frac), bh, 7); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(bx + 4, by + 2, Math.max(0, bw * frac - 8), 3);
-    text('血 ' + Math.max(0, Math.round(siegeFx.hpShow)) + ' / ' + g.hpMax, bx + bw / 2, by + bh / 2 + 1, 14, COL.text);
-    text(g.waveDef.name, bx - 8, by + bh / 2, 16, g.waveDef.boss ? COL.red : COL.text, 'right');
-    // 一根细线把血条和车连起来，看得出是这辆车的血
-    ctx.strokeStyle = 'rgba(226,85,59,0.35)'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]);
-    ctx.beginPath(); ctx.moveTo(cp.x, by + bh + 2); ctx.lineTo(cp.x, cp.y - 42); ctx.stroke(); ctx.setLineDash([]);
-  }
-  // 城墙：砖色一条，带垛口；中间城门
-  const wy = G2.wallY;
-  ctx.fillStyle = COL.ink; ctx.fillRect(0, wy - 2, W, 40);
-  ctx.fillStyle = '#6b5a48'; ctx.fillRect(0, wy, W, 36);
-  for (let x = 0; x < W; x += 26) { ctx.fillStyle = '#7d6a55'; ctx.fillRect(x, wy - 10, 16, 12); ctx.fillStyle = COL.ink; ctx.fillRect(x, wy - 12, 16, 2); }
-  ctx.fillStyle = 'rgba(0,0,0,0.18)'; for (let x = 0; x < W; x += 20) ctx.fillRect(x, wy + 17, 10, 2);
-  // 城门（车撞的就是这里）
-  const near = !dead && g.round >= SG.ROUNDS;
-  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(W / 2, wy + 36, 24, Math.PI, 0); ctx.fill();
-  ctx.fillStyle = near ? (Math.sin(clock * 12) > 0 ? COL.red : '#5a2a20') : '#3a2a1c'; ctx.beginPath(); ctx.arc(W / 2, wy + 36, 20, Math.PI, 0); ctx.fill();
-  // 机关栏：嵌在城墙上
-  for (let n = 0; n < SG.SLOTS; n++) {
-    const p = relicSlotPos(n);
-    const r = g.relics[n];
-    if (!r) {
-      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(p.x, p.y, p.s / 2 - 2, 0, Math.PI * 2); ctx.fill();
-      continue;
-    }
-    const pa = relicPop[r.id] ? Math.max(0, 0.3 - (clock - relicPop[r.id])) / 0.3 : 0;
-    relicIcon(r.id, p.x, p.y, p.s, r.lv, pa);
-    buttons.push({ id: 'relic' + n, x: p.x - p.s / 2, y: p.y - p.s / 2, w: p.s, h: p.s, fn: () => { siegeFx.tip = { id: r.id, t: clock }; } });
-  }
-  // 左上：返回、第几波；右上：还有几步撞门
-  button('map', 10, top - 4, 40, 32, '‹', { size: 24, bg: COL.wood, fn: () => { timeline = []; mode = 'map'; } });
-  text((g.daily ? '每日 · ' : '') + '第 ' + (g.wave + 1) + ' 波', 58, top + 12, 15, g.daily ? COL.jade : COL.text, 'left');
-  if (!dead) {
-    const left = SG.ROUNDS - g.round + 1;
-    const urgent = left <= 1;
-    text(urgent ? '下一轮就撞门！' : '还有 ' + left + ' 轮撞门', W - 12, top + 12, urgent ? 16 + Math.sin(clock * 10) : 15, urgent ? COL.red : COL.text, 'right');
-  }
-  if (g.charge > 1) text('下次打车 ×' + g.charge, W - 12, top + 70, 13, COL.brassLight, 'right');
-  // 点机关看一行字
-  if (siegeFx.tip && clock - siegeFx.tip.t < 2 && !wordsOff()) {
-    const R = SG.RELICS[siegeFx.tip.id], L2 = g.lvOf(siegeFx.tip.id);
-    const s2 = R.name + '：' + R.desc[Math.max(0, L2 - 1)];
-    ctx.font = 'bold 15px "PingFang SC", sans-serif';
-    const tw = Math.min(W - 16, ctx.measureText(s2).width + 24);
-    ctx.fillStyle = COL.steam; rr((W - tw) / 2, wy - 40, tw, 30, 8); ctx.fill();
-    ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(s2, W / 2, wy - 25, W - 30);
-  }
-  // 换波横幅
-  const bn = siegeFx.banner;
-  if (bn && clock - bn.t < 2.4 && g.phase === 'play') {
-    const a = Math.min(1, (clock - bn.t) * 4) * Math.min(1, (2.4 - (clock - bn.t)) * 3);
-    ctx.globalAlpha = a;
-    ctx.fillStyle = COL.shade + '0.78)'; ctx.fillRect(0, L.by + L.board * 0.36, W, bn.sub ? 76 : 50);
-    text(bn.text, W / 2, L.by + L.board * 0.36 + 25, 26, bn.boss ? COL.red : COL.brassLight);
-    if (bn.sub) text(bn.sub, W / 2, L.by + L.board * 0.36 + 56, 16, COL.text, 'center', 'normal');
-    ctx.globalAlpha = 1;
-  }
-}
-// 弩箭：从消掉的那一排飞到车上（画在最上层）
-function drawMissiles() {
-  missiles = missiles.filter((m) => clock - m.t < 0.4);
-  const cp = cartPos();
-  missiles.forEach((m) => {
-    const a = (clock - m.t) / 0.4, e = a * a;
-    const x = m.x0 + (cp.x - m.x0) * e, y = m.y0 + (cp.y + 10 - m.y0) * e;
-    const ang = Math.atan2(cp.y - m.y0, cp.x - m.x0);
-    const len = 46 + Math.min(40, m.dmg / 4);
-    ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
-    ctx.fillStyle = 'rgba(255,240,200,0.5)'; ctx.fillRect(-len - 30, -3, 30, 6);
-    ctx.fillStyle = COL.brassLight; ctx.fillRect(-len, -2.5, len, 5);
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-6, -8); ctx.lineTo(-6, 8); ctx.fill();
-    ctx.restore();
-    text(String(m.dmg), x + 18, y - 14, 18, COL.brassLight);
-  });
-}
-// 机关第一次发动时的那句说明（压在棋盘下沿，2.6 秒）
-function drawCaption() {
-  const cp = siegeFx.caption;
-  if (!cp || clock - cp.t > 2.6) return;
-  const a = Math.min(1, (clock - cp.t) * 5) * Math.min(1, (2.6 - (clock - cp.t)) * 3);
-  ctx.globalAlpha = a;
-  ctx.font = 'bold 16px "PingFang SC", sans-serif';
-  const tw = Math.min(W - 20, ctx.measureText(cp.text).width + 28);
-  const y = L.by + L.board - 52;
-  ctx.fillStyle = COL.steam; rr((W - tw) / 2, y, tw, 40, 10); ctx.fill();
-  ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(cp.text, W / 2, y + 21, W - 40);
-  ctx.globalAlpha = 1;
-}
-// 攻城车（正面朝下，冲着城门来）：木架子 + 顶棚 + 往下伸的撞木 + 四个轮子；头目是红顶
-function drawCart(x, y, boss, white) {
-  const wood = white ? '#fff' : '#8a6438', dark = white ? '#fff' : '#5e4226';
-  // 轮子
-  for (const [dx, dy] of [[-34, -16], [34, -16], [-34, 14], [34, 14]]) {
-    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x + dx, y + dy, 9, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = COL.copper; ctx.beginPath(); ctx.arc(x + dx, y + dy, 5.5, 0, Math.PI * 2); ctx.fill();
-  }
-  // 车身
-  ctx.fillStyle = COL.ink; rr(x - 30, y - 26, 60, 52, 6); ctx.fill();
-  ctx.fillStyle = wood; rr(x - 28, y - 24, 56, 48, 5); ctx.fill();
-  ctx.fillStyle = dark; for (let k = -1; k <= 1; k++) ctx.fillRect(x - 28, y + k * 14 - 1, 56, 3);
-  // 顶棚
-  ctx.fillStyle = white ? '#fff' : boss ? '#b8322a' : '#6b4a2a';
-  ctx.beginPath(); ctx.moveTo(x - 34, y - 20); ctx.lineTo(x, y - 40); ctx.lineTo(x + 34, y - 20); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = COL.ink; ctx.lineWidth = 2; ctx.stroke();
-  // 撞木：往下伸，铜头
-  ctx.fillStyle = COL.ink; ctx.fillRect(x - 7, y + 20, 14, 26);
-  ctx.fillStyle = dark; ctx.fillRect(x - 5, y + 20, 10, 24);
-  ctx.fillStyle = COL.brassLight; rr(x - 9, y + 42, 18, 10, 3); ctx.fill();
-  if (boss) { ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(x, y - 30, 4, 0, Math.PI * 2); ctx.fill(); }
-}
-// 三选一：三张横卡竖着排（拇指够得着）
-function drawSiegeChoose() {
-  if (g.phase !== 'choose' || !g.offer || clock < siegeFx.chooseAt || siegeBusy()) return;
-  const age = clock - siegeFx.chooseAt;
-  ctx.fillStyle = COL.shade + Math.min(0.85, age * 3) + ')'; ctx.fillRect(0, 0, W, H);
-  const opening = g.wavesWon === 0;
-  const single = g.offer.length === 1;
-  text(single ? '打掉了！送你一件机关' : opening ? '开局挑一件机关' : '打掉了！挑一件机关', W / 2, L.by + 10, 26, COL.brassLight);
-  text(single || !Object.keys(save.relicGot).length ? '机关会自己帮你打车，你照常消方块就行' : '下一波：' + (SG.WAVES[g.wave + 1] ? SG.WAVES[g.wave + 1].name : '重车'), W / 2, L.by + 42, 14, COL.dim, 'center', 'normal');
-  const cw = Math.min(W - 40, 360), ch = 96, x = (W - cw) / 2;
-  g.offer.forEach((id, n) => {
-    const k = Math.min(1, Math.max(0, (age - n * 0.06) / 0.18));
-    if (k <= 0) return;
-    const y = L.by + 72 + n * (ch + 14) + (1 - k) * 30;
-    const R = SG.RELICS[id];
-    const have = g.lvOf(id);
-    ctx.globalAlpha = k;
-    const pressed = downBtn === 'pick' + n;
-    ctx.fillStyle = COL.ink; rr(x, y + 5, cw, ch, 14); ctx.fill();
-    ctx.fillStyle = COL.wood; rr(x, y + (pressed ? 2 : 0), cw, ch, 14); ctx.fill();
-    ctx.strokeStyle = SCHOOL_COL[R.school]; ctx.lineWidth = 4; rr(x + 2, y + 2 + (pressed ? 2 : 0), cw - 4, ch - 4, 12); ctx.stroke();
-    relicIcon(id, x + 46, y + ch / 2, 52, have ? have + 1 : 1, 0);
-    text(R.name + (have ? '  升到 ' + (have + 1) + ' 级' : ''), x + 84, y + 28, 20, COL.text, 'left');
-    text(R.desc[Math.min(2, have)], x + 84, y + 58, 15, COL.text, 'left', 'normal');
-    const pal = SG.palOf(g, id);
-    if (!save.relicGot[id]) text('新！', x + cw - 14, y + 26, 15, COL.red, 'right');
-    else if (pal && !have) text('配你的' + pal, x + cw - 14, y + 26, 13, COL.jade, 'right');
-    ctx.globalAlpha = 1;
-    buttons.push({ id: 'pick' + n, x, y, w: cw, h: ch, fn: () => {
-      save.relicGot[id] = true; persist();
-      g.pick(id);
-      relicPop[id] = clock + 0.05;
-      P.sound('coin', 0.6);
-      if (g.phase === 'play') waveBanner();
-      if (g.over) endGame();
-    } });
-  });
-}
-function endSiege() {
-  if (g.won && g.firstRun && !save.siegeDone) save.siegeDone = true;
-  if (!g.daily && !g.endlessOn && (!g.firstRun || g.won)) save.siegeRuns = (save.siegeRuns || 0) + 1;
-  const prevBest = save.siegeBest || 0;
-  let dailyPrev = 0;
-  if (g.daily) {
-    const d = dailyRec();
-    dailyPrev = d.best;
-    d.best = Math.max(d.best, g.wavesWon);
-    d.bestHit = Math.max(d.bestHit, g.bestHit);
-  } else save.siegeBest = Math.max(prevBest, g.wavesWon);
-  coinsGot = Math.floor(g.totalDmg / 40) + g.wavesWon * 3;
-  save.coins += coinsGot;
-  persist();
-  result = { won: g.won, reason: g.reason, near: g.nearMiss(), doubled: false, prevBest, dailyPrev, record: g.daily ? g.wavesWon > dailyPrev : g.endlessOn && g.wavesWon > prevBest };
-  mode = 'over';
-  if (!g.won) { P.sound('lose', 0.6); say(g.reason === 'gate' ? '城破了' : '堵住了'); }
-}
-// 失败时那一句「差几波」（Cc 定的方向：失败时显示「差一波就守住了」）
-function wavesLine() {
-  const r = result, n = g.wavesWon;
-  if (g.daily) {
-    if (r.record) return n > 0 ? '今天新纪录：守住 ' + n + ' 波！' : '';
-    const gap = r.dailyPrev - n;
-    return gap === 0 ? '追平今天最好的 ' + r.dailyPrev + ' 波，再守一波就破纪录' : '差 ' + gap + ' 波追平今天最好的 ' + r.dailyPrev + ' 波';
-  }
-  if (!g.endlessOn) { const gap = SG.FIRST_RUN_WAVES - n; return gap === 1 ? '差一波就守住了！' : '守住 ' + n + ' 波，差 ' + gap + ' 波就守住了'; }
-  if (r.record) return '新纪录：守住 ' + n + ' 波！';
-  const gap = r.prevBest - n;
-  return gap <= 0 ? '' : '差 ' + gap + ' 波追上你最好的 ' + r.prevBest + ' 波';
-}
-function drawSiegeOver() {
-  const age = clock - overAt;
-  const r = result;
-  ctx.fillStyle = COL.shade + Math.min(0.85, age * 2) + ')'; ctx.fillRect(0, 0, W, H);
-  if (age < 0.4) return;
-  const pw = Math.min(W - 40, 340), ph = 360, px = (W - pw) / 2, py = Math.max(L.top + 40, (H - ph) / 2 - 40);
-  panel(px, py, pw, ph);
-  const title = r.won ? '守住了！' : g.daily && r.record && g.wavesWon > 0 ? '新纪录！' : g.reason === 'gate' ? (r.near ? '只差 ' + g.hp + ' 点！' : '城破了') : '堵住了';
-  text(title, W / 2, py + 38, 30, r.won ? COL.brassLight : r.near ? COL.red : COL.text);
-  const wl = r.won ? '' : wavesLine();
-  if (wl) text(wl, W / 2, py + 72, 17, r.record ? COL.brassLight : COL.red);
-  text('打下 ' + g.wavesWon + ' 波  ·  最狠一手 ' + g.bestHit + ' 点', W / 2, py + (wl ? 98 : 82), 15, COL.text, 'center', 'normal');
-  // 这一局的机关
-  const n = g.relics.length;
-  g.relics.forEach((rl, i) => relicIcon(rl.id, W / 2 + (i - (n - 1) / 2) * 50, py + 132, 38, rl.lv, 0));
-  if (!n) text('（没拿机关）', W / 2, py + 132, 14, COL.dim, 'center', 'normal');
-  text('+' + coinsGot + ' 金  ·  ' + (g.daily ? '今天最好 ' + dailyRec().best + ' 波' : '最多守住 ' + save.siegeBest + ' 波'), W / 2, py + 172, 15, COL.brassLight, 'center', 'normal');
-  const bw = pw - 48, bx = px + 24;
-  if (g.daily) {
-    // 每日一城：晒成绩最大；再守一次要看今天还剩几次
-    button('share', bx, py + 196, bw, 58, '晒成绩', { size: 24, fn: () => { mode = 'share'; } });
-    const left = dailyLeft();
-    if (left > 0) button('again', bx, py + 266, bw * 0.6 - 6, 46, '再守（剩 ' + left + ' 次）', { size: 16, bg: COL.copper, fn: () => newDaily() });
-    else button('dailyAd', bx, py + 266, bw * 0.6 - 6, 46, '再来一次', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { dailyRec().extra++; persist(); newDaily(); }) });
-    button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-    return;
-  }
-  if (r.won) {
-    button('cont', bx, py + 196, bw, 58, '继续守（车更硬）', { size: 22, fn: () => { g.continueRun(); g._ended = false; mode = 'play'; result = null; siegeFx.chooseAt = clock + 0.1; } });
-    button('again', bx, py + 266, bw * 0.6 - 6, 46, '再守一次', { size: 18, bg: COL.copper, fn: () => newSiege() });
-    button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-  } else {
-    button('again', bx, py + 196, bw, 58, '再守一次', { size: 24, fn: () => newSiege() });
-    if (g.adsUsed < C.adMax) {
-      button('revive', bx, py + 266, bw * 0.6 - 6, 46, g.reason === 'gate' ? '多打一轮' : '清空正中间', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { reviveFx(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
-      button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-    } else button('tomap', bx, py + 266, bw, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-  }
-}
-
-// 晒成绩：一张竖卡（微信里接分享给好友；浏览器试玩版只显示这张卡）
-function drawShareCard() {
-  ctx.fillStyle = COL.shade + '0.9)'; ctx.fillRect(0, 0, W, H);
-  const cw = Math.min(W - 60, 320), chh = Math.min(H - 220, 470), x = (W - cw) / 2, y = (H - chh) / 2 - 30;
-  ctx.fillStyle = COL.ink; rr(x, y + 6, cw, chh, 18); ctx.fill();
-  const bgG = ctx.createLinearGradient(0, y, 0, y + chh);
-  bgG.addColorStop(0, COL.bg); bgG.addColorStop(1, COL.bgLow);
-  ctx.fillStyle = bgG; rr(x, y, cw, chh, 18); ctx.fill();
-  ctx.strokeStyle = COL.brass; ctx.lineWidth = 3; rr(x + 6, y + 6, cw - 12, chh - 12, 14); ctx.stroke();
-  const d = dailyRec();
-  const [yy, mm, dd] = d.date.split('-');
-  text('每日一城 · ' + (+mm) + ' 月 ' + (+dd) + ' 日', W / 2, y + 40, 18, COL.jade);
-  text('守住', W / 2, y + 92, 20, COL.text, 'center', 'normal');
-  text(String(g.wavesWon), W / 2, y + 150, 88, COL.brassLight);
-  text('波', W / 2, y + 206, 20, COL.text, 'center', 'normal');
-  drawCart(W / 2 - 70, y + 250, true, false);
-  starShape(W / 2 + 70, y + 250, 16, '#efe2ff');
-  const n = g.relics.length;
-  g.relics.forEach((rl, i) => relicIcon(rl.id, W / 2 + (i - (n - 1) / 2) * 46, y + 304, 36, rl.lv, 0));
-  text('最狠一手 ' + g.bestHit + ' 点', W / 2, y + 352, 16, COL.text, 'center', 'normal');
-  text('今天人人守同一座城，你能守几波？', W / 2, y + chh - 50, 14, COL.dim, 'center', 'normal');
-  text('九宫消', W / 2, y + chh - 24, 16, COL.brassLight);
-  text('（微信里点「发给好友」就把这张图发出去）', W / 2, y + chh + 30, 13, COL.dim, 'center', 'normal');
-  const bw = Math.min(W - 60, 300);
-  button('shareClose', (W - bw) / 2, y + chh + 52, bw, 50, '好', { size: 20, fn: () => { mode = 'over'; } });
+function runTimeline() {
+  if (!timeline.length) return;
+  const due = timeline.filter((e) => clock >= e.t);
+  timeline = timeline.filter((e) => clock < e.t);
+  due.forEach((e) => { try { e.fn(); } catch (err) { logErr('timeline', err); } }); // 0.9.13：一件小事出错，后面的照常演（Cc 11-26 第 2 关过关卡死）
 }
 
 // ---------- 老存档整理（0.9.14 debug）：开机做一次。手机里可能是 0.9.8 以前的存档，对不上的地方会让某一页每帧出错、点不了 ----------
@@ -4363,12 +3525,12 @@ function frameRescue() {
   const was = mode;
   drag = null; downBtn = null; downTouch = null;
   if (mode === 'cut') { CUT.clear(); endCuts(); if (mode === 'cut') mode = 'map'; }
-  else if (mode === 'over' || mode === 'share') mode = 'map';
+  else if (mode === 'over') mode = 'map';
   else if (mode === 'start') { mode = (startCard && startCard.next) || 'play'; startCard = null; }
   else if (mode === 'intro') { if (introKind) { save.introSeen[introKind] = true; persist(); } introKind = null; mode = 'play'; }
   else if (mode === 'ad') { const f = ad && ad.done; ad = null; mode = 'play'; if (f) f(); }
   else if (mode === 'camp') mode = 'map';
-  else if (mode === 'map' || mode === 'settings' || mode === 'album') mode = 'home';
+  else if (mode === 'map' || mode === 'settings') mode = 'home';
   if (mode !== was) T.rec('X', 'rescue', was + ' → ' + mode);
 }
 function frameBody() {
@@ -4378,7 +3540,7 @@ function frameBody() {
   if (mode === 'over' || mode === 'settings') T.prepare({ ver: VERSION, log: save.playLog || [] }); } // 到结算、设置页先把记录压好，点复制时马上能用
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  update((mode === 'album' && albumFrom === 'play') || mode === 'cut' ? 0 : dt);
+  update(mode === 'cut' ? 0 : dt);
   buttons = [];
   LY.setMetrics(W, mode === 'map' || mode === 'camp' ? uiTop() : L.top, H); LY.beginFrame();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -4386,8 +3548,6 @@ function frameBody() {
   if (mode === 'cut') {
     CUT.update(dt * 1000);
     if (CUT.playing) CUT.draw(); else { endCuts(); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
-  } else if (mode === 'album') {
-    drawAlbum();
   } else if (mode === 'home') {
     drawHome();
   } else if (mode === 'settings') {
@@ -4398,7 +3558,7 @@ function frameBody() {
     drawCamp();
   } else if (mode === 'map') {
     ctx.save();
-    drawChapter(); // 0.8：章页取代弯路地图（drawMap 留着不删）
+    drawChapter(); // 0.8：章页取代弯路地图（旧地图 0.9.25 拆掉了）
     ctx.restore();
   } else {
     ctx.save();
@@ -4416,11 +3576,9 @@ function frameBody() {
     ctx.restore();
     if (flash > 0) { ctx.fillStyle = 'rgba(255,244,214,' + flash + ')'; ctx.fillRect(0, 0, W, H); }
     { const rp = rushPlayPulse(); if (rp > 0.01) { const gc = rushGlow().join(','); ctx.fillStyle = 'rgba(' + gc + ',' + (0.05 + rp * 0.15) + ')'; ctx.fillRect(0, 0, W, H); ctx.save(); ctx.shadowColor = 'rgba(' + gc + ',0.95)'; ctx.shadowBlur = 10 + rp * 30; ctx.strokeStyle = 'rgba(' + gc + ',' + (0.35 + rp * 0.65) + ')'; ctx.lineWidth = 5 + rp * 7; ctx.strokeRect(L.bx - 7, L.by - 7, L.board + 14, L.board + 14); ctx.restore(); } }
-    if (mode === 'over' || mode === 'share' || (mode === 'ad' && result)) drawOver();
-    if (mode === 'share') { buttons = buttons.filter((b) => b.id === 'map'); drawShareCard(); }
+    if (mode === 'over' || (mode === 'ad' && result)) drawOver();
     if (mode === 'intro') drawIntro();
     if (mode === 'start') { const rb = rushCardBeat(); ctx.save(); if (rb) ctx.translate(rb.x * 1.4, rb.y * 1.4); drawStartCard(); ctx.restore(); if (rb) { ctx.fillStyle = 'rgba(' + rushGlow(startCard.i).join(',') + ',' + (0.06 + rb.pulse * 0.1) + ')'; ctx.fillRect(0, 0, W, H); } }
-    if (mode === 'play' && g.siege) { drawCaption(); drawSiegeChoose(); }
     if ((mode === 'play' || mode === 'intro') && g.pets) drawPetCaption();
     if (g.pets) drawInfo();
     if (mode === 'ad') drawAd();
@@ -4472,10 +3630,10 @@ P.exposeForTest('__layout', LY);
 P.exposeForTest('__game', {
   get g() { return g; }, get mode() { return mode; }, set mode(v) { mode = v; }, get result() { return result; }, get save() { return save; },
   get paintIdx() { return paintIdx; }, stats, L, fingerFor, fingerForHand, skillTarget, tutorialTarget, slotCenter, buttons: () => buttons.slice(),
-  get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; }, LV, newStage, SG, newSiege, newDaily, dailyLeft: () => dailyLeft(), siegeBusy: () => siegeBusy(),
+  get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; },
   PG, PLV, newPetLevel, newEvolution, openCamp, feedPet, get petIdx() { return petIdx; },
-  reset() { save = freshSave(); persist(); newStage(0); },
+  reset() { save = freshSave(); persist(); newPetLevel(0); },
   setSave(o) { Object.assign(save, o); persist(); },
   get cutPlaying() { return CUT.playing; }, levelUpPet, danToLevel, get CUT() { return CUT; }, playCuts, skipCuts() { while (mode === 'cut') { CUT.skip(); if (!CUT.playing) endCuts(); } if (mode === 'start' && startCard) { mode = startCard.next || 'play'; startCard = null; } },
-  soundLog: () => P.soundLog.slice(), clearSoundLog: () => { P.soundLog.length = 0; }, rushPulse: () => rushPlayPulse(), newGame, endGame, core, T, fixSave, get capsule() { return CAP; }, get uiTop() { return uiTop(); }, get drag() { return drag; },
+  soundLog: () => P.soundLog.slice(), clearSoundLog: () => { P.soundLog.length = 0; }, rushPulse: () => rushPlayPulse(), endGame, core, T, fixSave, get capsule() { return CAP; }, get uiTop() { return uiTop(); }, get drag() { return drag; },
 });

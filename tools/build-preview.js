@@ -21,6 +21,7 @@ const defs = files
   })
   .join('\n');
 
+const BUILD = require('./srchash.js')(root); // 源代码指纹，测试开跑前核对
 const html = `<!doctype html>
 <html lang="zh">
 <head>
@@ -36,6 +37,7 @@ const html = `<!doctype html>
 </head>
 <body>
 <canvas id="game"></canvas>
+<script>window.__BUILD = '${BUILD}';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\\b/.test(location.search) && /^(localhost|127\\.0\\.0\\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\\/script>');
@@ -71,4 +73,4 @@ __require('')('./game.js');
 // preview.html 给本地双击；index.html 给 GitHub Pages 当首页（内容一样）
 fs.writeFileSync(path.join(root, 'preview.html'), html);
 fs.writeFileSync(path.join(root, 'index.html'), html);
-console.log('写好了 preview.html 和 index.html（' + files.length + ' 个文件）');
+console.log('写好了 preview.html 和 index.html（' + files.length + ' 个文件，指纹 ' + BUILD + '）');

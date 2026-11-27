@@ -86,8 +86,8 @@ function placeAndClear(board, p, r, c) {
   const cells = new Set();
   units.forEach((u) => UNITS[u].forEach((i) => cells.add(i)));
   // 2 机关匣、4 大墨怪、5 铁石：占地方、算满，但消不掉（铁石只有宠物打得碎）；3 小墨怪：算满，消掉就抓到
-  cells.forEach((i) => b[i] !== 2 && b[i] !== 4 && b[i] !== 5 && b[i] !== 6 && b[i] !== 7 && (b[i] = 0));
-  return { board: b, units, cells: [...cells].filter((i) => b[i] !== 2 && b[i] !== 4 && b[i] !== 5 && b[i] !== 6 && b[i] !== 7) };
+  cells.forEach((i) => b[i] !== CELL.CHEST && b[i] !== CELL.BOSS && b[i] !== CELL.ROCK && b[i] !== CELL.METAL && b[i] !== CELL.DIRT && (b[i] = 0));
+  return { board: b, units, cells: [...cells].filter((i) => b[i] !== CELL.CHEST && b[i] !== CELL.BOSS && b[i] !== CELL.ROCK && b[i] !== CELL.METAL && b[i] !== CELL.DIRT) };
 }
 // 有没有一种顺序和摆法，能把这几块全放下（中间会消除）
 function solvable(board, pieces) {
@@ -291,7 +291,7 @@ function createGame(opts) {
     g.adsUsed++;
     if (g.reason === 'time') g.timeLeft += C.reviveTime;
     else {
-      UNITS[CENTER_UNIT].forEach((k) => { if (g.board[k] === 1) { g.board[k] = 0; g.gem[k] = 0; } });
+      UNITS[CENTER_UNIT].forEach((k) => { if (g.board[k] === CELL.BLOCK) { g.board[k] = 0; g.gem[k] = 0; } });
       if (g.stuck()) g.reroll(), g.adsUsed--;
     }
     g.over = false; g.reason = null;
@@ -375,7 +375,7 @@ function collect(g, res, before, ev) {
   }
   // 机关匣：消掉的行 / 列 / 宫里有它，就收一个（一步最多收一个，照 Woodoku 的信箱）
   if ('box' in g.got) {
-    const boxCell = res.units.map((u) => UNITS[u].find((k) => g.board[k] === 2)).find((k) => k !== undefined);
+    const boxCell = res.units.map((u) => UNITS[u].find((k) => g.board[k] === CELL.CHEST)).find((k) => k !== undefined);
     if (boxCell !== undefined) { g.got.box++; ev.collected.push({ k: boxCell, what: 'box' }); }
   }
 }
@@ -392,7 +392,7 @@ function goalGain(g, res, p, r, c, hi) {
     if (kind && left[GEMS[kind].id] > 0) v += 14;
     if (g.bubble[k] && left.bubble > 0) v += 8;
   }
-  if (left.box > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === 2))) v += 16;
+  if (left.box > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === CELL.CHEST))) v += 16;
   // 盖住泡泡也有一点好处（下一步才能戳破）
   if (left.bubble > 0) for (const k of placed) if (g.bubble[k] && !res.cells.includes(k)) v += 1.5;
   if (left.score > 0) v += res.units.length * 2;
@@ -406,7 +406,7 @@ function goalShape(g, board) {
   let s = 0;
   for (let u = 0; u < 27; u++) {
     const cells = UNITS[u];
-    const hasTarget = cells.some((k) => (g.gem[k] && left[GEMS[g.gem[k]].id] > 0 && board[k]) || (g.bubble[k] && left.bubble > 0) || (board[k] === 2 && left.box > 0));
+    const hasTarget = cells.some((k) => (g.gem[k] && left[GEMS[g.gem[k]].id] > 0 && board[k]) || (g.bubble[k] && left.bubble > 0) || (board[k] === CELL.CHEST && left.box > 0));
     if (!hasTarget) continue;
     const n = cells.filter((k) => board[k]).length;
     if (n >= 5) s += (n - 4) * 0.7;
@@ -501,4 +501,6 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { GEMS, GEM_OF, goalLeft, rng, PIECES, IDS, UNITS, CENTER_UNIT, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, bestMove, randomMove, simulate, evalBoard };
+// 0.9.25 收拾：盘面上每一格是什么，用名字不用数字（Fable 代码体检第 6 步）
+const CELL = { EMPTY: 0, BLOCK: 1, CHEST: 2, MON: 3, BOSS: 4, ROCK: 5, METAL: 6, DIRT: 7, BRICK: 8 }; // 空 / 方块 / 机关匣 / 小墨怪 / 头目 / 铁石 / 金属 / 土堆 / 冲锋关铜砖
+module.exports = { CELL, GEMS, GEM_OF, goalLeft, rng, PIECES, IDS, UNITS, CENTER_UNIT, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, bestMove, randomMove, simulate, evalBoard };

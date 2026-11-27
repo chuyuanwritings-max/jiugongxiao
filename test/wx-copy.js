@@ -49,7 +49,8 @@ function playSome(E) { // 打两关攒点记录
   ok(chunks.length >= 1 && d && d.events.length > 20, '复制被拦：弹出微信输入弹窗 ' + chunks.length + ' 段，拼起来是能解开的完整记录（' + joined.length + ' 字）');
   ok(chunks.every((c) => c.length <= 1000), '每段不超过 1000 字');
   ok(shown.length && /第 1\/\d+ 段|试玩记录/.test(shown[0].title || ''), '弹窗标题写清第几段（「' + (shown[0] && shown[0].title) + '」）');
-  const label = (E.btn('setCopyLog') || {}).label || '';
+  // 0.9.25：提示「怎么做」写在上面那颗大按钮（setSendLog）上，「复制文字」按钮本身不换字（0.9.17 起就这样，这条测试一直红）
+  const label = [(E.btn('setSendLog') || {}).label, (E.btn('setCopyLog') || {}).label].join(' ');
   ok(/长按|拷贝/.test(label), '按钮上写怎么做（「' + label + '」），不只说失败');
   const xs = E.errs().filter((e) => e[2] === 'copy');
   ok(xs.length >= 1 && /privacy|112/.test(JSON.stringify(xs[0])), '复制被拦的原因记进了试玩记录（' + (xs[0] ? String(xs[0][3]).slice(0, 60) : '没有') + '）');

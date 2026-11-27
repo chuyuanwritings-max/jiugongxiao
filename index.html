@@ -13,6 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
+<script>window.__BUILD = '0499a067ab01';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -504,8 +505,8 @@ function placeAndClear(board, p, r, c) {
   const cells = new Set();
   units.forEach((u) => UNITS[u].forEach((i) => cells.add(i)));
   // 2 机关匣、4 大墨怪、5 铁石：占地方、算满，但消不掉（铁石只有宠物打得碎）；3 小墨怪：算满，消掉就抓到
-  cells.forEach((i) => b[i] !== 2 && b[i] !== 4 && b[i] !== 5 && b[i] !== 6 && b[i] !== 7 && (b[i] = 0));
-  return { board: b, units, cells: [...cells].filter((i) => b[i] !== 2 && b[i] !== 4 && b[i] !== 5 && b[i] !== 6 && b[i] !== 7) };
+  cells.forEach((i) => b[i] !== CELL.CHEST && b[i] !== CELL.BOSS && b[i] !== CELL.ROCK && b[i] !== CELL.METAL && b[i] !== CELL.DIRT && (b[i] = 0));
+  return { board: b, units, cells: [...cells].filter((i) => b[i] !== CELL.CHEST && b[i] !== CELL.BOSS && b[i] !== CELL.ROCK && b[i] !== CELL.METAL && b[i] !== CELL.DIRT) };
 }
 // 有没有一种顺序和摆法，能把这几块全放下（中间会消除）
 function solvable(board, pieces) {
@@ -709,7 +710,7 @@ function createGame(opts) {
     g.adsUsed++;
     if (g.reason === 'time') g.timeLeft += C.reviveTime;
     else {
-      UNITS[CENTER_UNIT].forEach((k) => { if (g.board[k] === 1) { g.board[k] = 0; g.gem[k] = 0; } });
+      UNITS[CENTER_UNIT].forEach((k) => { if (g.board[k] === CELL.BLOCK) { g.board[k] = 0; g.gem[k] = 0; } });
       if (g.stuck()) g.reroll(), g.adsUsed--;
     }
     g.over = false; g.reason = null;
@@ -793,7 +794,7 @@ function collect(g, res, before, ev) {
   }
   // 机关匣：消掉的行 / 列 / 宫里有它，就收一个（一步最多收一个，照 Woodoku 的信箱）
   if ('box' in g.got) {
-    const boxCell = res.units.map((u) => UNITS[u].find((k) => g.board[k] === 2)).find((k) => k !== undefined);
+    const boxCell = res.units.map((u) => UNITS[u].find((k) => g.board[k] === CELL.CHEST)).find((k) => k !== undefined);
     if (boxCell !== undefined) { g.got.box++; ev.collected.push({ k: boxCell, what: 'box' }); }
   }
 }
@@ -810,7 +811,7 @@ function goalGain(g, res, p, r, c, hi) {
     if (kind && left[GEMS[kind].id] > 0) v += 14;
     if (g.bubble[k] && left.bubble > 0) v += 8;
   }
-  if (left.box > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === 2))) v += 16;
+  if (left.box > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === CELL.CHEST))) v += 16;
   // 盖住泡泡也有一点好处（下一步才能戳破）
   if (left.bubble > 0) for (const k of placed) if (g.bubble[k] && !res.cells.includes(k)) v += 1.5;
   if (left.score > 0) v += res.units.length * 2;
@@ -824,7 +825,7 @@ function goalShape(g, board) {
   let s = 0;
   for (let u = 0; u < 27; u++) {
     const cells = UNITS[u];
-    const hasTarget = cells.some((k) => (g.gem[k] && left[GEMS[g.gem[k]].id] > 0 && board[k]) || (g.bubble[k] && left.bubble > 0) || (board[k] === 2 && left.box > 0));
+    const hasTarget = cells.some((k) => (g.gem[k] && left[GEMS[g.gem[k]].id] > 0 && board[k]) || (g.bubble[k] && left.bubble > 0) || (board[k] === CELL.CHEST && left.box > 0));
     if (!hasTarget) continue;
     const n = cells.filter((k) => board[k]).length;
     if (n >= 5) s += (n - 4) * 0.7;
@@ -919,7 +920,9 @@ function simulate(opts) {
   return g;
 }
 
-module.exports = { GEMS, GEM_OF, goalLeft, rng, PIECES, IDS, UNITS, CENTER_UNIT, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, bestMove, randomMove, simulate, evalBoard };
+// 0.9.25 收拾：盘面上每一格是什么，用名字不用数字（Fable 代码体检第 6 步）
+const CELL = { EMPTY: 0, BLOCK: 1, CHEST: 2, MON: 3, BOSS: 4, ROCK: 5, METAL: 6, DIRT: 7, BRICK: 8 }; // 空 / 方块 / 机关匣 / 小墨怪 / 头目 / 铁石 / 金属 / 土堆 / 冲锋关铜砖
+module.exports = { CELL, GEMS, GEM_OF, goalLeft, rng, PIECES, IDS, UNITS, CENTER_UNIT, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, bestMove, randomMove, simulate, evalBoard };
 
 });
 __def("js/cuts.js", function (module, exports, require) {
@@ -2015,230 +2018,6 @@ module.exports = {
 };
 
 });
-__def("js/levels.js", function (module, exports, require) {
-// 旅程 15 关。结构照 Woodoku「旅程」第 1–15 关（拆解见 ../关卡拆解_Woodoku旅程_20261120.md）：
-// 目标轮着来（冲分 / 收宝石 / 机关匣 / 泡泡），约每 5 关一个新东西，第 10–11 关最难，12–14 关放松。
-// 盘面是我们自己摆的（都左右对称），不搬它的盘面。
-//
-// board 9 行：. 空  # 预放的块  b g o p v 带宝石的块（青金 / 翠玉 / 琥珀 / 粉晶 / 紫晶）
-//             M 机关匣（消不掉；它所在的行 / 列 / 宫每消一次收一个）  * 泡泡  + 泡泡上已经压着块
-// goal：score 分数 / b g o p v 宝石个数 / box 机关匣次数 / bubble 泡泡个数
-// d：出块难度 0–1（越大越多大块）  gemRate：发块时每块带宝石的机会
-// intro：第一次出现新东西时弹的说明卡
-module.exports = [
-  { // 1 冲分 75：几乎不会输，教「放块就加分」
-    goal: { score: 75 }, d: 0,
-    board: [
-      '....#....',
-      '.#.....#.',
-      '.........',
-      '#.......#',
-      '#.......#',
-      '#.......#',
-      '.........',
-      '.#.....#.',
-      '....#....',
-    ],
-  },
-  { // 2 第一次收宝石：3 颗青金，消掉它所在的行 / 列 / 宫就收走
-    goal: { b: 3 }, d: 0.05, intro: 'gem',
-    board: [
-      '.........',
-      '.........',
-      '.#b...b#.',
-      '.........',
-      '....#....',
-      '.........',
-      '...#b#...',
-      '.........',
-      '.........',
-    ],
-  },
-  { // 3 两种颜色
-    goal: { b: 2, g: 2 }, d: 0.08,
-    board: [
-      '.........',
-      '.b##.##b.',
-      '.........',
-      '.........',
-      '.........',
-      '.........',
-      '.........',
-      '.g##.##g.',
-      '.........',
-    ],
-  },
-  { // 4 三种颜色，空盘，宝石在边上；托盘里的块也会带宝石
-    goal: { b: 2, g: 2, o: 2 }, d: 0.1, gemRate: 0.3,
-    board: [
-      'g.......g',
-      '.........',
-      'o.......o',
-      '.........',
-      '.........',
-      '.........',
-      '.........',
-      '.........',
-      '..b...b..',
-    ],
-  },
-  { // 5 新东西：机关匣（照 Woodoku 的信箱）
-    goal: { box: 2 }, d: 0.12, intro: 'box',
-    board: [
-      '.........',
-      '.........',
-      '.........',
-      '...#.#...',
-      '....M....',
-      '...#.#...',
-      '.........',
-      '.........',
-      '.........',
-    ],
-  },
-  { // 6 回到宝石，每色 3
-    goal: { b: 3, p: 3, o: 3 }, d: 0.15, gemRate: 0.2,
-    board: [
-      '.........',
-      '#b#.o.#b#',
-      '.........',
-      '.........',
-      '.p#o.o#p.',
-      '.........',
-      '....p....',
-      '...#b#...',
-      '.........',
-    ],
-  },
-  { // 7 新东西：泡泡 27 个，三竖条，要一条条清
-    goal: { bubble: 27 }, d: 0.15, intro: 'bubble',
-    board: [
-      '#*..*..*#',
-      '.*..*..*.',
-      '.*..*..*.',
-      '.*..*..*.',
-      '.+..*..+.',
-      '.*..*..*.',
-      '.*..*..*.',
-      '.*..*..*.',
-      '#*..*..*#',
-    ],
-  },
-  { // 8 第一次满盘开局（42 格），宝石藏在里面
-    goal: { b: 2, v: 2, p: 2 }, d: 0.12, gemRate: 0.15,
-    board: [
-      '##.###.##',
-      '#.......#',
-      '.#b#.#v#.',
-      '##.....##',
-      '#..p.p..#',
-      '##.....##',
-      '.#v#.#b#.',
-      '#.......#',
-      '##.###.##',
-    ],
-  },
-  { // 9 机关匣变大：2×2
-    goal: { box: 3 }, d: 0.2,
-    board: [
-      '.........',
-      '.#.....#.',
-      '.........',
-      '...MM....',
-      '...MM....',
-      '.....#...',
-      '.........',
-      '.#.....#.',
-      '.........',
-    ],
-  },
-  { // 10 宝石每色 5，沿四边：第一个长关
-    goal: { b: 5, g: 5, v: 5 }, d: 0.25, gemRate: 0.3,
-    board: [
-      'b...g...b',
-      '.........',
-      'v.......v',
-      '.........',
-      'g.......g',
-      '.........',
-      'v.......v',
-      '.........',
-      'b...g...b',
-    ],
-  },
-  { // 11 宝石每色 7，散在全盘：前 15 关的高峰
-    goal: { b: 7, g: 7, p: 7 }, d: 0.3, gemRate: 0.3,
-    board: [
-      '.b.....b.',
-      '...g.g...',
-      'p.......p',
-      '..b...b..',
-      '.g..p..g.',
-      '..#...#..',
-      'p.......p',
-      '...g.g...',
-      '.b.....b.',
-    ],
-  },
-  { // 12 高峰后回到冲分，喘口气（盘面花纹碎，但不难）
-    goal: { score: 200 }, d: 0.15,
-    board: [
-      '#.#...#.#',
-      '.........',
-      '#.#...#.#',
-      '...#.#...',
-      '.........',
-      '...#.#...',
-      '#.#...#.#',
-      '.........',
-      '#.#...#.#',
-    ],
-  },
-  { // 13 泡泡少而散，轻松
-    goal: { bubble: 4 }, d: 0.15,
-    board: [
-      '.........',
-      '.#.....#.',
-      '..*...*..',
-      '.........',
-      '....#....',
-      '.........',
-      '..*...*..',
-      '.#.....#.',
-      '.........',
-    ],
-  },
-  { // 14 冲分 220
-    goal: { score: 220 }, d: 0.2,
-    board: [
-      '###...###',
-      '#.......#',
-      '#.......#',
-      '.........',
-      '...###...',
-      '.........',
-      '#.......#',
-      '#.......#',
-      '###...###',
-    ],
-  },
-  { // 15 机关匣 4 次（Woodoku 这关是果树，同一类）
-    goal: { box: 4 }, d: 0.22,
-    board: [
-      '#.......#',
-      '.........',
-      '.........',
-      '....#....',
-      '...#M#...',
-      '....#....',
-      '.........',
-      '.........',
-      '#.......#',
-    ],
-  },
-];
-
-});
 __def("js/logimg.js", function (module, exports, require) {
 // 试玩记录 → 一张黑白小方格的图（0.9.17，Cc 11-27：「测试结果转发的按钮一定要一定要修好啊！一定要让我朋友可以把测试结果转发给我」）
 // 为什么是图：微信小游戏不能发文件；复制要后台声明「剪贴板」隐私接口才放行；分段弹窗太累。
@@ -2338,9 +2117,8 @@ __def("js/main.js", function (module, exports, require) {
 const P = require('./platform.js');
 const C = require('./config.js');
 const core = require('./core.js');
+const CELL = core.CELL;
 const art = require('./art.js');
-const LV = require('./levels.js');
-const SG = require('./siege.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
@@ -2489,30 +2267,6 @@ let chipPos = {}; // 顶上每个计数的位置（每帧画的时候记下）
 let chipPop = {}; // 计数收到东西时弹一下
 let introKind = null; // 正在看的说明卡
 
-function newGame(endless) {
-  const single = !endless && save.buySingle && save.coins >= C.singleCost;
-  if (single) { save.coins -= C.singleCost; save.buySingle = false; }
-  paintIdx = save.wins % art.COUNT;
-  g = core.createGame({
-    level: endless ? 2 : Math.min(save.wins, 4), endless, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0,
-    items: save.items, single, tutorial: !save.tutorialDone,
-  });
-  stageIdx = -1;
-  startCommon();
-}
-// 旅程第 i 关
-function newStage(i) {
-  stageIdx = Math.max(0, Math.min(LV.length - 1, i));
-  const st = LV[stageIdx];
-  g = core.createGame({
-    stage: st, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0,
-    tutorial: stageIdx === 0 && !save.tutorialDone,
-  });
-  startCommon();
-  // 预放的块是旧木色
-  for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = -1;
-  if (st.intro && !save.introSeen[st.intro]) { introKind = st.intro; mode = 'intro'; }
-}
 function startCommon() {
   setLayout(g && g.siege ? 'siege' : g && g.pets && g.team.length ? 'pets' : 'normal'); // 没带宠物的关不留宠物栏
   g.seedColor = save.plays % 7;
@@ -2948,7 +2702,7 @@ function drawMonHints() {
   };
   const bubbles = (k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 3; n++) { const a = (clock * 1.5 + n / 3) % 1; ctx.globalAlpha = 1 - a; ctx.fillStyle = '#2f5a3c'; ctx.beginPath(); ctx.arc(x + (n - 1) * 8, y + 8 - a * 18, 4 + a * 5, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; };
   g.mon.forEach((m, k) => {
-    if (!m || g.board[k] !== 3) return;
+    if (!m || g.board[k] !== CELL.MON) return;
     if (m.step !== undefined && m.step !== null && !monSlide[k]) footprints(k, m.step); // 0.9.17 会爬的墨怪：下一手要去的那格冒脚印
     if (m.t === 'eat' && m.tgt !== null) bite(m.tgt);
     if (m.t === 'moss' && m.tgt !== null) bubbles(m.tgt);
@@ -3146,7 +2900,7 @@ function onTouchBody(type, id, x, y, live) {
       if (g.board[k] >= 2) { showInfo({ k }); return; }
       if (info) { info = null; return; }
     }
-    if (mode === 'play' && !g.over && !(g.siege && (g.phase !== 'play' || siegeBusy())) && y > L.trayY - 20) {
+    if (mode === 'play' && !g.over && y > L.trayY - 20) {
       const i = slotAt(x);
       if (g.hand[i]) {
         drag = { slot: i, x, y, id, x0: x, y0: y };
@@ -3187,7 +2941,7 @@ function drop() {
     const colorsBefore = colorAt.slice();
     const pev = g.useSkill(tg);
     if (!pev) return;
-    for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
+    for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK) colorAt[k] = g.color[k];
     T.rec('k', pev.skill.pet, tg.hand !== undefined ? 'h' + tg.hand : tg.r, tg.hand !== undefined ? tg.cell : tg.c, pev.skill.cells.length + (pev.skill.fill || []).length, (pev.counter || []).length, (pev.petMiss || []).length);
     if (pev.rescue) T.rec('r', pev.rescue);
     if (pev.wave) T.rec('w', pev.wave.no, pev.wave.of);
@@ -3214,19 +2968,10 @@ function drop() {
     if (pev.rescue) T.rec('r', pev.rescue);
     if (pev.drain && pev.drain.length) T.rec('n', pev.drain.length);
     if (pev.wave) T.rec('w', pev.wave.no, pev.wave.of);
-    for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
+    for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK) colorAt[k] = g.color[k];
     if (!save.petTutDone) { save.petTutDone = true; save.tutorialDone = true; persist(); }
     if (pev.win && !g._settled) settlePet(); // 赢了马上记账，结算页等动画演完再出
     juicePets(pev, colorsBefore);
-    return;
-  }
-  if (g.siege) {
-    const colorsBefore = colorAt.slice();
-    p.cells.forEach(([dr, dc]) => (colorsBefore[(s.r + dr) * 9 + s.c + dc] = ci));
-    const sev = g.place(i, s.r, s.c);
-    if (!sev) return;
-    p.cells.forEach(([dr, dc]) => (colorAt[(s.r + dr) * 9 + s.c + dc] = ci));
-    juiceSiege(sev, colorsBefore);
     return;
   }
   const ev = g.place(i, s.r, s.c);
@@ -3336,36 +3081,7 @@ function endGame() {
   haptic('heavy'); // 过关、输了都是大事
   stats.overs.push(P.now());
   drag = null;
-  if (g.siege) return endSiege();
-  if (g.pets) return endPet();
-  if (g.stage) {
-    // 旅程：过关 → 记进度、给金币；输 → 差一点就写还差几个
-    if (g.won) save.stage = Math.max(save.stage, stageIdx + 1);
-    coinsGot = Math.floor(g.score * C.coinPerScore) + (g.won ? C.coinStageWin : 0);
-    save.coins += coinsGot;
-    persist();
-    result = { won: g.won, reason: g.reason, near: g.nearMiss(), left: g.goalLeft(), doubled: false };
-    mode = 'over';
-    if (!g.won) { P.sound('lose', 0.6); say('堵住了'); }
-    return;
-  }
-  const lit = g.litCount();
-  if (!g.endless) g.lit.forEach((v, b) => v && (save.litEver[paintIdx][b] = true));
-  let unlocked = null;
-  if (g.won) {
-    save.won[paintIdx] = true;
-    save.wins++;
-    const it = ITEMS[save.wins - 1];
-    if (it && !save.items[it.id]) { save.items[it.id] = true; unlocked = it; }
-  }
-  coinsGot = Math.floor(g.score * C.coinPerScore) + (g.endless ? 0 : lit * C.coinPerBox) + (g.won ? C.coinWin : 0);
-  save.coins += coinsGot;
-  if (g.endless) save.bestEndless = Math.max(save.bestEndless, g.score);
-  else save.best = Math.max(save.best, g.score);
-  persist();
-  result = { won: g.won, reason: g.reason, lit, near: g.nearMiss(), unlocked, doubled: false };
-  mode = 'over';
-  if (!g.won) { P.sound('lose', 0.6); say(g.reason === 'time' ? '时辰到' : '堵住了'); }
+  return endPet(); // 0.9.25 旅程、经典拼画的结算拆掉了，只剩宠物关
 }
 function continueAfterAd(fn) {
   ad = { until: clock + C.adSec, done: fn };
@@ -3544,44 +3260,7 @@ function drawScoreStars(y) {
   if (burn < 1) { const gl = 4 + Math.sin(clock * 9) * 1.5; ctx.fillStyle = 'rgba(255,140,60,0.45)'; ctx.beginPath(); ctx.arc(bx1, by, gl + 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffcf6a'; ctx.beginPath(); ctx.arc(bx1, by, gl * 0.6, 0, Math.PI * 2); ctx.fill(); for (let w = 0; w < 3; w++) { const a = (clock * 0.7 + w / 3) % 1; ctx.globalAlpha = (1 - a) * 0.5; ctx.fillStyle = '#d8d0e0'; ctx.beginPath(); ctx.arc(bx1 + Math.sin(a * 6 + w) * 5, by - 6 - a * 22, 2 + a * 3, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; }
 }
 function drawHud() {
-  if (g.siege) return drawSiegeHud();
-  if (g.pets) return drawStageHud(); // 0.9.14：顶上只放过关条件，宠物住在右下角宠物格（Cc：「把宠物就放在右下角这一个地方就行了」）
-  if (g.stage) return drawStageHud();
-  const y = L.top;
-  button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); else if (!g.over && g.moves > 0) logPlay(true); timeline = []; if (g.won && g.pets) { CUT.clear(); openCamp(); } else mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账；过了关一律回营地
-  // 分数
-  text(String(Math.round(displayScore)), 80, y + 18, 30, COL.text, 'left');
-  text('最高 ' + (g.endless ? save.bestEndless : save.best), 80, y + 46, 13, COL.dim, 'left', 'normal');
-  // 九宫小图：哪几宫亮了
-  if (!g.endless) {
-    const s = 12, mx = W / 2 - s * 1.5 - 2, my = y + 4;
-    for (let b = 0; b < 9; b++) {
-      const x = mx + (b % 3) * (s + 2), yy = my + Math.floor(b / 3) * (s + 2);
-      const la = litAnim.find((a) => a.b === b);
-      const pop = la ? 1 + Math.max(0, 0.6 - (clock - la.t)) : 1;
-      ctx.fillStyle = COL.ink;
-      ctx.fillRect(x - 1, yy - 1, s + 2, s + 2);
-      ctx.fillStyle = g.lit[b] ? (b === 4 ? COL.red : COL.brassLight) : COL.woodDark;
-      ctx.fillRect(x + (s - s * pop) / 2, yy + (s - s * pop) / 2, s * pop, s * pop);
-    }
-    text(art.PAINTINGS[paintIdx].name, W / 2, y + 54, 12, COL.dim, 'center', 'normal');
-  } else {
-    text('无尽', W / 2, y + 20, 18, COL.brassLight);
-  }
-  // 时间
-  if (!g.endless) {
-    const tl = Math.ceil(g.timeLeft);
-    const urgent = g.timeLeft <= 10;
-    const txt = Math.floor(tl / 60) + ':' + String(tl % 60).padStart(2, '0');
-    const sz = urgent ? 30 + Math.sin(clock * 12) * 3 : 28;
-    text(txt, W - 64, y + 20, sz, urgent ? COL.red : COL.text, 'right');
-    // 时间条
-    const bw = W - 36, frac = Math.min(1, g.timeLeft / g.timeLimit);
-    ctx.fillStyle = COL.ink; rr(18, L.by - 24, bw, 7, 3); ctx.fill();
-    ctx.fillStyle = urgent ? COL.red : COL.copper; rr(18, L.by - 24, Math.max(4, bw * frac), 7, 3); ctx.fill();
-  }
-  // 画册按钮
-  button('album', W - 52, y + 2, 40, 36, '册', { size: 18, bg: COL.copper, fn: () => openAlbum() });
+  return drawStageHud(); // 0.9.25 只剩宠物关（经典拼画的顶栏拆掉了）
 }
 function drawBoard(showGhost) {
   const { bx, by, cell, board: B } = L;
@@ -3685,11 +3364,11 @@ function drawBoard(showGhost) {
     const entS = ent < 1 ? 1 + 2.2 * Math.pow(ent - 1, 3) + 1.2 * Math.pow(ent - 1, 2) : 1; // 先冲过头一点再落定
     const sc = (pop ? 1 + 0.18 * (1 - (clock - pop.t) / 0.15) : 1) * entS;
     const s = cell * sc, x = cellX(k % 9) + (cell - s) / 2, y = cellY(Math.floor(k / 9)) + (cell - s) / 2;
-    if (g.board[k] === 6) { metalPlate(x, y, s, k); continue; } // 0.9.17 金属
-    if (g.board[k] === 7) { dirtMound(x, y, s, k); continue; } // 0.9.20 一堆土
-    if (g.board[k] === 8) { const ca = cellIn[k] !== undefined ? (clock - cellIn[k]) / 0.28 : 9; if (ca < 0) continue; if (ca < 1) { const e = 1 - Math.pow(1 - ca, 3), ss = cell * e; rushBrick(cellX(k % 9) + (cell - ss) / 2, cellY(Math.floor(k / 9)) + (cell - ss) / 2 - (1 - e) * cell * 0.6, ss); continue; } delete cellIn[k]; rushBrick(x, y, s); continue; } // 0.9.21 铜砖
+    if (g.board[k] === CELL.METAL) { metalPlate(x, y, s, k); continue; } // 0.9.17 金属
+    if (g.board[k] === CELL.DIRT) { dirtMound(x, y, s, k); continue; } // 0.9.20 一堆土
+    if (g.board[k] === CELL.BRICK) { const ca = cellIn[k] !== undefined ? (clock - cellIn[k]) / 0.28 : 9; if (ca < 0) continue; if (ca < 1) { const e = 1 - Math.pow(1 - ca, 3), ss = cell * e; rushBrick(cellX(k % 9) + (cell - ss) / 2, cellY(Math.floor(k / 9)) + (cell - ss) / 2 - (1 - e) * cell * 0.6, ss); continue; } delete cellIn[k]; rushBrick(x, y, s); continue; } // 0.9.21 铜砖
     if (cellIn[k] !== undefined) { const ca = (clock - cellIn[k]) / 0.28; if (ca < 0) continue; if (ca < 1) { const e = 1 - Math.pow(1 - ca, 3), ss = cell * e; block(cellX(k % 9) + (cell - ss) / 2, cellY(Math.floor(k / 9)) + (cell - ss) / 2 - (1 - e) * cell * 0.6, ss, 1, colorAt[k], false); continue; } delete cellIn[k]; } // 冲锋关补进来的格子：一格格弹进来
-    if (g.board[k] === 3) {
+    if (g.board[k] === CELL.MON) {
       const sl = monSlide[k]; if (sl) { const sa = (clock - sl.t) / 0.32; if (sa >= 1) delete monSlide[k]; else if (sa >= 0) { const e = sa * sa * (3 - 2 * sa), fx0 = cellX(sl.from % 9), fy0 = cellY(Math.floor(sl.from / 9)), hop = Math.sin(sa * Math.PI) * cell * 0.25; drawMon(g.mon && g.mon[k], k, fx0 + (x - fx0) * e + s / 2, fy0 + (y - fy0) * e + s / 2 - hop, s * 0.4); continue; } } // 爬：从原来那格蹦过去
       const ma = monIn[k] !== undefined ? (clock - monIn[k]) / 0.45 : 9;
       if (ma < 0) continue;
@@ -3700,8 +3379,8 @@ function drawBoard(showGhost) {
       const jx = amp ? Math.sin(clock * fq + k) * amp : 0, jy = rem === 1 ? -Math.abs(Math.sin(clock * fq * 0.5 + k)) * s * 0.06 : 0;
       drawMon(mm, k, x + s / 2 + jx, y + s / 2 + jy, s * 0.4); continue;
     }
-    if (g.board[k] === 5) { ironRock(x, y, s); if (rockCall) { ctx.strokeStyle = 'rgba(243,210,122,' + (0.55 + Math.sin(clock * 5) * 0.35) + ')'; ctx.lineWidth = 3; rr(x + 1.5, y + 1.5, s - 3, s - 3, 6); ctx.stroke(); } if (g.rockHp && g.rockHp[k] > 1) { ctx.strokeStyle = '#8a90a0'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, y + 4, s - 8, s - 8); ctx.strokeRect(x + 8, y + 8, s - 16, s - 16); } continue; }
-    if (g.board[k] === 4) {
+    if (g.board[k] === CELL.ROCK) { ironRock(x, y, s); if (rockCall) { ctx.strokeStyle = 'rgba(243,210,122,' + (0.55 + Math.sin(clock * 5) * 0.35) + ')'; ctx.lineWidth = 3; rr(x + 1.5, y + 1.5, s - 3, s - 3, 6); ctx.stroke(); } if (g.rockHp && g.rockHp[k] > 1) { ctx.strokeStyle = '#8a90a0'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, y + 4, s - 8, s - 8); ctx.strokeRect(x + 8, y + 8, s - 16, s - 16); } continue; }
+    if (g.board[k] === CELL.BOSS) {
       // 大墨怪：2×2 画成一只，只在左上那格画
       if (g.bigCells && g.bigCells[0] === k) {
         const hit = petFx.bossHit && clock - petFx.bossHit < 0.3 ? Math.sin(clock * 70) * 5 : 0;
@@ -3719,7 +3398,7 @@ function drawBoard(showGhost) {
       }
       continue;
     }
-    if (g.board[k] === 2) {
+    if (g.board[k] === CELL.CHEST) {
       // 机关匣：要被消的那一下亮一圈
       chest(x, y, s);
       if (willClear && willClear.has(k)) { ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.strokeRect(x + 2, y + 2, s - 4, s - 4); }
@@ -3732,7 +3411,7 @@ function drawBoard(showGhost) {
   if (ghost && ghost.p.special === 'skill' && willClear) {
     const pet = { act: PG.PETS[ghost.p.pet].kind, color: PG.PETS[ghost.p.pet].color };
     willClear.forEach((k) => {
-      if (g.board[k] !== 3 || !g.mon[k]) return;
+      if (g.board[k] !== CELL.MON || !g.mon[k]) return;
       const x = cellX(k % 9), y = cellY(Math.floor(k / 9));
       if (PG.isCounter(g.mon[k], pet)) { ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x + cell / 2, y + cell / 2, cell * 0.46, 0, Math.PI * 2); ctx.stroke(); }
       else { ctx.strokeStyle = 'rgba(200,205,215,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + cell * 0.2, y + cell * 0.2); ctx.lineTo(x + cell * 0.8, y + cell * 0.8); ctx.moveTo(x + cell * 0.8, y + cell * 0.2); ctx.lineTo(x + cell * 0.2, y + cell * 0.8); ctx.stroke(); }
@@ -3751,13 +3430,12 @@ function drawBoard(showGhost) {
       if (ghost.hg && ghost.hg.cell === n) gem(cellX(ghost.s.c + dc), cellY(ghost.s.r + dr), cell, ghost.hg.kind, 0.6);
     });
   }
-  if (g.siege) drawSiegeBoard();
   if (g.pets) drawPetBoard();
   // 泡泡压在最上面（下面有块时也看得见）
   for (let k = 0; k < 81; k++) if (g.bubble[k]) bubbleAt(cellX(k % 9), cellY(Math.floor(k / 9)), cell, willClear && willClear.has(k) ? 0.5 + Math.sin(clock * 12) * 0.3 : 1);
   // 正在碎掉的块：变白、缩小
   // 0.9.21 冲锋关宠物修之前：那个空里先多画一块铜砖，铜雀一啄就碎
-  if (rushPatch && g.rush && clock < rushPatch.until && g.board[rushPatch.k] === 0) rushBrick(cellX(rushPatch.k % 9), cellY(Math.floor(rushPatch.k / 9)), cell);
+  if (rushPatch && g.rush && clock < rushPatch.until && g.board[rushPatch.k] === CELL.EMPTY) rushBrick(cellX(rushPatch.k % 9), cellY(Math.floor(rushPatch.k / 9)), cell);
   clearing.forEach((cl) => {
     const a = (clock - cl.t) / 0.3;
     if (a < 0) return;
@@ -3967,7 +3645,6 @@ function drawFoot() {
   }
 }
 function drawFx() {
-  if (g && g.siege) drawMissiles();
   if (g && g.pets) drawPetRuns();
   flyers.forEach((f) => {
     const a = (clock - f.t) / 0.55;
@@ -4057,7 +3734,7 @@ function snapState() {
   const out = { mode, ver: VERSION };
   if (g && g.pets) {
     const rows = [];
-    for (let r = 0; r < 9; r++) { let ln = ''; for (let c = 0; c < 9; c++) { const k = r * 9 + c, v = g.board[k]; ln += v === 0 ? '.' : v === 1 ? (g.color[k] === -2 ? '~' : String(g.color[k] >= 0 ? g.color[k] : '#')) : v === 2 ? 'X' : v === 3 ? ((g.mon[k] && MCH[g.mon[k].t]) || 'm') : v === 4 ? 'B' : v === 5 ? 'R' : '?'; } rows.push(ln); }
+    for (let r = 0; r < 9; r++) { let ln = ''; for (let c = 0; c < 9; c++) { const k = r * 9 + c, v = g.board[k]; ln += v === CELL.EMPTY ? '.' : v === CELL.BLOCK ? (g.color[k] === -2 ? '~' : String(g.color[k] >= 0 ? g.color[k] : '#')) : v === CELL.CHEST ? 'X' : v === CELL.MON ? ((g.mon[k] && MCH[g.mon[k].t]) || 'm') : v === CELL.BOSS ? 'B' : v === CELL.ROCK ? 'R' : '?'; } rows.push(ln); }
     Object.assign(out, { lv: g.stage && g.stage.evolve ? 'evo' : petIdx + 1, moves: g.moves, wave: (g.waveNo || 0) + '/' + (g.waveTotal || 0), over: !!g.over, board: rows,
       hand: g.hand.slice(0, 3).map((p) => (p ? p.id : '-')), skill: g.hand[3] ? g.hand[3].kind + (g.hand[3].uses > 1 ? '×' + g.hand[3].uses : '') : '-',
       pets: g.team.map((t) => t.id + ' ' + t.lv + '级 能量' + t.energy + '/' + PG.energyMax(g, t)), left: g.goalLeft(), next: g.previewN && g.nextHand ? g.nextHand.slice(0, g.previewN).map((p) => p.id) : undefined });
@@ -4096,14 +3773,14 @@ function drawInfo() {
   let pic = null, name = '', line = '', pets = [];
   const k = info.k;
   if (info.pet) { const pt = g.team.find((x) => x.id === info.pet) || { lv: 1 }; name = PG.PETS[info.pet].name + ' Lv' + pt.lv; line = PG.petDesc(info.pet, pt.lv); pic = () => petIcon(info.pet, 0, 0, 40, 0, 0); }
-  else if (k !== undefined && g.board[k] === 3 && g.mon[k]) { const m = g.mon[k], mi = MON_INFO[m.t] || MON_INFO.ink; name = mi[0]; line = mi[1]; pets = counterPets(m.t, m.col); pic = () => drawMon(m, -1, 0, 0, 18);
+  else if (k !== undefined && g.board[k] === CELL.MON && g.mon[k]) { const m = g.mon[k], mi = MON_INFO[m.t] || MON_INFO.ink; name = mi[0]; line = mi[1]; pets = counterPets(m.t, m.col); pic = () => drawMon(m, -1, 0, 0, 18);
     if (g.stage.crawl && (m.t === 'ink' || m.t === 'moss')) { pets = []; pic = () => introPic(m.t === 'moss' ? 'moss' : 'crawl', 70, 2, 150); }
     if (m.t === 'sticky') { pets = []; pic = () => introPic('sticky', 70, 2, 150); } } // 0.9.20 无字：气泡里放它干什么的小动画（会爬 / 爬过留墨）；第一章宠物不抓怪，不画「克它」
-  else if (k !== undefined && g.board[k] === 6) { pic = () => introPic('metal', 70, 2, 150); }
-  else if (k !== undefined && g.board[k] === 7) { pic = () => introPic('dirt', 70, 2, 150); }
-  else if (k !== undefined && g.board[k] === 5) { name = '铁石'; line = '消不掉，只有宠物的技能打得碎'; pets = ['baozhu', 'tongque', 'modou', 'qilin']; pic = () => ironRock(-18, -18, 36); }
-  else if (k !== undefined && g.board[k] === 2) { name = '机关匣'; line = '它那一排每消一次，收一个'; pic = () => chest(-18, -18, 36); }
-  else if (k !== undefined && g.board[k] === 4) { const bk = (g.boss && g.boss.kind) || 'spit'; name = (BOSS_CARD[bk] || {}).name || '大墨怪'; line = '它那一排每消一次，打掉一颗心'; const a = PG.RULES.bossWeak[bk]; pets = a ? [ACT_PET[a]] : []; pic = () => { inkMonster(0, 0, 18, true); bossDress(bk, 0, 0, 18); }; }
+  else if (k !== undefined && g.board[k] === CELL.METAL) { pic = () => introPic('metal', 70, 2, 150); }
+  else if (k !== undefined && g.board[k] === CELL.DIRT) { pic = () => introPic('dirt', 70, 2, 150); }
+  else if (k !== undefined && g.board[k] === CELL.ROCK) { name = '铁石'; line = '消不掉，只有宠物的技能打得碎'; pets = ['baozhu', 'tongque', 'modou', 'qilin']; pic = () => ironRock(-18, -18, 36); }
+  else if (k !== undefined && g.board[k] === CELL.CHEST) { name = '机关匣'; line = '它那一排每消一次，收一个'; pic = () => chest(-18, -18, 36); }
+  else if (k !== undefined && g.board[k] === CELL.BOSS) { const bk = (g.boss && g.boss.kind) || 'spit'; name = (BOSS_CARD[bk] || {}).name || '大墨怪'; line = '它那一排每消一次，打掉一颗心'; const a = PG.RULES.bossWeak[bk]; pets = a ? [ACT_PET[a]] : []; pic = () => { inkMonster(0, 0, 18, true); bossDress(bk, 0, 0, 18); }; }
   else if (info.goal === 'evolve') { pic = () => goalIcon('evolve', 0, 0, 30); name = '点亮正中间'; line = '用' + PG.COLOR_NAME[g.evColor] + '方块，一格格点亮'; } // 0.9.14 debug：进化关的目标原来冒的是「收宝石」
   else if (info.goal) { const key = info.goal; pic = () => goalIcon(key, 0, 0, 30); name = key === 'lines' ? '消掉几排' : key === 'monster' || key === 'all' ? '抓墨怪' : key === 'rock' ? '打碎铁石' : key === 'boss' ? '打倒头目' : key === 'box' ? '收机关匣' : '收宝石'; line = key === 'lines' ? '凑满一排、一竖或一个大格就消掉' : key === 'rock' ? '只有宠物的技能打得碎' : key === 'boss' ? '它那一排每消一次，掉一颗心' : '消掉它们那一排就收走'; }
   else { info = null; return; }
@@ -4154,134 +3831,8 @@ function drawTutorial() {
   ctx.globalAlpha = 1;
 }
 
-// 结算页：把画亮出来，没亮的宫闪着
-function drawPainting(idx, x, y, s, litArr, blink) {
-  ctx.imageSmoothingEnabled = paintSmooth[idx];
-  ctx.fillStyle = COL.ink; ctx.fillRect(x - 4, y - 4, s + 8, s + 8);
-  ctx.drawImage(paintCanvas[idx], 0, 0, paintSize[idx], paintSize[idx], x, y, s, s);
-  const q = s / 3;
-  for (let b = 0; b < 9; b++) {
-    if (litArr[b]) continue;
-    const bx = x + (b % 3) * q, by = y + Math.floor(b / 3) * q;
-    ctx.fillStyle = COL.shade + '0.86)'; ctx.fillRect(bx, by, q, q);
-    if (blink) {
-      ctx.strokeStyle = 'rgba(226,85,59,' + (0.5 + Math.sin(clock * 8) * 0.4) + ')';
-      ctx.lineWidth = 3; ctx.strokeRect(bx + 3, by + 3, q - 6, q - 6);
-    }
-  }
-  ctx.strokeStyle = COL.brass; ctx.lineWidth = 2;
-  for (let i = 1; i < 3; i++) {
-    ctx.beginPath(); ctx.moveTo(x + i * q, y); ctx.lineTo(x + i * q, y + s); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x, y + i * q); ctx.lineTo(x + s, y + i * q); ctx.stroke();
-  }
-}
-// 旅程的结算：过关卡 / 差一点卡
-function drawStageOver() {
-  const age = clock - overAt;
-  const r = result;
-  // 过关：先让「过关！」和飞的宝石放完，再出卡（照 Woodoku：变暗 → WELL DONE → 第 N 关完成）
-  const wait = r.won ? 1.1 : 0.35;
-  ctx.fillStyle = COL.shade + Math.min(r.won ? 0.55 : 0.85, age * 2) + ')';
-  ctx.fillRect(0, 0, W, H);
-  if (r.won && age < wait) {
-    // 「过关！」压在暗层上面，弹一下
-    const k = Math.min(1, age / 0.15);
-    const sz = Math.round(64 * (0.6 + k * 0.5 - Math.max(0, age - 0.15) * 0.1));
-    ctx.globalAlpha = age > wait - 0.15 ? Math.max(0, (wait - age) / 0.15) : 1;
-    text('过关！', W / 2, L.by + L.board * 0.45, sz, COL.brassLight);
-    ctx.globalAlpha = 1;
-  }
-  if (age < wait) return;
-  const pw = Math.min(W - 40, 340), ph = 330, px = (W - pw) / 2, py = Math.max(L.top + 40, (H - ph) / 2 - 40);
-  const k = Math.min(1, (age - wait) / 0.18);
-  ctx.save();
-  ctx.translate(W / 2, py + ph / 2); ctx.scale(0.85 + k * 0.15, 0.85 + k * 0.15); ctx.translate(-W / 2, -(py + ph / 2));
-  ctx.globalAlpha = k;
-  panel(px, py, pw, ph);
-  const keys = Object.keys(g.stage.goal);
-  if (r.won) {
-    text('第 ' + (stageIdx + 1) + ' 关完成！', W / 2, py + 44, 28, COL.brassLight);
-    // 目标图标排一排，都打勾
-    const cw = 64, x0 = W / 2 - (cw * keys.length) / 2;
-    keys.forEach((key, n) => {
-      const cx = x0 + cw * n + cw / 2, cy = py + 112;
-      if (key === 'score') text(String(g.score), cx, cy, 34, COL.text);
-      else { goalIcon(key, cx, cy - 4, 38 + Math.sin(clock * 4 + n) * 2); text('✓', cx + 20, cy + 18, 20, COL.jade); }
-    });
-  } else {
-    text(r.near ? '差一点！' : '堵住了', W / 2, py + 44, 30, r.near ? COL.red : COL.text);
-    // 还差几个
-    const cw = 70, x0 = W / 2 - (cw * keys.length) / 2;
-    text('还差', W / 2, py + 82, 15, COL.dim, 'center', 'normal');
-    keys.forEach((key, n) => {
-      const cx = x0 + cw * n + cw / 2, cy = py + 118;
-      if (key === 'score') text(r.left.score + ' 分', cx, cy, 26, COL.red);
-      else if (r.left[key] === 0) { goalIcon(key, cx - 12, cy, 26); text('✓', cx + 16, cy, 20, COL.jade); }
-      else { goalIcon(key, cx - 12, cy, 26); text(String(r.left[key]), cx + 16, cy, 22, COL.red); }
-    });
-  }
-  const cy = py + 168;
-  if (coinsGot > 0) text('+' + coinsGot * (r.doubled ? 2 : 1) + ' 金', W / 2 - 40, cy, 20, COL.brassLight);
-  if (coinsGot > 0 && !r.doubled && g.adsUsed < C.adMax) {
-    button('double', W / 2 + 18, cy - 17, 88, 34, '翻倍', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { save.coins += coinsGot; persist(); r.doubled = true; g.adsUsed++; mode = 'over'; P.sound('coin'); }) });
-  }
-  const bw = pw - 48, bx = px + 24;
-  if (r.won) {
-    const last = stageIdx >= LV.length - 1;
-    button('next', bx, py + 200, bw, 60, last ? '旅程走完了' : '下一关', { size: 26, fn: () => (last ? (mode = 'map') : newStage(stageIdx + 1)) });
-    button('tomap', bx, py + 270, bw, 40, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-  } else {
-    button('again', bx, py + 200, bw, 60, '再试一次', { size: 26, fn: () => newStage(stageIdx) });
-    if (g.adsUsed < C.adMax) {
-      button('revive', bx, py + 270, bw * 0.6 - 6, 44, '清空正中间', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { reviveFx(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
-      button('tomap', bx + bw * 0.6 + 6, py + 270, bw * 0.4 - 6, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-    } else button('tomap', bx, py + 270, bw, 44, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-  }
-  ctx.restore();
-  ctx.globalAlpha = 1;
-}
 function drawOver() {
-  if (g.siege) return drawSiegeOver();
-  if (g.pets) return drawPetOver();
-  if (g.stage) return drawStageOver();
-  const age = clock - overAt;
-  ctx.fillStyle = COL.shade + Math.min(0.92, age * 3) + ')';
-  ctx.fillRect(0, 0, W, H);
-  if (age < 0.25) return; // 让碎块飞一下再出结算
-  const r = result;
-  const s = Math.min(W - 80, 260);
-  const px0 = (W - s) / 2, py0 = L.top + 70;
-  let title;
-  if (g.endless) title = g.score + ' 分';
-  else if (r.won) title = '拼成了！';
-  else if (9 - r.lit <= 2) title = '只差 ' + (9 - r.lit) + ' 块画！';
-  else title = '亮了 ' + r.lit + ' / 9 块画';
-  text(title, W / 2, L.top + 30, 34, r.won ? COL.brassLight : r.near ? COL.red : COL.text);
-  drawPainting(paintIdx, px0, py0, s, r.won ? new Array(9).fill(true) : g.lit, !r.won && !g.endless);
-  let y = py0 + s + 30;
-  text((g.endless ? '' : g.score + ' 分  ·  ') + '最高 ' + (g.endless ? save.bestEndless : save.best), W / 2, y, 18, COL.text, 'center', 'normal');
-  y += 30;
-  text('+' + coinsGot * (r.doubled ? 2 : 1) + ' 金', W / 2 - 40, y, 20, COL.brassLight);
-  if (!r.doubled && g.adsUsed < C.adMax) {
-    button('double', W / 2 + 20, y - 17, 92, 34, '翻倍', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { save.coins += coinsGot; persist(); r.doubled = true; g.adsUsed++; mode = 'over'; P.sound('coin'); }) });
-  }
-  y += 34;
-  if (r.unlocked) {
-    gearIcon(W / 2 - 80, y, 10, clock * 2, COL.jade);
-    text('得到 ' + r.unlocked.name + '：' + r.unlocked.tip, W / 2 + 8, y, 16, COL.jade);
-    y += 30;
-  }
-  // 按钮：再来最大
-  const bw = Math.min(W - 60, 300);
-  const by = Math.max(y + 8, H - 210);
-  button('again', (W - bw) / 2, by, bw, 64, r.won ? '下一张' : '再来', { size: 28, fn: () => newGame(g.endless) });
-  if (!r.won && g.adsUsed < C.adMax) {
-    const lbl = g.reason === 'time' ? '+20 秒' : '清空正中间';
-    button('revive', (W - bw) / 2, by + 76, bw * 0.62 - 6, 50, lbl, { size: 19, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { reviveFx(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
-    button('album2', (W - bw) / 2 + bw * 0.62 + 6, by + 76, bw * 0.38 - 6, 50, '画册', { size: 19, bg: COL.wood, fn: () => openAlbum() });
-  } else {
-    button('album2', (W - bw) / 2, by + 76, bw, 50, '画册', { size: 19, bg: COL.wood, fn: () => openAlbum() });
-  }
+  return drawPetOver(); // 0.9.25 只剩宠物关
 }
 function drawAd() {
   ctx.fillStyle = 'rgba(0,0,0,0.9)';
@@ -4311,99 +3862,6 @@ function mapPicture(i, x, y, s) {
     ctx.fillStyle = COL.shade + '0.82)'; ctx.fillRect(x - s / 2, y - s / 2, s, s);
     text('?', x, y, s * 0.4, COL.dim);
   }
-}
-function drawMap() {
-  drawBg();
-  const cur = Math.min(save.petStage, PLV.length - 1);
-  const done = save.petStage >= PLV.length;
-  const lo = Math.max(0, Math.min(cur - 1, PLV.length - MAP_SHOW));
-  const hi = lo + MAP_SHOW - 1;
-  // 路：先画整条（往两头多画一节，像能接着走），过了的那段是黄铜色
-  for (let i = lo - 1; i <= hi; i++) {
-    if (i < 0 || i + 1 >= PLV.length) continue;
-    const a = mapNodePos(i, lo), b = mapNodePos(i + 1, lo);
-    const passed = i + 1 <= save.petStage;
-    for (const [w, col] of [[22, COL.ink], [16, passed ? COL.brass : COL.woodDark]]) {
-      ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(a.x, a.y);
-      ctx.bezierCurveTo(a.x, (a.y + b.y) / 2, b.x, (a.y + b.y) / 2, b.x, b.y);
-      ctx.stroke();
-    }
-    // 两关中间的小图，放在路的外侧
-    const pic = Math.min(84, a.step * 0.6, W / 2 - 110);
-    const side = i % 2 ? -1 : 1;
-    if (i >= lo && i < hi) mapPicture(i, W / 2 + side * (W / 2 - pic / 2 - 22), (a.y + b.y) / 2, pic);
-  }
-  // 关卡圆圈
-  for (let i = lo; i <= hi; i++) {
-    const { x, y } = mapNodePos(i, lo);
-    const passed = i < save.petStage, isCur = i === cur && !done;
-    const rad = isCur ? 30 + Math.sin(clock * 4) * 2 : 26;
-    if (isCur) {
-      ctx.strokeStyle = 'rgba(111,208,168,' + (0.5 + Math.sin(clock * 4) * 0.3) + ')'; ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.arc(x, y, rad + 8, 0, Math.PI * 2); ctx.stroke();
-    }
-    const hd = PLV[i].hard || 0;
-    if (hd) {
-      // 难关（学 Royal Match）：头上两只红角；超难再多一圈紫、顶上一个小骷髅
-      ctx.fillStyle = hd > 1 ? '#7a3fa0' : COL.red;
-      for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + sx * rad * 0.35, y - rad * 0.8); ctx.lineTo(x + sx * rad * 0.95, y - rad * 1.45); ctx.lineTo(x + sx * rad * 0.8, y - rad * 0.5); ctx.fill(); }
-      ctx.strokeStyle = hd > 1 ? '#7a3fa0' : COL.red; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, rad + 6, 0, Math.PI * 2); ctx.stroke();
-      if (hd > 1 && i % 5 !== 4) skullIcon(x, y - rad - 16, 9);
-    }
-    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x, y + 3, rad + 3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = passed ? COL.brass : isCur ? COL.red : COL.woodDark; // 当前关用朱砂：全屏唯一一点高饱和
-    ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
-    text(petNodeLabel(i), x, y + 1, isCur ? 22 : 18, passed ? COL.ink : isCur ? COL.text : COL.dim);
-    if (passed) text('✓', x + 20, y - 20, 16, COL.jade);
-    // 每 5 关一个齿轮奖章（拼成一张画）
-    if (i % 5 === 4) gearIcon(x, y - rad - 16, 11, passed ? clock : 0, passed ? COL.brassLight : COL.woodLine);
-    // 过了的关和当前关能点
-    if (i <= cur) buttons.push({ id: 'node' + i, x: x - rad, y: y - rad, w: rad * 2, h: rad * 2, fn: () => newPetLevel(i) });
-  }
-  // 顶栏压在路上面：标题、进度、金币
-  const hg = ctx.createLinearGradient(0, 0, 0, L.top + 110);
-  hg.addColorStop(0, COL.bg); hg.addColorStop(0.75, COL.bg); hg.addColorStop(1, 'rgba(14,19,48,0)');
-  ctx.fillStyle = hg; ctx.fillRect(0, 0, W, L.top + 110);
-  // 第一行：左「‹ 主菜单」、右齿轮（设置）；第二行：章节名；第三行：进度和金币（Cc 11-24：「这个页面里应该也能返回主菜单」）
-  button('home', 10, L.top + 2, 92, 38, '‹ 主菜单', { size: 15, bg: COL.wood, fn: () => { mode = 'home'; } });
-  button('settings', W - 56, L.top + 2, 44, 38, '', { bg: COL.wood, fn: () => { settingsAsk = 0; settingsFrom = 'map'; mode = 'settings'; } });
-  gearIcon(W - 34, L.top + 21, 9, clock * 0.5, COL.brassLight);
-  text(chapterName(Math.min(save.petStage, PLV.length - 1)), W / 2, L.top + 62, 22, COL.brassLight);
-  text('已过 ' + Math.min(save.petStage, PLV.length) + ' / ' + PLV.length + ' 关　·　' + save.coins + ' 金', W / 2, L.top + 90, 13, COL.dim, 'center', 'normal');
-  // 底栏同样压住路
-  const fg = ctx.createLinearGradient(0, H - 215, 0, H);
-  fg.addColorStop(0, 'rgba(9,12,32,0)'); fg.addColorStop(0.2, COL.bgLow); fg.addColorStop(1, COL.bgLow);
-  ctx.fillStyle = fg; ctx.fillRect(0, H - 215, W, 215);
-  // 下一关要干什么：目标图标
-  const st = PLV[cur].evolveLevel ? PLV.evolveStage(PLV[cur].evolveLevel, 0) : PLV[cur];
-  const keys = Object.keys(st.goal);
-  const gy = H - 186;
-  const cw = 58, x0 = W / 2 - (cw * keys.length) / 2;
-  keys.forEach((key, n) => {
-    const cx = x0 + cw * n + cw / 2;
-    if (key === 'score') text(st.goal.score + ' 分', cx, gy, 18, COL.text);
-    else { goalIcon(key, cx - 12, gy, 20); text(key === 'all' ? '抓光' : '×' + st.goal[key], cx + (key === 'all' ? 20 : 14), gy, key === 'all' ? 14 : 16, COL.text); }
-  });
-  const bestId = !st.team && st.best ? (save.pets[st.best] ? st.best : save.pets[PG.PETS[st.best].evo] ? PG.PETS[st.best].evo : null) : null;
-  if (bestId) {
-    // 头像 + 右边一行小字，同一行，不压下面的大按钮
-    const bx = Math.min(W - 70, x0 + cw * keys.length + 30), on = save.activePet === bestId;
-    petIcon(bestId, bx, gy, 28, 0, 0);
-    text(on ? '✓ 带着它' : '带它最顺', bx + 19, gy, 12, on ? COL.jade : COL.brassLight, 'left', 'normal');
-    buttons.push({ id: 'bestPet', x: bx - 18, y: gy - 18, w: 86, h: 36, fn: () => openCamp() });
-  }
-  if (st.hard) text(st.hard > 1 ? '超难关' : '难关', W / 2, H - 168, 12, st.hard > 1 ? '#c58ae0' : '#f08a70');
-  const bw = Math.min(W - 60, 300);
-  button('play', (W - bw) / 2, H - 160, bw, 64, done ? '再玩' + petNodeLabel(PLV.length - 1) : petLevelName(cur), { size: 28, fn: () => newPetLevel(cur) });
-  // 底下三个：营地（葫芦、喂宠物）、经典拼画、画册。守城收起来了（Cc 11-24：「这个没意思，就不要加塔防了」）
-  const b3w = Math.min(W - 24, 360), b3 = (b3w - 12) / 3, bx3 = (W - b3w) / 2;
-  const campNew = canLevelAny();
-  button('camp', bx3, H - 82, b3, 46, '营地', { size: 18, bg: '#3f9a7c', fn: () => openCamp() });
-  if (campNew) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.arc(bx3 + b3 - 6, H - 82, 8, 0, Math.PI * 2); ctx.fill(); }
-  button('classic', bx3 + b3 + 6, H - 82, b3, 46, '经典拼画', { size: 15, bg: COL.copper, fn: () => newGame(false) });
-  button('album3', bx3 + (b3 + 6) * 2, H - 82, b3, 46, '画册', { size: 17, bg: COL.wood, fn: () => openAlbum() });
-  text('葫芦里 ' + save.gourd + ' 只怪 · ' + save.dan + ' 颗丹', W / 2, H - 22, 12, COL.dim, 'center', 'normal');
 }
 
 // ---------- 章页（0.8，照 ../九宫消_关卡页专属关与UI对照_20261124.md 第二节；学《小丑牌》「全部亮出来、只有当前那个能点」） ----------
@@ -4940,54 +4398,6 @@ function drawIntro() {
 }
 
 // ---------- 画册 ----------
-let albumFrom = 'play';
-function openAlbum() {
-  albumFrom = mode === 'over' ? 'over' : mode === 'map' ? 'map' : mode === 'home' ? 'home' : 'play';
-  if (albumFrom === 'play' && g && !g.over) { /* 画册打开时时间也走：原型里先这样，开局前看 */ }
-  mode = 'album';
-}
-function drawAlbum() {
-  drawBg();
-  text('画册', W / 2, L.top + 22, 28, COL.brassLight);
-  text(save.coins + ' 金', W - 20, L.top + 22, 18, COL.brassLight, 'right');
-  const s = Math.min((W - 60) / 3, 120);
-  const gap = (W - s * 3) / 4;
-  for (let i = 0; i < 3; i++) {
-    const x = gap + i * (s + gap), y = L.top + 64;
-    drawPainting(i, x, y, s, save.won[i] ? new Array(9).fill(true) : save.litEver[i], false);
-    const n = save.litEver[i].filter(Boolean).length;
-    text(art.PAINTINGS[i].name, x + s / 2, y + s + 18, 14, COL.text, 'center', 'normal');
-    text(save.won[i] ? '✓ 拼成' : n + ' / 9', x + s / 2, y + s + 38, 13, save.won[i] ? COL.jade : COL.dim, 'center', 'normal');
-  }
-  // 三件收藏
-  let y = L.top + 64 + s + 80;
-  text('机关收藏', W / 2, y, 18, COL.brassLight);
-  y += 30;
-  ITEMS.forEach((it, i) => {
-    const have = !!save.items[it.id];
-    const yy = y + i * 44;
-    gearIcon(44, yy, 12, have ? clock : 0, have ? COL.brass : COL.woodLine);
-    text(have ? it.name : '？？？', 68, yy, 17, have ? COL.text : COL.dim, 'left');
-    text(have ? it.tip : '拼成第 ' + (i + 1) + ' 张画', W - 24, yy, 14, have ? COL.jade : COL.dim, 'right', 'normal');
-  });
-  y += 3 * 44 + 16;
-  // 当局小道具
-  const on = save.buySingle;
-  button('single', 24, y, W - 48, 46, (on ? '✓ ' : '') + '下局带一个单格块 · ' + C.singleCost + ' 金', {
-    size: 16, bg: on ? COL.jade : COL.wood, fg: on ? COL.ink : COL.text,
-    fn: () => { if (on || save.coins >= C.singleCost) { save.buySingle = !on; persist(); } },
-  });
-  y += 60;
-  const endlessOpen = save.wins >= 2;
-  button('endless', 24, y, W - 48, 46, endlessOpen ? '无尽模式 · 最高 ' + save.bestEndless : '无尽模式（拼成 2 张画开放）', {
-    size: 16, bg: endlessOpen ? COL.copper : COL.woodDark, fg: endlessOpen ? COL.text : COL.dim,
-    fn: () => endlessOpen && newGame(true),
-  });
-  const bw = Math.min(W - 60, 300);
-  button('back', (W - bw) / 2, H - 96, bw, 60, albumFrom === 'over' && !g.stage ? '再来' : '回去', {
-    size: 24, fn: () => (albumFrom === 'home' ? (mode = 'home') : albumFrom === 'map' ? (mode = 'map') : albumFrom === 'over' ? (g.stage ? (mode = 'over') : newGame(g.endless && save.wins >= 2)) : (mode = 'play')),
-  });
-}
 
 // ---------- 主菜单：标题 + 继续 + 设置 ----------
 // （正式的标题背景图等 Midjourney 主页图到了再换；现在是代码画的九宫格 + 宠物）
@@ -5336,7 +4746,7 @@ function startPet(st) {
   startCommon();
   enterAt = clock + 0.15; monIn = {}; handSeen = [null, null, null, null];
   timeline = []; ghosts = []; petRuns = []; rushPatch = null; rushMud = null; beams = []; colBolts = []; petInk = []; drainInk = []; // 上一关没演完的动画清掉，免得新盘面上闪一下
-  for (let k = 0; k < 81; k++) if (g.board[k] === 1) colorAt[k] = g.color[k];
+  for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK) colorAt[k] = g.color[k];
   petFx = { pop: {}, caption: null, banner: st.line ? { text: st.line, t: clock + 0.3 } : null, bossHit: -9, evolveFlash: -9 };
   if (st.intro && !save.introSeen[st.intro]) { introKind = st.intro; mode = 'intro'; }
 }
@@ -5473,7 +4883,7 @@ function drawPetCaption() {
 }
 function juicePets(ev, colorsBefore) {
   // 先照原来的一套：放下弹一下、消掉的碎掉、收到的东西飞向顶上
-  if (!ev.skill || (ev.units && ev.units.length)) juice({ piece: ev.piece, r: ev.r, c: ev.c, units: ev.units, cells: ev.cells, gained: ev.gained, newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, rushStep: ev.rushStep, beat: ev.beat || (ev.skill ? (ev.units.length >= 2 ? 3 : 2) : 1), collected: ev.collected }); // 技能块（0.9.12）只有吐丝补满了一排才走消除那一套，别的由 juicePK 演
+  if (!ev.skill || (ev.units && ev.units.length)) juice(Object.assign({}, ev, { newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: ev.combo || 0, streak: ev.streak || 0, beat: ev.beat || (ev.skill ? (ev.units.length >= 2 ? 3 : 2) : 1) })); // 0.9.25 收拾：规则给的结果整张往下传，只改这几样（0.9.22 漏传 rushStep 就是一个字段一个字段抄出的错） // 技能块（0.9.12）只有吐丝补满了一排才走消除那一套，别的由 juicePK 演
   if (ev.fire) { const c = boxCenter(ev.fire.box); rings.push({ t: clock, big: false, at: c }); flash = 0.25; P.sound('combo3', 0.7); shake = Math.max(shake, 8); }
   // 0.9.17：墨怪爬（从原来那格蹦过去）、冒脚印、金属被啄碎、冲锋关补格子
   (ev.crawl || []).forEach((e, j) => { monSlide[e.to] = { from: e.from, t: clock + 0.12 + j * 0.05 }; timeline.push({ t: clock + 0.12 + j * 0.05, fn: () => P.sound('skitter', 0.4) }); });
@@ -5485,7 +4895,7 @@ function juicePets(ev, colorsBefore) {
   (ev.mudGlare || []).forEach(() => timeline.push({ t: clock + 0.2, fn: () => P.sound('skitter', 0.35) }));
   if (ev.rushFix && !ev.rushBoard) playRushFix(ev.rushFix, clock + 0.25); // 0.9.22 每放一块，宠物都从右下角飞出去修一下剩下的
   if (ev.rushBurst) { ev.rushBurst.forEach((k) => clearing.push({ k, t: clock + 0.06 + ((k % 9) + Math.floor(k / 9)) * 0.008 })); timeline.push({ t: clock + 0.08, fn: () => { P.sound('dong', 0.75); flash = Math.max(flash, 0.25); shake = Math.max(shake, 8); haptic('heavy'); } }); } // 0.9.21 三块塞完：剩下的铜砖整盘炸开
-  if (ev.rushBoard) { for (let k = 0; k < 81; k++) if (g.board[k] === 1 || g.board[k] === 8) { colorAt[k] = g.color[k]; cellIn[k] = clock + 0.45 + ((k % 9) + Math.floor(k / 9)) * 0.018; } timeline.push({ t: clock + 0.45, fn: () => { P.sound('deal', 0.6); haptic('light'); } }); playRushFix(ev.rushFix, clock + 0.55); } // 冲锋关整盘换新：从左上角一路铺过去，宠物马上飞上去修
+  if (ev.rushBoard) { for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK || g.board[k] === CELL.BRICK) { colorAt[k] = g.color[k]; cellIn[k] = clock + 0.45 + ((k % 9) + Math.floor(k / 9)) * 0.018; } timeline.push({ t: clock + 0.45, fn: () => { P.sound('deal', 0.6); haptic('light'); } }); playRushFix(ev.rushFix, clock + 0.55); } // 冲锋关整盘换新：从左上角一路铺过去，宠物马上飞上去修
   (ev.crawlClear || []).forEach((cc) => timeline.push({ t: clock + 0.45, fn: () => { const monK = new Set(cc.collected.filter((c) => c.what === 'monster').map((c) => c.k)); cc.cells.forEach((k) => clearing.push({ k, t: clock, mon: monK.has(k) })); P.sound('clear' + Math.min(4, Math.max(0, (g.streak || 1) - 1)), 0.7); if (monK.size) setTimeout(() => P.sound('pop', 0.55), 250); shake = Math.max(shake, 5); flash = Math.max(flash, 0.15); haptic('medium'); } })); // 墨怪爬进去凑满：当场消
   if (ev.bossJumpPlan !== undefined) timeline.push({ t: clock + 0.15, fn: () => { P.sound('skitter', 0.5); haptic('medium'); } });
   juicePK(ev);
@@ -5548,7 +4958,7 @@ function juicePets(ev, colorsBefore) {
     cells.forEach((k, j) => {
       const reach = t + jump + j * per;
       const bite = style === 'spin' ? spinEnd : reach; // 蚕：一路补满，补完整排一起消
-      ghosts.push({ k, t: bite, appear: inkCells.has(k) ? reach : 0, ci: colorsBefore[k] === undefined ? 0 : colorsBefore[k], ink: inkCells.has(k), rock: g.board[k] === 0 && (ev.rocks || []).includes(k), mon: monAt[k] || null });
+      ghosts.push({ k, t: bite, appear: inkCells.has(k) ? reach : 0, ci: colorsBefore[k] === undefined ? 0 : colorsBefore[k], ink: inkCells.has(k), rock: g.board[k] === CELL.EMPTY && (ev.rocks || []).includes(k), mon: monAt[k] || null });
       if (j % 2 === 0 && style !== 'spin') timeline.push({ t: bite, fn: () => { P.sound(style === 'fly' ? 'tap' : 'pick', 0.5); const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let c2 = 0; c2 < 4; c2++) { const a2 = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 90; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp - 60, t: clock, life: 0.45, s: 3 + Math.random() * 3 }); } } });
     });
     timeline.push({ t, fn: () => { P.sound(style === 'spit' ? 'combo2' : 'select', 0.6); if (act.rescue) flash = 0.3; } });
@@ -5607,7 +5017,7 @@ function juicePK(ev) {
   (ev.petMiss || []).forEach((m) => { petFx.petMiss = petFx.petMiss || {}; petFx.petMiss[m.k] = clock; burst(m.k, '#9aa0b0', 5, 70); P.sound('deny', 0.5); }); // 打不动：灰光挡住
   (ev.drain || []).forEach((d, j) => {
     const n = Math.max(0, g.team.findIndex((p) => p.id === d.id));
-    const from = g.board[d.from] === 4 ? { x: cellX(d.from % 9) + L.cell, y: cellY(Math.floor(d.from / 9)) + L.cell } : at(d.from);
+    const from = g.board[d.from] === CELL.BOSS ? { x: cellX(d.from % 9) + L.cell, y: cellY(Math.floor(d.from / 9)) + L.cell } : at(d.from);
     drainInk.push({ from, to: petPos(n), t: clock + 0.15 + j * 0.12, id: d.id, bomb: d.kind === 'bomb' });
   });
   if (ev.drain && ev.drain.length) timeline.push({ t: clock + 0.65, fn: () => haptic('heavy') }); // 被偷能量 = 被打：第一团墨打到宠物时重重震一下，几团只震一次
@@ -6157,196 +5567,14 @@ function feedPet(id) {
   persist();
 }
 
-// ---------- 守城（肉鸽试玩版）：画面 ----------
-// 规则在 siege.js。这里管：车道和攻城车、机关栏、机关一件件发动的动画、三选一卡、结算。
-const SCHOOL_COL = { bow: '#4470c0', fire: COL.red, luoshu: COL.brass, star: '#8a62bf', ink: '#3f9a7c' };
+// ---------- 排好时间的动画小事件（守城画面已在 0.9.25 拆掉，这些是宠物关也在用的） ----------
 let timeline = []; // 排好时间的小事件 { t, fn }
 let ghosts = []; // 被机关打掉、还没轮到它碎的格子 { k, t, ci }
 let relicPop = {}; // 机关栏图标跳一下 { id: 时刻 }
 let beams = []; // 机关栏连到棋盘的一道光 { from, to, t, col }
 let colBolts = []; // 竖着射的连弩 { col, t }
-let siegeFx = { cartStep: 0, cartHit: -9, cartDead: -9, banner: null, chooseAt: 0, tip: null, lastWave: -1 };
-function runTimeline() {
-  if (!timeline.length) return;
-  const due = timeline.filter((e) => clock >= e.t);
-  timeline = timeline.filter((e) => clock < e.t);
-  due.forEach((e) => { try { e.fn(); } catch (err) { logErr('timeline', err); } }); // 0.9.13：一件小事出错，后面的照常演（Cc 11-26 第 2 关过关卡死）
-}
-const siegeBusy = () => timeline.length > 0;
-// 每日一城：北京时间的日期。每天 3 次，看广告多 1 次，记当天最好的波数
-const DAILY_TRIES = 3;
-function todayKey() { return new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); }
-function dailyRec() {
-  const key = todayKey();
-  if (!save.daily || save.daily.date !== key) save.daily = { date: key, tries: 0, extra: 0, best: 0, bestHit: 0 };
-  return save.daily;
-}
-const dailyLeft = () => { const d = dailyRec(); return DAILY_TRIES + d.extra - d.tries; };
-function newDaily() {
-  const d = dailyRec();
-  if (dailyLeft() <= 0) return;
-  d.tries++;
-  newSiege(+d.date.replace(/-/g, ''));
-}
-function newSiege(daily) {
-  stageIdx = -1;
-  g = daily ? SG.createSiege({ daily }) : SG.createSiege({ seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: !save.siegeDone, runNo: save.siegeRuns || 0 });
-  startCommon();
-  for (const k of g.prefilled) colorAt[k] = -1;
-  timeline = []; ghosts = []; relicPop = {}; beams = []; colBolts = [];
-  siegeFx = { cartStep: 0, hpShow: undefined, cartHit: -9, cartDead: -9, banner: null, chooseAt: clock + (g.phase === 'choose' ? 0.2 : 0), tip: null, lastWave: -1 }; missiles = [];
-  waveBanner();
-}
-function waveBanner() {
-  const w = g.waveDef;
-  const sub = w.bossLine || (g.firstRun && g.wave === 0 ? '把方块消掉，就是在打攻城车' : '');
-  siegeFx.banner = { text: '第 ' + (g.wave + 1) + ' 波 · ' + w.name, sub, t: clock, boss: !!w.bossLine };
-}
-// 机关第一次发动：屏幕中间打一句大白话，告诉你刚才发生了什么
-function firstTimeCaption(id) {
-  if (save.relicSeen[id] || !SG.RELICS[id]) return;
-  save.relicSeen[id] = true; persist();
-  siegeFx.caption = { text: SG.RELICS[id].first, t: clock };
-}
-// 战场：上面一条路，攻城车从上往下压；下面是城墙，机关装在城墙上，城墙下面就是棋盘（城里）
-function siegeGeo() {
-  const wallY = L.by - 46; // 城墙上沿
-  const roadTop = L.top + 92, roadBot = wallY - 42; // 车能走的范围（4 步）
-  return { wallY, roadTop, roadBot };
-}
-function cartPos() {
-  const G2 = siegeGeo();
-  return { x: W / 2, y: G2.roadTop + siegeFx.cartStep * (G2.roadBot - G2.roadTop) / (SG.ROUNDS - 1) };
-}
-// 机关栏里第 n 格的中心：嵌在城墙上，中间留给城门
-function relicSlotPos(n) {
-  const s = 36, G2 = siegeGeo();
-  const xs = [W / 2 - 150, W / 2 - 98, W / 2 + 98, W / 2 + 150, W / 2 - 46].map((x) => Math.max(s / 2 + 4, Math.min(W - s / 2 - 4, x)));
-  return { x: xs[n], y: G2.wallY + 18, s };
-}
+// 小工具（原来放在守城画面那一段里，0.9.25 拆守城时挪出来，宠物关也在用）
 function boxCenter(b) { return { x: cellX((b % 3) * 3) + L.cell * 1.5, y: cellY(Math.floor(b / 3) * 3) + L.cell * 1.5 }; }
-function lineCenter(l) { return l.axis === 'row' ? { x: L.bx + L.board / 2, y: cellY(l.idx) + L.cell / 2 } : { x: cellX(l.idx) + L.cell / 2, y: L.by + L.board / 2 }; }
-let missiles = []; // 消除打出去的弩箭：从棋盘飞到车上 { x0, y0, t, dmg, hp }
-function juiceSiege(sev, colorsBefore) {
-  const res = sev.res;
-  const nRelic = res.steps.filter((x) => x.kind === 'relic').length + (res.mults || []).length;
-  const clearStep = res.steps.find((x) => x.kind === 'clear');
-  // 先照原来的一套放：放下弹一下、消掉的碎掉、声音（借用 juice）
-  const center = (res.mults || []).some((m) => m.id === 'center5');
-  const units = clearStep ? clearStep.units : [];
-  const beat = !units.length ? 1 : nRelic >= 3 || center ? 5 : nRelic >= 1 || units.length >= 2 ? 4 : units.some((u) => u >= 18) ? 3 : 2;
-  juice({ piece: sev.piece, r: sev.r, c: sev.c, units, cells: clearStep ? clearStep.cells : [], gained: clearStep ? clearStep.dmg : res.base,
-    newlyLit: [], revealed: [], center: false, crossbow: null, win: false, combo: units.length, streak: g.streak, beat }); // ×5 由下面的倍率徽章来放
-  // 机关一件件发动：每件隔 0.22 秒
-  let t = clock + 0.18;
-  res.steps.filter((x) => x.kind === 'relic').forEach((st) => {
-    const slot = g.relics.findIndex((r) => r.id === st.id);
-    const from = relicSlotPos(Math.max(0, slot));
-    (st.cells || []).forEach((k) => ghosts.push({ k, t, ci: colorsBefore[k] === undefined ? 0 : colorsBefore[k], ink: st.id === 'inkline' && !(colorsBefore[k] !== undefined && g.board[k]) }));
-    const at = t;
-    timeline.push({ t: at, fn: () => {
-      relicPop[st.id] = clock;
-      firstTimeCaption(st.id);
-      const col = SCHOOL_COL[SG.RELICS[st.id].school];
-      if (st.id === 'crossbow') {
-        st.lines.forEach((l) => { if (l.axis === 'row') bolts.push({ row: l.idx + 0.5, t: clock, dir: 1 }); else colBolts.push({ col: l.idx + 0.5, t: clock }); beams.push({ from, to: lineCenter(l), t: clock, col }); });
-        P.sound('bolt', 0.6);
-      } else if (st.id === 'inkline') {
-        st.lines.forEach((l) => beams.push({ from, to: lineCenter(l), t: clock, col }));
-        P.sound('line', 0.6);
-      } else if (st.id === 'thunder' || st.id === 'chain') {
-        (st.boxes || []).forEach((b) => { const c = boxCenter(b); beams.push({ from, to: c, t: clock, col }); rings.push({ t: clock, big: false, at: c }); });
-        P.sound('combo3', 0.6); shake = Math.max(shake, 7); haptic('medium');
-      } else if (st.id === 'loader') {
-        texts.push({ s: '上弦！', x: from.x, y: from.y + 34, t: clock, size: 18, col: COL.brassLight });
-        P.sound('select', 0.5);
-      }
-      if (st.dmg) texts.push({ s: '+' + st.dmg, x: (st.lines && st.lines[0] ? lineCenter(st.lines[0]) : st.boxes ? boxCenter(st.boxes[0]) : from).x, y: (st.lines && st.lines[0] ? lineCenter(st.lines[0]) : st.boxes ? boxCenter(st.boxes[0]) : from).y, t: clock, size: 22, col });
-    } });
-    t += 0.22;
-  });
-  // 倍率徽章：×5、×3、上弦 ×2
-  (res.mults || []).forEach((m) => {
-    const at = t;
-    timeline.push({ t: at, fn: () => {
-      relicPop[m.id] = clock;
-      firstTimeCaption(m.id);
-      const lbl = '×' + (Math.round(m.m * 100) / 100);
-      texts.push({ s: lbl, x: W / 2, y: L.by + L.board * 0.38, t: clock, size: 52, col: m.id === 'star' ? '#d3bdf0' : COL.brassLight, big: true });
-      P.sound('five', 0.5);
-    } });
-    t += 0.2;
-  });
-  // 最后：从棋盘射出一支大弩箭，飞上去扎在车上；血条这时才掉
-  const hpAfter = g.hp;
-  timeline.push({ t, fn: () => {
-    if (res.dmg > 0) {
-      const from = clearStep ? lineCenter(clearStep.units[0] < 9 ? { axis: 'row', idx: clearStep.units[0] } : clearStep.units[0] < 18 ? { axis: 'col', idx: clearStep.units[0] - 9 } : { axis: 'row', idx: Math.floor((clearStep.units[0] - 18) / 3) * 3 + 1 }) : { x: W / 2, y: L.by + L.board / 2 };
-      missiles.push({ x0: from.x, y0: from.y, t: clock, dmg: res.dmg });
-      P.sound('bolt', 0.5);
-      if (nRelic >= 2) say(nRelic >= 4 ? '好一串！' : '连上了');
-    }
-  } });
-  timeline.push({ t: t + 0.4, fn: () => {
-    if (res.dmg > 0) {
-      siegeFx.cartHit = clock; siegeFx.hpShow = hpAfter;
-      const cp = cartPos();
-      texts.push({ s: '-' + res.dmg, x: cp.x + 70, y: cp.y - 4, t: clock, size: 26 + Math.min(20, res.dmg / 10), col: COL.red, big: res.dmg >= 60 });
-      P.sound(res.dmg >= 60 ? 'combo4' : 'place', 0.6);
-      shake = Math.max(shake, res.dmg >= 60 ? 6 : 2);
-    }
-    if (sev.killed) {
-      siegeFx.cartDead = clock;
-      const cp = cartPos();
-      for (let n = 0; n < 16; n++) { const a = Math.random() * Math.PI * 2, sp = 100 + Math.random() * 180; fx.push({ kind: 'gear', x: cp.x, y: cp.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 100, t: clock, life: 0.9, s: 5 + Math.random() * 7, a: 0 }); }
-      texts.push({ s: '打掉了！', x: W / 2, y: cp.y + 30, t: clock + 0.05, size: 30, col: COL.brassLight, big: true });
-      P.sound('win', 0.6); flash = 0.3; haptic('heavy');
-      say('打掉了！');
-      siegeFx.chooseAt = clock + 0.6;
-    }
-    if (g.over) endGame();
-  } });
-}
-// 星：发光的星 + 一道虚线指向下一站
-function drawSiegeBoard() {
-  // 被机关打掉、还没轮到它碎的格子先照原样画着
-  ghosts = ghosts.filter((gh) => {
-    if (clock >= gh.t) { clearing.push({ k: gh.k, t: clock }); return false; }
-    const x = cellX(gh.k % 9), y = cellY(Math.floor(gh.k / 9));
-    if (gh.ink) { ctx.fillStyle = COL.ink; ctx.fillRect(x + 3, y + 3, L.cell - 6, L.cell - 6); }
-    else block(x, y, L.cell, 1, gh.ci);
-    return true;
-  });
-  if (g.lvOf('star')) {
-    const c = boxCenter(g.starBox);
-    const next = boxCenter(SG.STAR_PATH[(g.starStep + 1) % 9]);
-    ctx.save();
-    ctx.strokeStyle = 'rgba(211,189,240,0.45)'; ctx.lineWidth = 2; ctx.setLineDash([5, 6]);
-    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(next.x, next.y); ctx.stroke();
-    ctx.setLineDash([]);
-    const bx = cellX((g.starBox % 3) * 3), by = cellY(Math.floor(g.starBox / 3) * 3);
-    ctx.strokeStyle = 'rgba(211,189,240,' + (0.55 + Math.sin(clock * 5) * 0.3) + ')'; ctx.lineWidth = 3;
-    ctx.strokeRect(bx + 2, by + 2, L.cell * 3 - 4, L.cell * 3 - 4);
-    starShape(c.x, c.y, L.cell * 0.55 + Math.sin(clock * 4) * 2, '#efe2ff');
-    ctx.restore();
-  }
-  // 竖着射的连弩
-  colBolts = colBolts.filter((b) => clock - b.t < 0.5);
-  colBolts.forEach((b) => {
-    const a = (clock - b.t) / 0.5, x = L.bx + b.col * L.cell;
-    const head = L.by + L.board + 40 - a * (L.board + 80);
-    ctx.fillStyle = 'rgba(255,240,200,' + (1 - a) + ')'; ctx.fillRect(x - 2, head, 4, 70);
-    ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.moveTo(x, head - 12); ctx.lineTo(x - 6, head); ctx.lineTo(x + 6, head); ctx.fill();
-  });
-  // 机关栏连到棋盘的光
-  beams = beams.filter((b) => clock - b.t < 0.35);
-  beams.forEach((b) => {
-    const a = (clock - b.t) / 0.35;
-    ctx.strokeStyle = b.col; ctx.globalAlpha = 1 - a; ctx.lineWidth = 6 * (1 - a) + 1;
-    ctx.beginPath(); ctx.moveTo(b.from.x, b.from.y); ctx.lineTo(b.to.x, b.to.y); ctx.stroke();
-    ctx.globalAlpha = 1;
-  });
-}
 function starShape(x, y, r, col) {
   ctx.fillStyle = COL.ink; ctx.beginPath();
   for (let n = 0; n < 10; n++) { const a = -Math.PI / 2 + (n * Math.PI) / 5, rr2 = (n % 2 ? 0.45 : 1) * (r + 2); ctx.lineTo(x + Math.cos(a) * rr2, y + Math.sin(a) * rr2); }
@@ -6355,298 +5583,11 @@ function starShape(x, y, r, col) {
   for (let n = 0; n < 10; n++) { const a = -Math.PI / 2 + (n * Math.PI) / 5, rr2 = (n % 2 ? 0.45 : 1) * r; ctx.lineTo(x + Math.cos(a) * rr2, y + Math.sin(a) * rr2); }
   ctx.closePath(); ctx.fill();
 }
-// 机关图标：黄铜圆章 + 一个字 + 等级小点
-function relicIcon(id, x, y, s, lvl, pop) {
-  const R = SG.RELICS[id];
-  const k = 1 + (pop || 0) * 0.35;
-  const r = (s / 2) * k;
-  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x, y + 2, r + 1.5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = SCHOOL_COL[R.school]; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = COL.copper; ctx.beginPath(); ctx.arc(x, y, r * 0.78, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(255,246,214,0.8)'; ctx.fillRect(x - r * 0.45, y - r * 0.62, r * 0.5, Math.max(2, r * 0.1));
-  text(R.glyph, x, y + 1, Math.round(s * 0.5 * k), COL.text);
-  for (let n = 0; n < (lvl || 0); n++) {
-    ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(x - (lvl - 1) * 4 + n * 8, y + r + 4, 2.6, 0, Math.PI * 2); ctx.fill();
-  }
-}
-function drawSiegeHud() {
-  const G2 = siegeGeo();
-  const top = L.top;
-  // 战场底色：远山剪影
-  ctx.fillStyle = 'rgba(42,55,104,0.55)';
-  ctx.beginPath(); ctx.moveTo(0, G2.wallY); ctx.lineTo(0, top + 60); ctx.lineTo(W * 0.18, top + 26); ctx.lineTo(W * 0.32, top + 70); ctx.lineTo(W * 0.5, top + 8); ctx.lineTo(W * 0.68, top + 64); ctx.lineTo(W * 0.84, top + 30); ctx.lineTo(W, top + 72); ctx.lineTo(W, G2.wallY); ctx.closePath(); ctx.fill();
-  // 路：从远处一直通到城门，越近越宽
-  ctx.fillStyle = '#4d3c2a';
-  ctx.beginPath(); ctx.moveTo(W / 2 - 22, top + 6); ctx.lineTo(W / 2 + 22, top + 6); ctx.lineTo(W / 2 + 62, G2.wallY + 4); ctx.lineTo(W / 2 - 62, G2.wallY + 4); ctx.closePath(); ctx.fill();
-  // 路上的 4 个站点（车一轮走一步）
-  for (let k = 0; k < SG.ROUNDS; k++) {
-    const y = G2.roadTop + k * (G2.roadBot - G2.roadTop) / (SG.ROUNDS - 1);
-    ctx.fillStyle = k < siegeFx.cartStep ? 'rgba(0,0,0,0.25)' : 'rgba(255,240,200,0.18)';
-    ctx.fillRect(W / 2 - 30 - k * 6, y + 26, 60 + k * 12, 3);
-  }
-  // 车：一轮走一步，平滑地挪
-  if (siegeFx.lastWave !== g.wave) { siegeFx.lastWave = g.wave; siegeFx.cartStep = 0; siegeFx.hpShow = g.hp; waveBanner(); }
-  const target = g.round - 1;
-  siegeFx.cartStep += (target - siegeFx.cartStep) * 0.12;
-  if (siegeFx.hpShow === undefined || siegeFx.hpShow > g.hpMax) siegeFx.hpShow = g.hp;
-  const dead = g.phase !== 'play' || clock - siegeFx.cartDead < 0.6;
-  const cp = cartPos();
-  if (!dead) {
-    const hitA = clock - siegeFx.cartHit;
-    const jig = hitA < 0.3 ? Math.sin(hitA * 70) * 5 : 0;
-    drawCart(cp.x + jig, cp.y, g.waveDef.boss, hitA < 0.12);
-    // 大血条：固定在顶上第二行，整条宽，写着车名和剩多少血
-    const bw = W - 120, bh = 18, bx = 78, by = L.top + 36;
-    const frac = Math.max(0, siegeFx.hpShow / g.hpMax);
-    ctx.fillStyle = COL.ink; rr(bx - 2, by - 2, bw + 4, bh + 4, 8); ctx.fill();
-    ctx.fillStyle = '#2a1414'; rr(bx, by, bw, bh, 7); ctx.fill();
-    ctx.fillStyle = frac < 0.3 ? '#ff7a4a' : COL.red; rr(bx, by, Math.max(6, bw * frac), bh, 7); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(bx + 4, by + 2, Math.max(0, bw * frac - 8), 3);
-    text('血 ' + Math.max(0, Math.round(siegeFx.hpShow)) + ' / ' + g.hpMax, bx + bw / 2, by + bh / 2 + 1, 14, COL.text);
-    text(g.waveDef.name, bx - 8, by + bh / 2, 16, g.waveDef.boss ? COL.red : COL.text, 'right');
-    // 一根细线把血条和车连起来，看得出是这辆车的血
-    ctx.strokeStyle = 'rgba(226,85,59,0.35)'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]);
-    ctx.beginPath(); ctx.moveTo(cp.x, by + bh + 2); ctx.lineTo(cp.x, cp.y - 42); ctx.stroke(); ctx.setLineDash([]);
-  }
-  // 城墙：砖色一条，带垛口；中间城门
-  const wy = G2.wallY;
-  ctx.fillStyle = COL.ink; ctx.fillRect(0, wy - 2, W, 40);
-  ctx.fillStyle = '#6b5a48'; ctx.fillRect(0, wy, W, 36);
-  for (let x = 0; x < W; x += 26) { ctx.fillStyle = '#7d6a55'; ctx.fillRect(x, wy - 10, 16, 12); ctx.fillStyle = COL.ink; ctx.fillRect(x, wy - 12, 16, 2); }
-  ctx.fillStyle = 'rgba(0,0,0,0.18)'; for (let x = 0; x < W; x += 20) ctx.fillRect(x, wy + 17, 10, 2);
-  // 城门（车撞的就是这里）
-  const near = !dead && g.round >= SG.ROUNDS;
-  ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(W / 2, wy + 36, 24, Math.PI, 0); ctx.fill();
-  ctx.fillStyle = near ? (Math.sin(clock * 12) > 0 ? COL.red : '#5a2a20') : '#3a2a1c'; ctx.beginPath(); ctx.arc(W / 2, wy + 36, 20, Math.PI, 0); ctx.fill();
-  // 机关栏：嵌在城墙上
-  for (let n = 0; n < SG.SLOTS; n++) {
-    const p = relicSlotPos(n);
-    const r = g.relics[n];
-    if (!r) {
-      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(p.x, p.y, p.s / 2 - 2, 0, Math.PI * 2); ctx.fill();
-      continue;
-    }
-    const pa = relicPop[r.id] ? Math.max(0, 0.3 - (clock - relicPop[r.id])) / 0.3 : 0;
-    relicIcon(r.id, p.x, p.y, p.s, r.lv, pa);
-    buttons.push({ id: 'relic' + n, x: p.x - p.s / 2, y: p.y - p.s / 2, w: p.s, h: p.s, fn: () => { siegeFx.tip = { id: r.id, t: clock }; } });
-  }
-  // 左上：返回、第几波；右上：还有几步撞门
-  button('map', 10, top - 4, 40, 32, '‹', { size: 24, bg: COL.wood, fn: () => { timeline = []; mode = 'map'; } });
-  text((g.daily ? '每日 · ' : '') + '第 ' + (g.wave + 1) + ' 波', 58, top + 12, 15, g.daily ? COL.jade : COL.text, 'left');
-  if (!dead) {
-    const left = SG.ROUNDS - g.round + 1;
-    const urgent = left <= 1;
-    text(urgent ? '下一轮就撞门！' : '还有 ' + left + ' 轮撞门', W - 12, top + 12, urgent ? 16 + Math.sin(clock * 10) : 15, urgent ? COL.red : COL.text, 'right');
-  }
-  if (g.charge > 1) text('下次打车 ×' + g.charge, W - 12, top + 70, 13, COL.brassLight, 'right');
-  // 点机关看一行字
-  if (siegeFx.tip && clock - siegeFx.tip.t < 2 && !wordsOff()) {
-    const R = SG.RELICS[siegeFx.tip.id], L2 = g.lvOf(siegeFx.tip.id);
-    const s2 = R.name + '：' + R.desc[Math.max(0, L2 - 1)];
-    ctx.font = 'bold 15px "PingFang SC", sans-serif';
-    const tw = Math.min(W - 16, ctx.measureText(s2).width + 24);
-    ctx.fillStyle = COL.steam; rr((W - tw) / 2, wy - 40, tw, 30, 8); ctx.fill();
-    ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(s2, W / 2, wy - 25, W - 30);
-  }
-  // 换波横幅
-  const bn = siegeFx.banner;
-  if (bn && clock - bn.t < 2.4 && g.phase === 'play') {
-    const a = Math.min(1, (clock - bn.t) * 4) * Math.min(1, (2.4 - (clock - bn.t)) * 3);
-    ctx.globalAlpha = a;
-    ctx.fillStyle = COL.shade + '0.78)'; ctx.fillRect(0, L.by + L.board * 0.36, W, bn.sub ? 76 : 50);
-    text(bn.text, W / 2, L.by + L.board * 0.36 + 25, 26, bn.boss ? COL.red : COL.brassLight);
-    if (bn.sub) text(bn.sub, W / 2, L.by + L.board * 0.36 + 56, 16, COL.text, 'center', 'normal');
-    ctx.globalAlpha = 1;
-  }
-}
-// 弩箭：从消掉的那一排飞到车上（画在最上层）
-function drawMissiles() {
-  missiles = missiles.filter((m) => clock - m.t < 0.4);
-  const cp = cartPos();
-  missiles.forEach((m) => {
-    const a = (clock - m.t) / 0.4, e = a * a;
-    const x = m.x0 + (cp.x - m.x0) * e, y = m.y0 + (cp.y + 10 - m.y0) * e;
-    const ang = Math.atan2(cp.y - m.y0, cp.x - m.x0);
-    const len = 46 + Math.min(40, m.dmg / 4);
-    ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
-    ctx.fillStyle = 'rgba(255,240,200,0.5)'; ctx.fillRect(-len - 30, -3, 30, 6);
-    ctx.fillStyle = COL.brassLight; ctx.fillRect(-len, -2.5, len, 5);
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-6, -8); ctx.lineTo(-6, 8); ctx.fill();
-    ctx.restore();
-    text(String(m.dmg), x + 18, y - 14, 18, COL.brassLight);
-  });
-}
-// 机关第一次发动时的那句说明（压在棋盘下沿，2.6 秒）
-function drawCaption() {
-  const cp = siegeFx.caption;
-  if (!cp || clock - cp.t > 2.6) return;
-  const a = Math.min(1, (clock - cp.t) * 5) * Math.min(1, (2.6 - (clock - cp.t)) * 3);
-  ctx.globalAlpha = a;
-  ctx.font = 'bold 16px "PingFang SC", sans-serif';
-  const tw = Math.min(W - 20, ctx.measureText(cp.text).width + 28);
-  const y = L.by + L.board - 52;
-  ctx.fillStyle = COL.steam; rr((W - tw) / 2, y, tw, 40, 10); ctx.fill();
-  ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(cp.text, W / 2, y + 21, W - 40);
-  ctx.globalAlpha = 1;
-}
-// 攻城车（正面朝下，冲着城门来）：木架子 + 顶棚 + 往下伸的撞木 + 四个轮子；头目是红顶
-function drawCart(x, y, boss, white) {
-  const wood = white ? '#fff' : '#8a6438', dark = white ? '#fff' : '#5e4226';
-  // 轮子
-  for (const [dx, dy] of [[-34, -16], [34, -16], [-34, 14], [34, 14]]) {
-    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x + dx, y + dy, 9, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = COL.copper; ctx.beginPath(); ctx.arc(x + dx, y + dy, 5.5, 0, Math.PI * 2); ctx.fill();
-  }
-  // 车身
-  ctx.fillStyle = COL.ink; rr(x - 30, y - 26, 60, 52, 6); ctx.fill();
-  ctx.fillStyle = wood; rr(x - 28, y - 24, 56, 48, 5); ctx.fill();
-  ctx.fillStyle = dark; for (let k = -1; k <= 1; k++) ctx.fillRect(x - 28, y + k * 14 - 1, 56, 3);
-  // 顶棚
-  ctx.fillStyle = white ? '#fff' : boss ? '#b8322a' : '#6b4a2a';
-  ctx.beginPath(); ctx.moveTo(x - 34, y - 20); ctx.lineTo(x, y - 40); ctx.lineTo(x + 34, y - 20); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = COL.ink; ctx.lineWidth = 2; ctx.stroke();
-  // 撞木：往下伸，铜头
-  ctx.fillStyle = COL.ink; ctx.fillRect(x - 7, y + 20, 14, 26);
-  ctx.fillStyle = dark; ctx.fillRect(x - 5, y + 20, 10, 24);
-  ctx.fillStyle = COL.brassLight; rr(x - 9, y + 42, 18, 10, 3); ctx.fill();
-  if (boss) { ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(x, y - 30, 4, 0, Math.PI * 2); ctx.fill(); }
-}
-// 三选一：三张横卡竖着排（拇指够得着）
-function drawSiegeChoose() {
-  if (g.phase !== 'choose' || !g.offer || clock < siegeFx.chooseAt || siegeBusy()) return;
-  const age = clock - siegeFx.chooseAt;
-  ctx.fillStyle = COL.shade + Math.min(0.85, age * 3) + ')'; ctx.fillRect(0, 0, W, H);
-  const opening = g.wavesWon === 0;
-  const single = g.offer.length === 1;
-  text(single ? '打掉了！送你一件机关' : opening ? '开局挑一件机关' : '打掉了！挑一件机关', W / 2, L.by + 10, 26, COL.brassLight);
-  text(single || !Object.keys(save.relicGot).length ? '机关会自己帮你打车，你照常消方块就行' : '下一波：' + (SG.WAVES[g.wave + 1] ? SG.WAVES[g.wave + 1].name : '重车'), W / 2, L.by + 42, 14, COL.dim, 'center', 'normal');
-  const cw = Math.min(W - 40, 360), ch = 96, x = (W - cw) / 2;
-  g.offer.forEach((id, n) => {
-    const k = Math.min(1, Math.max(0, (age - n * 0.06) / 0.18));
-    if (k <= 0) return;
-    const y = L.by + 72 + n * (ch + 14) + (1 - k) * 30;
-    const R = SG.RELICS[id];
-    const have = g.lvOf(id);
-    ctx.globalAlpha = k;
-    const pressed = downBtn === 'pick' + n;
-    ctx.fillStyle = COL.ink; rr(x, y + 5, cw, ch, 14); ctx.fill();
-    ctx.fillStyle = COL.wood; rr(x, y + (pressed ? 2 : 0), cw, ch, 14); ctx.fill();
-    ctx.strokeStyle = SCHOOL_COL[R.school]; ctx.lineWidth = 4; rr(x + 2, y + 2 + (pressed ? 2 : 0), cw - 4, ch - 4, 12); ctx.stroke();
-    relicIcon(id, x + 46, y + ch / 2, 52, have ? have + 1 : 1, 0);
-    text(R.name + (have ? '  升到 ' + (have + 1) + ' 级' : ''), x + 84, y + 28, 20, COL.text, 'left');
-    text(R.desc[Math.min(2, have)], x + 84, y + 58, 15, COL.text, 'left', 'normal');
-    const pal = SG.palOf(g, id);
-    if (!save.relicGot[id]) text('新！', x + cw - 14, y + 26, 15, COL.red, 'right');
-    else if (pal && !have) text('配你的' + pal, x + cw - 14, y + 26, 13, COL.jade, 'right');
-    ctx.globalAlpha = 1;
-    buttons.push({ id: 'pick' + n, x, y, w: cw, h: ch, fn: () => {
-      save.relicGot[id] = true; persist();
-      g.pick(id);
-      relicPop[id] = clock + 0.05;
-      P.sound('coin', 0.6);
-      if (g.phase === 'play') waveBanner();
-      if (g.over) endGame();
-    } });
-  });
-}
-function endSiege() {
-  if (g.won && g.firstRun && !save.siegeDone) save.siegeDone = true;
-  if (!g.daily && !g.endlessOn && (!g.firstRun || g.won)) save.siegeRuns = (save.siegeRuns || 0) + 1;
-  const prevBest = save.siegeBest || 0;
-  let dailyPrev = 0;
-  if (g.daily) {
-    const d = dailyRec();
-    dailyPrev = d.best;
-    d.best = Math.max(d.best, g.wavesWon);
-    d.bestHit = Math.max(d.bestHit, g.bestHit);
-  } else save.siegeBest = Math.max(prevBest, g.wavesWon);
-  coinsGot = Math.floor(g.totalDmg / 40) + g.wavesWon * 3;
-  save.coins += coinsGot;
-  persist();
-  result = { won: g.won, reason: g.reason, near: g.nearMiss(), doubled: false, prevBest, dailyPrev, record: g.daily ? g.wavesWon > dailyPrev : g.endlessOn && g.wavesWon > prevBest };
-  mode = 'over';
-  if (!g.won) { P.sound('lose', 0.6); say(g.reason === 'gate' ? '城破了' : '堵住了'); }
-}
-// 失败时那一句「差几波」（Cc 定的方向：失败时显示「差一波就守住了」）
-function wavesLine() {
-  const r = result, n = g.wavesWon;
-  if (g.daily) {
-    if (r.record) return n > 0 ? '今天新纪录：守住 ' + n + ' 波！' : '';
-    const gap = r.dailyPrev - n;
-    return gap === 0 ? '追平今天最好的 ' + r.dailyPrev + ' 波，再守一波就破纪录' : '差 ' + gap + ' 波追平今天最好的 ' + r.dailyPrev + ' 波';
-  }
-  if (!g.endlessOn) { const gap = SG.FIRST_RUN_WAVES - n; return gap === 1 ? '差一波就守住了！' : '守住 ' + n + ' 波，差 ' + gap + ' 波就守住了'; }
-  if (r.record) return '新纪录：守住 ' + n + ' 波！';
-  const gap = r.prevBest - n;
-  return gap <= 0 ? '' : '差 ' + gap + ' 波追上你最好的 ' + r.prevBest + ' 波';
-}
-function drawSiegeOver() {
-  const age = clock - overAt;
-  const r = result;
-  ctx.fillStyle = COL.shade + Math.min(0.85, age * 2) + ')'; ctx.fillRect(0, 0, W, H);
-  if (age < 0.4) return;
-  const pw = Math.min(W - 40, 340), ph = 360, px = (W - pw) / 2, py = Math.max(L.top + 40, (H - ph) / 2 - 40);
-  panel(px, py, pw, ph);
-  const title = r.won ? '守住了！' : g.daily && r.record && g.wavesWon > 0 ? '新纪录！' : g.reason === 'gate' ? (r.near ? '只差 ' + g.hp + ' 点！' : '城破了') : '堵住了';
-  text(title, W / 2, py + 38, 30, r.won ? COL.brassLight : r.near ? COL.red : COL.text);
-  const wl = r.won ? '' : wavesLine();
-  if (wl) text(wl, W / 2, py + 72, 17, r.record ? COL.brassLight : COL.red);
-  text('打下 ' + g.wavesWon + ' 波  ·  最狠一手 ' + g.bestHit + ' 点', W / 2, py + (wl ? 98 : 82), 15, COL.text, 'center', 'normal');
-  // 这一局的机关
-  const n = g.relics.length;
-  g.relics.forEach((rl, i) => relicIcon(rl.id, W / 2 + (i - (n - 1) / 2) * 50, py + 132, 38, rl.lv, 0));
-  if (!n) text('（没拿机关）', W / 2, py + 132, 14, COL.dim, 'center', 'normal');
-  text('+' + coinsGot + ' 金  ·  ' + (g.daily ? '今天最好 ' + dailyRec().best + ' 波' : '最多守住 ' + save.siegeBest + ' 波'), W / 2, py + 172, 15, COL.brassLight, 'center', 'normal');
-  const bw = pw - 48, bx = px + 24;
-  if (g.daily) {
-    // 每日一城：晒成绩最大；再守一次要看今天还剩几次
-    button('share', bx, py + 196, bw, 58, '晒成绩', { size: 24, fn: () => { mode = 'share'; } });
-    const left = dailyLeft();
-    if (left > 0) button('again', bx, py + 266, bw * 0.6 - 6, 46, '再守（剩 ' + left + ' 次）', { size: 16, bg: COL.copper, fn: () => newDaily() });
-    else button('dailyAd', bx, py + 266, bw * 0.6 - 6, 46, '再来一次', { size: 16, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { dailyRec().extra++; persist(); newDaily(); }) });
-    button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-    return;
-  }
-  if (r.won) {
-    button('cont', bx, py + 196, bw, 58, '继续守（车更硬）', { size: 22, fn: () => { g.continueRun(); g._ended = false; mode = 'play'; result = null; siegeFx.chooseAt = clock + 0.1; } });
-    button('again', bx, py + 266, bw * 0.6 - 6, 46, '再守一次', { size: 18, bg: COL.copper, fn: () => newSiege() });
-    button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-  } else {
-    button('again', bx, py + 196, bw, 58, '再守一次', { size: 24, fn: () => newSiege() });
-    if (g.adsUsed < C.adMax) {
-      button('revive', bx, py + 266, bw * 0.6 - 6, 46, g.reason === 'gate' ? '多打一轮' : '清空正中间', { size: 17, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { reviveFx(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
-      button('tomap', bx + bw * 0.6 + 6, py + 266, bw * 0.4 - 6, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-    } else button('tomap', bx, py + 266, bw, 46, '地图', { size: 17, bg: COL.woodDark, fn: () => { mode = 'map'; } });
-  }
-}
-
-// 晒成绩：一张竖卡（微信里接分享给好友；浏览器试玩版只显示这张卡）
-function drawShareCard() {
-  ctx.fillStyle = COL.shade + '0.9)'; ctx.fillRect(0, 0, W, H);
-  const cw = Math.min(W - 60, 320), chh = Math.min(H - 220, 470), x = (W - cw) / 2, y = (H - chh) / 2 - 30;
-  ctx.fillStyle = COL.ink; rr(x, y + 6, cw, chh, 18); ctx.fill();
-  const bgG = ctx.createLinearGradient(0, y, 0, y + chh);
-  bgG.addColorStop(0, COL.bg); bgG.addColorStop(1, COL.bgLow);
-  ctx.fillStyle = bgG; rr(x, y, cw, chh, 18); ctx.fill();
-  ctx.strokeStyle = COL.brass; ctx.lineWidth = 3; rr(x + 6, y + 6, cw - 12, chh - 12, 14); ctx.stroke();
-  const d = dailyRec();
-  const [yy, mm, dd] = d.date.split('-');
-  text('每日一城 · ' + (+mm) + ' 月 ' + (+dd) + ' 日', W / 2, y + 40, 18, COL.jade);
-  text('守住', W / 2, y + 92, 20, COL.text, 'center', 'normal');
-  text(String(g.wavesWon), W / 2, y + 150, 88, COL.brassLight);
-  text('波', W / 2, y + 206, 20, COL.text, 'center', 'normal');
-  drawCart(W / 2 - 70, y + 250, true, false);
-  starShape(W / 2 + 70, y + 250, 16, '#efe2ff');
-  const n = g.relics.length;
-  g.relics.forEach((rl, i) => relicIcon(rl.id, W / 2 + (i - (n - 1) / 2) * 46, y + 304, 36, rl.lv, 0));
-  text('最狠一手 ' + g.bestHit + ' 点', W / 2, y + 352, 16, COL.text, 'center', 'normal');
-  text('今天人人守同一座城，你能守几波？', W / 2, y + chh - 50, 14, COL.dim, 'center', 'normal');
-  text('九宫消', W / 2, y + chh - 24, 16, COL.brassLight);
-  text('（微信里点「发给好友」就把这张图发出去）', W / 2, y + chh + 30, 13, COL.dim, 'center', 'normal');
-  const bw = Math.min(W - 60, 300);
-  button('shareClose', (W - bw) / 2, y + chh + 52, bw, 50, '好', { size: 20, fn: () => { mode = 'over'; } });
+function runTimeline() {
+  if (!timeline.length) return;
+  const due = timeline.filter((e) => clock >= e.t);
+  timeline = timeline.filter((e) => clock < e.t);
+  due.forEach((e) => { try { e.fn(); } catch (err) { logErr('timeline', err); } }); // 0.9.13：一件小事出错，后面的照常演（Cc 11-26 第 2 关过关卡死）
 }
 
 // ---------- 老存档整理（0.9.14 debug）：开机做一次。手机里可能是 0.9.8 以前的存档，对不上的地方会让某一页每帧出错、点不了 ----------
@@ -6699,12 +5640,12 @@ function frameRescue() {
   const was = mode;
   drag = null; downBtn = null; downTouch = null;
   if (mode === 'cut') { CUT.clear(); endCuts(); if (mode === 'cut') mode = 'map'; }
-  else if (mode === 'over' || mode === 'share') mode = 'map';
+  else if (mode === 'over') mode = 'map';
   else if (mode === 'start') { mode = (startCard && startCard.next) || 'play'; startCard = null; }
   else if (mode === 'intro') { if (introKind) { save.introSeen[introKind] = true; persist(); } introKind = null; mode = 'play'; }
   else if (mode === 'ad') { const f = ad && ad.done; ad = null; mode = 'play'; if (f) f(); }
   else if (mode === 'camp') mode = 'map';
-  else if (mode === 'map' || mode === 'settings' || mode === 'album') mode = 'home';
+  else if (mode === 'map' || mode === 'settings') mode = 'home';
   if (mode !== was) T.rec('X', 'rescue', was + ' → ' + mode);
 }
 function frameBody() {
@@ -6714,7 +5655,7 @@ function frameBody() {
   if (mode === 'over' || mode === 'settings') T.prepare({ ver: VERSION, log: save.playLog || [] }); } // 到结算、设置页先把记录压好，点复制时马上能用
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  update((mode === 'album' && albumFrom === 'play') || mode === 'cut' ? 0 : dt);
+  update(mode === 'cut' ? 0 : dt);
   buttons = [];
   LY.setMetrics(W, mode === 'map' || mode === 'camp' ? uiTop() : L.top, H); LY.beginFrame();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -6722,8 +5663,6 @@ function frameBody() {
   if (mode === 'cut') {
     CUT.update(dt * 1000);
     if (CUT.playing) CUT.draw(); else { endCuts(); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
-  } else if (mode === 'album') {
-    drawAlbum();
   } else if (mode === 'home') {
     drawHome();
   } else if (mode === 'settings') {
@@ -6734,7 +5673,7 @@ function frameBody() {
     drawCamp();
   } else if (mode === 'map') {
     ctx.save();
-    drawChapter(); // 0.8：章页取代弯路地图（drawMap 留着不删）
+    drawChapter(); // 0.8：章页取代弯路地图（旧地图 0.9.25 拆掉了）
     ctx.restore();
   } else {
     ctx.save();
@@ -6752,11 +5691,9 @@ function frameBody() {
     ctx.restore();
     if (flash > 0) { ctx.fillStyle = 'rgba(255,244,214,' + flash + ')'; ctx.fillRect(0, 0, W, H); }
     { const rp = rushPlayPulse(); if (rp > 0.01) { const gc = rushGlow().join(','); ctx.fillStyle = 'rgba(' + gc + ',' + (0.05 + rp * 0.15) + ')'; ctx.fillRect(0, 0, W, H); ctx.save(); ctx.shadowColor = 'rgba(' + gc + ',0.95)'; ctx.shadowBlur = 10 + rp * 30; ctx.strokeStyle = 'rgba(' + gc + ',' + (0.35 + rp * 0.65) + ')'; ctx.lineWidth = 5 + rp * 7; ctx.strokeRect(L.bx - 7, L.by - 7, L.board + 14, L.board + 14); ctx.restore(); } }
-    if (mode === 'over' || mode === 'share' || (mode === 'ad' && result)) drawOver();
-    if (mode === 'share') { buttons = buttons.filter((b) => b.id === 'map'); drawShareCard(); }
+    if (mode === 'over' || (mode === 'ad' && result)) drawOver();
     if (mode === 'intro') drawIntro();
     if (mode === 'start') { const rb = rushCardBeat(); ctx.save(); if (rb) ctx.translate(rb.x * 1.4, rb.y * 1.4); drawStartCard(); ctx.restore(); if (rb) { ctx.fillStyle = 'rgba(' + rushGlow(startCard.i).join(',') + ',' + (0.06 + rb.pulse * 0.1) + ')'; ctx.fillRect(0, 0, W, H); } }
-    if (mode === 'play' && g.siege) { drawCaption(); drawSiegeChoose(); }
     if ((mode === 'play' || mode === 'intro') && g.pets) drawPetCaption();
     if (g.pets) drawInfo();
     if (mode === 'ad') drawAd();
@@ -6808,12 +5745,12 @@ P.exposeForTest('__layout', LY);
 P.exposeForTest('__game', {
   get g() { return g; }, get mode() { return mode; }, set mode(v) { mode = v; }, get result() { return result; }, get save() { return save; },
   get paintIdx() { return paintIdx; }, stats, L, fingerFor, fingerForHand, skillTarget, tutorialTarget, slotCenter, buttons: () => buttons.slice(),
-  get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; }, LV, newStage, SG, newSiege, newDaily, dailyLeft: () => dailyLeft(), siegeBusy: () => siegeBusy(),
+  get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; },
   PG, PLV, newPetLevel, newEvolution, openCamp, feedPet, get petIdx() { return petIdx; },
-  reset() { save = freshSave(); persist(); newStage(0); },
+  reset() { save = freshSave(); persist(); newPetLevel(0); },
   setSave(o) { Object.assign(save, o); persist(); },
   get cutPlaying() { return CUT.playing; }, levelUpPet, danToLevel, get CUT() { return CUT; }, playCuts, skipCuts() { while (mode === 'cut') { CUT.skip(); if (!CUT.playing) endCuts(); } if (mode === 'start' && startCard) { mode = startCard.next || 'play'; startCard = null; } },
-  soundLog: () => P.soundLog.slice(), clearSoundLog: () => { P.soundLog.length = 0; }, rushPulse: () => rushPlayPulse(), newGame, endGame, core, T, fixSave, get capsule() { return CAP; }, get uiTop() { return uiTop(); }, get drag() { return drag; },
+  soundLog: () => P.soundLog.slice(), clearSoundLog: () => { P.soundLog.length = 0; }, rushPulse: () => rushPlayPulse(), endGame, core, T, fixSave, get capsule() { return CAP; }, get uiTop() { return uiTop(); }, get drag() { return drag; },
 });
 
 });
@@ -7136,12 +6073,13 @@ __def("js/petgame.js", function (module, exports, require) {
 //   ④ 铁石（只有宠物打得碎，有的两层）、机关匣、宝石、泡泡；进化关：用宠物的颜色把正中间的大格一格格点亮。
 const C = require('./config.js');
 const core = require('./core.js');
+const CELL = core.CELL; // 格子名字：CELL.BLOCK、CELL.METAL……
 const { UNITS } = core;
 
 // 盘面的值：0 空 1 块 2 机关匣 3 墨怪（各种，见 g.mon）4 头目 5 铁石
 // 颜色 = C.blockColors 的序号：0 黄铜金 1 朱砂红 2 青铜绿 3 青金蓝 4 紫晶 5 赤铜 6 水银青；-1 旧铁灰（预放的块）；-2 墨块（大墨怪吐的）
 const COLOR_NAME = ['金色', '红色', '绿色', '蓝色', '紫色', '橙色', '青色'];
-const IS_MON = (v) => v === 3;
+const IS_MON = (v) => v === CELL.MON;
 // 墨怪的种类。cd = 隔几手动一次手；hp = 甲壳怪的甲有几层
 const MON = {
   ink: { name: '小墨怪' }, shell: { name: '甲壳怪' }, jump: { name: '跳跳怪' }, eat: { name: '馋嘴怪', cd: 3 },
@@ -7152,7 +6090,7 @@ const MON_CHAR = { m: 'ink', A: 'shell', B: 'shell', C: 'shell', J: 'jump', E: '
 const cdOf = (t) => (RULES.pester[t] || MON[t].cd || 0);
 const newMon = (t, extra) => Object.assign({ t, hp: 0, col: -1, cd: cdOf(t), tgt: null }, extra || {});
 const near8 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const a = r + dr, b = c + dc; if (a >= 0 && a < 9 && b >= 0 && b < 9) out.push(a * 9 + b); } return out; };
-const EATABLE = (v) => v === 1 || IS_MON(v);
+const EATABLE = (v) => v === CELL.BLOCK || IS_MON(v);
 
 // 宠物：能量满了吐一块技能块。tier（技能块大小）：1–2 级小、3–4 级中、5 级起（进化后）大。energy(lv)：攒满要几格。
 // kind = 克制表里它算哪一路（row 啄 / box 炸 / fill 缠 / gift 烧）；shape = 技能块打哪几格（h 横条 / v 竖条 / sq 一圈 / x 斜叉）
@@ -7293,9 +6231,9 @@ function gnawPiece(p, j) {
   return { id: p.id + '~', cat: p.cat, cells, h: Math.max(...cells.map((x) => x[0])) + 1, w: Math.max(...cells.map((x) => x[1])) + 1, gnawed: (p.gnawed || 0) + 1, mud };
 }
 const near4 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; if (r > 0) out.push(k - 9); if (r < 8) out.push(k + 9); if (c > 0) out.push(k - 1); if (c < 8) out.push(k + 1); return out; };
-const OCC = (v) => v === 1 || v === 3 || v === 4 || v === 5 || v === 6; // 技能块打得到的东西：方块、墨怪、头目、铁石、金属
+const OCC = (v) => v === CELL.BLOCK || v === CELL.MON || v === CELL.BOSS || v === CELL.ROCK || v === CELL.METAL; // 技能块打得到的东西：方块、墨怪、头目、铁石、金属
 // 0.9.17 五行东西（第一章：金属，盘面值 6）：占一格、算填了，凑满那一排别的都消、它还在；只有同色的宠物（铜雀）啄得掉
-const PECKABLE = (v) => v === 1 || v === 5 || v === 6; // 铜雀啄得到的：方块（含墨块）、铁石、金属。墨怪、头目啄不到（Cc 11-27 第 4 件：除了火麒麟，宠物不抓怪、不打头目）
+const PECKABLE = (v) => v === CELL.BLOCK || v === CELL.ROCK || v === CELL.METAL; // 铜雀啄得到的：方块（含墨块）、铁石、金属。墨怪、头目啄不到（Cc 11-27 第 4 件：除了火麒麟，宠物不抓怪、不打头目）
 const petDef = (p) => PETS[p.id];
 function energyMax(g, p) {
   return petDef(p).energy(p.lv);
@@ -7340,7 +6278,7 @@ function createPetGame(opts) {
   st.board.forEach((row, r) => row.split('').forEach((ch, c) => {
     const k = r * 9 + c;
     if (!putChar(g.board, ch, k) && ch === 'K') { g.board[k] = 4; g.bigCells.push(k); }
-    if (g.board[k] === 1) g.color[k] = -1;
+    if (g.board[k] === CELL.BLOCK) g.color[k] = -1;
   }));
   // 一波一波冒出来（stage.waves）：盘上的墨怪抓光了（要打铁石的关，铁石也打光了），下一波墨怪从墨里冒出来。盘面不清空：你放的块、墨块都还在。
   // 每一波写成一张 9×9 的小图，只认里面的墨怪和铁石；那一格被占了，就冒在离它最近的空格。没有手数上限，也没有倒计时：输法只有「三块都放不下」。
@@ -7350,13 +6288,13 @@ function createPetGame(opts) {
   const waveMonCount = () => g.waveQ.reduce((a, w) => a + w.join('').split('').filter(isMonCh).length, 0);
   function nextWave(b, ev) {
     if (!g.waveQ.length || g.mon.some(Boolean)) return;
-    if ('rock' in g.got && b.some((v) => v === 5)) return; // 要打铁石的关：这张盘的铁石也打光了才换
+    if ('rock' in g.got && b.some((v) => v === CELL.ROCK)) return; // 要打铁石的关：这张盘的铁石也打光了才换
     const w = g.waveQ.shift(); g.waveNo++;
     const dropped = [];
     w.forEach((row, r) => row.split('').forEach((ch, c) => {
       if (!isMonCh(ch) && ch !== 'R' && ch !== 'Q') return;
       let k = r * 9 + c;
-      if (b[k] !== 0) { let best = -1, bd = 99; for (let x = 0; x < 81; x++) { if (b[x] !== 0) continue; const d = Math.abs(Math.floor(x / 9) - r) + Math.abs((x % 9) - c); if (d < bd) { bd = d; best = x; } } k = best; }
+      if (b[k] !== CELL.EMPTY) { let best = -1, bd = 99; for (let x = 0; x < 81; x++) { if (b[x] !== CELL.EMPTY) continue; const d = Math.abs(Math.floor(x / 9) - r) + Math.abs((x % 9) - c); if (d < bd) { bd = d; best = x; } } k = best; }
       if (k >= 0 && putChar(b, ch, k)) dropped.push(k);
     }));
     ev.wave = { no: g.waveNo, of: g.waveTotal, cells: dropped };
@@ -7436,16 +6374,16 @@ function createPetGame(opts) {
   // 冲锋关的盘：平常的彩色方块铺满，只在「本来该消、却没消」的排 / 列 / 大格里放一块「铜砖」（盘面值 8）
   // 0.9.22 Cc 11-27：「是指能消除而没消除的部分用特殊块儿，而不是全图都用特殊块儿。全图都用特殊块儿的话，爽感不太好」
   // 规矩：只有你这一块塞进去的那几排 / 列 / 大格会消（连里面的铜砖一起炸）；别的满着的排，里面一定有铜砖，所以一看就知道它不会自己消
-  function fillAll(b, keep) { const added = []; for (let k = 0; k < 81; k++) if (b[k] === 0 && !keep.has(k)) { b[k] = 1; g.color[k] = g.pickColor(); added.push(k); } placeBricks(new Set(added)); return added; }
+  function fillAll(b, keep) { const added = []; for (let k = 0; k < 81; k++) if (b[k] === CELL.EMPTY && !keep.has(k)) { b[k] = 1; g.color[k] = g.pickColor(); added.push(k); } placeBricks(new Set(added)); return added; }
   function placeBricks(prefer) {
     const b = g.board;
     for (let t = 0; t < 30; t++) {
-      const open = UNITS.map((u, ui) => ui).filter((ui) => UNITS[ui].every((k) => b[k]) && !UNITS[ui].some((k) => b[k] === 8));
+      const open = UNITS.map((u, ui) => ui).filter((ui) => UNITS[ui].every((k) => b[k]) && !UNITS[ui].some((k) => b[k] === CELL.BRICK));
       if (!open.length) return;
       const openSet = new Set(open);
       let best = -1, bs = -1;
       for (let k = 0; k < 81; k++) {
-        if (b[k] !== 1) continue;
+        if (b[k] !== CELL.BLOCK) continue;
         const r = Math.floor(k / 9), c = k % 9, hits = [r, 9 + c, 18 + core.boxOf(r, c)].filter((u) => openSet.has(u)).length;
         if (!hits) continue;
         const sc = hits * 10 + (prefer && prefer.has(k) ? 4 : 0) + g.rand() * 3;
@@ -7485,14 +6423,14 @@ function createPetGame(opts) {
   g.rushOK = (i, r, c) => { const p = g.hand[i]; if (!p || !core.canPlace(g.board, p, r, c)) return false; const b2 = g.board.slice(), placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc); placed.forEach((k) => { b2[k] = 1; }); return placed.some((k) => UNITS.some((u) => u.includes(k) && u.every((x) => b2[x]))); };
   // 万一哪条路把手上的块换了（看广告换一批之类）：重挖到每块都有一放就消的空
   g.rushStuck = () => st.rush && !g.over && [0, 1, 2].some((i) => g.hand[i] && !core.placements(g.board, g.hand[i]).some(([r, c]) => g.rushOK(i, r, c)));
-  g.rushRepair = () => { for (let k = 0; k < 81; k++) if (g.board[k] === 0) { g.board[k] = 1; g.color[k] = g.pickColor(); } g.rushGap = [null, null, null]; ensureGaps([0, 1, 2]); };
+  g.rushRepair = () => { for (let k = 0; k < 81; k++) if (g.board[k] === CELL.EMPTY) { g.board[k] = 1; g.color[k] = g.pickColor(); } g.rushGap = [null, null, null]; ensureGaps([0, 1, 2]); };
   const rushFits = (i) => { const at = g.rushGap[i]; return !!(at && g.hand[i] && core.canPlace(g.board, g.hand[i], at.r, at.c)); };
   function ensureGaps(slots) {
     const b = g.board;
     slots = slots.filter((i) => g.hand[i]);
     slots.forEach((i) => { if (!rushFits(i)) { g.rushGap[i] = null; carve(b, i); } });
     for (let t = 0; t < 80 && !slots.every(rushFits); t++) {
-      slots.forEach((i) => { const at = g.rushGap[i]; if (at && g.hand[i]) gapCells(g.hand[i], at).forEach((k) => { if (b[k] === 0) { b[k] = 1; g.color[k] = g.pickColor(); } }); g.rushGap[i] = null; });
+      slots.forEach((i) => { const at = g.rushGap[i]; if (at && g.hand[i]) gapCells(g.hand[i], at).forEach((k) => { if (b[k] === CELL.EMPTY) { b[k] = 1; g.color[k] = g.pickColor(); } }); g.rushGap[i] = null; });
       const order = slots.slice().sort(() => g.rand() - 0.5);
       if (t >= 30) { const small = RUSH_POOL.filter((id) => core.PIECES[id].cells.length <= (t >= 55 ? 2 : 3)); const j = order[Math.floor(g.rand() * order.length)]; g.hand[j] = core.PIECES[small[Math.floor(g.rand() * small.length)]]; }
       order.forEach((i) => carve(b, i));
@@ -7539,9 +6477,9 @@ function createPetGame(opts) {
     const b = g.board;
     // 0.9.20（Cc 11-27 第 134 条定「改」）：第 1 次清最挤的 3 个大格、第 2 次 2 个、第 3 次 1 个；用过救命这关最多 2 星（main.js 的 liveStars）
     const nBox = [3, 2, 1][Math.min(2, g.revivesUsed - 1)];
-    const boxes = [...Array(9).keys()].map((bx) => ({ bx, n: UNITS[18 + bx].filter((k) => b[k] === 1).length })).sort((x, y) => y.n - x.n || x.bx - y.bx).slice(0, nBox).filter((x) => x.n > 0).map((x) => x.bx);
+    const boxes = [...Array(9).keys()].map((bx) => ({ bx, n: UNITS[18 + bx].filter((k) => b[k] === CELL.BLOCK).length })).sort((x, y) => y.n - x.n || x.bx - y.bx).slice(0, nBox).filter((x) => x.n > 0).map((x) => x.bx);
     const cells = [];
-    boxes.forEach((bx) => UNITS[18 + bx].forEach((k) => { if (b[k] === 1) { b[k] = 0; g.color[k] = 0; g.gem[k] = 0; cells.push(k); } }));
+    boxes.forEach((bx) => UNITS[18 + bx].forEach((k) => { if (b[k] === CELL.BLOCK) { b[k] = 0; g.color[k] = 0; g.gem[k] = 0; cells.push(k); } }));
     for (let i = 0; i < 3; i++) {
       let q = null;
       for (let t = 0; t < 30 && !q; t++) { const c = core.PIECES[SMALL[Math.floor(g.rand() * SMALL.length)]]; if (core.anyPlacement(b, c)) q = c; }
@@ -7594,8 +6532,8 @@ function createPetGame(opts) {
   function clearCells(b, cells, ev, byPet, colorOk, pet) {
     for (const k of cells) {
       const v = b[k];
-      if (v === 0 || v === 2 || v === 4 || v === 5 || v === 7) continue;
-      if (v === 6) { if (byPet && pet && pet.color === PETS.tongque.color) { b[k] = 0; (ev.metal = ev.metal || []).push(k); g.monStats.metal = (g.monStats.metal || 0) + 1; } continue; } // 金属：只有铜雀（金色）啄得掉
+      if (v === CELL.EMPTY || v === CELL.CHEST || v === CELL.BOSS || v === CELL.ROCK || v === CELL.DIRT) continue;
+      if (v === CELL.METAL) { if (byPet && pet && pet.color === PETS.tongque.color) { b[k] = 0; (ev.metal = ev.metal || []).push(k); g.monStats.metal = (g.monStats.metal || 0) + 1; } continue; } // 金属：只有铜雀（金色）啄得掉
       if (IS_MON(v)) {
         if (!hitMon(k, ev, byPet, colorOk, pet)) continue;
         if (byPet) g.playStats.goalsByPet++; else g.playStats.goalsByPlayer++;
@@ -7608,8 +6546,8 @@ function createPetGame(opts) {
   }
   // 一次「消掉」（一排 / 一个大格）碰到了机关匣或大墨怪
   function unitTouches(b, cells, ev, byPet, pet) {
-    if ('box' in g.got && cells.some((k) => b[k] === 2)) { g.got.box++; ev.collected.push({ k: cells.find((k) => b[k] === 2), what: 'box' }); }
-    if (g.boss && g.bigHp > 0 && cells.some((k) => b[k] === 4) && !(byPet && ev.petBossDone)) {
+    if ('box' in g.got && cells.some((k) => b[k] === CELL.CHEST)) { g.got.box++; ev.collected.push({ k: cells.find((k) => b[k] === CELL.CHEST), what: 'box' }); }
+    if (g.boss && g.bigHp > 0 && cells.some((k) => b[k] === CELL.BOSS) && !(byPet && ev.petBossDone)) {
       if (byPet) ev.petBossDone = true; // 0.9：宠物出手一次最多咬头目一口（金翅雀一次扫两排，原来能咬两口）
       const weak = RULES.bossWeak[g.boss.kind];
       // 克制：头目怕的那只宠物咬一口掉 2 颗心，别的宠物咬一口 1 颗（和原来一样）；你自己打：它晕着 2 颗，平时 1 颗（没变）
@@ -7637,14 +6575,14 @@ function createPetGame(opts) {
     for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
       const tl = r * 9 + c, cells = [tl, tl + 1, tl + 9, tl + 10];
       if (cells.some((k) => g.bigCells.includes(k))) continue;
-      if (cells.every((k) => b[k] === 0 || b[k] === 1)) opts2.push(tl);
+      if (cells.every((k) => b[k] === CELL.EMPTY || b[k] === CELL.BLOCK)) opts2.push(tl);
     }
     if (opts2.length) { g.boss.jumpTo = opts2[Math.floor(g.rand() * opts2.length)]; g.boss.planMove = g.moves; ev.bossJumpPlan = g.boss.jumpTo; }
   }
   const rockLeft = () => 'rock' in g.got && g.got.rock < st.goal.rock;
   function breakRocks(b, cells, ev, pet) {
     for (const k of cells) {
-      if (b[k] !== 5) continue;
+      if (b[k] !== CELL.ROCK) continue;
       const dmg = pet && pet.act === RULES.rockNemesis ? RULES.rockDmg : 1;
       if (g.rockHp[k] > dmg) { g.rockHp[k] -= dmg; (ev.rockCrack = ev.rockCrack || []).push(k); continue; } // 两层：先裂
       b[k] = 0; g.rockHp[k] = 0;
@@ -7688,23 +6626,24 @@ function createPetGame(opts) {
     if (kind === 'fire') {
       if (!OCC(b[k])) return null;
       // 同一种东西：方块 = 同一种颜色的方块（墨块算一种）；墨怪 = 同一种墨怪（挑色怪还要同色）；铁石 = 铁石；头目只烧它自己
-      const same = (x) => { if (x === k || b[x] !== b[k]) return false; if (b[k] === 1) return g.color[x] === g.color[k]; if (b[k] === 3) { const m1 = g.mon[k], m2 = g.mon[x]; return !!m1 && !!m2 && m1.t === m2.t && m1.col === m2.col; } return b[k] === 5; };
+      const same = (x) => { if (x === k || b[x] !== b[k]) return false; if (b[k] === CELL.BLOCK) return g.color[x] === g.color[k]; if (b[k] === CELL.MON) { const m1 = g.mon[k], m2 = g.mon[x]; return !!m1 && !!m2 && m1.t === m2.t && m1.col === m2.col; } return b[k] === CELL.ROCK; };
       const dist = (x) => Math.abs(Math.floor(x / 9) - tg.r) + Math.abs((x % 9) - tg.c);
       const out = [k].concat([...Array(81).keys()].filter(same).sort((x, y) => dist(x) - dist(y) || x - y).slice(0, n - 1));
       return { cells: out, fill: [] };
     }
     if (kind === 'silk') {
-      if (b[k] !== 0) return null;
-      const fill = UNITS[tg.r].filter((x) => b[x] === 0).sort((x, y) => Math.abs((x % 9) - tg.c) - Math.abs((y % 9) - tg.c) || x - y).slice(0, n);
+      if (b[k] !== CELL.EMPTY) return null;
+      const fill = UNITS[tg.r].filter((x) => b[x] === CELL.EMPTY).sort((x, y) => Math.abs((x % 9) - tg.c) - Math.abs((y % 9) - tg.c) || x - y).slice(0, n);
       // 丝粘到的（上下左右挨着的）东西里，最多缠 N 样（补几格就最多缠几样）：先挑它克的墨怪，再小墨怪、铁石、头目，最后才是它打不动的
-      const pet = petOf(pc.pet), rank = (x) => (b[x] === 3 && g.mon[x] ? (g.mon[x].t === 'ink' ? 1 : isCounter(g.mon[x], pet) ? 0 : 4) : b[x] === 5 ? 2 : 3);
-      const adj = [...new Set(fill.flatMap(near4))].filter((x) => !fill.includes(x) && (b[x] === 3 || b[x] === 4 || b[x] === 5)).sort((x, y) => rank(x) - rank(y) || x - y).slice(0, n);
+      const pet = petOf(pc.pet), rank = (x) => (b[x] === CELL.MON && g.mon[x] ? (g.mon[x].t === 'ink' ? 1 : isCounter(g.mon[x], pet) ? 0 : 4) : b[x] === CELL.ROCK ? 2 : 3);
+      const adj = [...new Set(fill.flatMap(near4))].filter((x) => !fill.includes(x) && (b[x] === CELL.MON || b[x] === CELL.BOSS || b[x] === CELL.ROCK)).sort((x, y) => rank(x) - rank(y) || x - y).slice(0, n);
       return { cells: adj, fill };
     }
     return null;
   }
   g.skillPlan = (tg) => (g.hand[3] ? skillPlan(g.hand[3], tg) : null);
-  g.skillUsable = () => { const pc = g.hand[3]; if (!pc) return false; if (pc.kind === 'gnaw' || pc.kind === 'swap') return true; return pc.kind === 'silk' ? g.board.some((v) => v === 0) : pc.kind === 'peck' ? g.board.some(PECKABLE) : g.board.some(OCC); };
+  // 0.9.25 修卡死：手上只剩斜着连的块（哪一格都啃不了）时，原来还当技能能用、不判堵死，玩家就卡在那儿（全流程测试「手生」那趟查出来的）
+  g.skillUsable = () => { const pc = g.hand[3]; if (!pc) return false; if (pc.kind === 'swap') return true; if (pc.kind === 'gnaw') return [0, 1, 2].some((j) => g.hand[j] && g.hand[j].cells.some((_, n) => !!g.skillPlan({ hand: j, cell: n }))); return pc.kind === 'silk' ? g.board.some((v) => v === CELL.EMPTY) : pc.kind === 'peck' ? g.board.some(PECKABLE) : g.board.some(OCC); };
   const baseFits = g.fits;
   g.fits = (i) => (i === 3 ? g.skillUsable() : baseFits(i));
   // 用技能块。不算一手，墨怪不动，不发新块。
@@ -7733,11 +6672,11 @@ function createPetGame(opts) {
       g.skillStats.board++;
       if (plan.fill.length) plan.fill.forEach((k) => { b[k] = 1; g.color[k] = PETS[p.pet].color; });
       breakRocks(b, cells, ev, pet);
-      if (cells.some((k) => b[k] === 4)) unitTouches(b, cells, ev, true, pet);
+      if (cells.some((k) => b[k] === CELL.BOSS)) unitTouches(b, cells, ev, true, pet);
       if (ev.petBossDone) p.bossBit = true;
       const before = cells.filter((k) => EATABLE(b[k]));
       clearCells(b, cells, ev, true, null, pet);
-      ev.cells = before.filter((k) => b[k] === 0);
+      ev.cells = before.filter((k) => b[k] === CELL.EMPTY);
       g.skillStats.cells += ev.cells.length + plan.fill.length;
       if (plan.fill.length) {
         // 丝补满了一排 / 一个大格：照你自己消的规矩消掉（不给它攒能量，不然它能自己养自己）
@@ -7747,7 +6686,7 @@ function createPetGame(opts) {
           const b1 = b.slice(); const colorOk = (k, col) => units.some((u) => UNITS[u].includes(k) && UNITS[u].some((x) => b1[x] === 1 && g.color[x] === col));
           const was = [...set].filter((k) => EATABLE(b[k]));
           clearCells(b, [...set], ev, false, colorOk);
-          ev.units = units; ev.cells = ev.cells.concat(was.filter((k) => b[k] === 0)); g.skillStats.silkUnits = (g.skillStats.silkUnits || 0) + units.length;
+          ev.units = units; ev.cells = ev.cells.concat(was.filter((k) => b[k] === CELL.EMPTY)); g.skillStats.silkUnits = (g.skillStats.silkUnits || 0) + units.length;
         }
       }
     }
@@ -7780,9 +6719,9 @@ function createPetGame(opts) {
   function moveMon(b, from, to) { b[to] = 3; b[from] = 0; g.mon[to] = g.mon[from]; g.mon[from] = null; }
   // 分身：在 k 旁边的空格蹦出 n 只小墨怪（先找挨着的，再找同一个大格，再随便）
   function spawnAround(b, k, n, ev) {
-    const pools = [near8(k).filter((x) => b[x] === 0), UNITS[18 + boxOfK(k)].filter((x) => b[x] === 0), [...Array(81).keys()].filter((x) => b[x] === 0)];
+    const pools = [near8(k).filter((x) => b[x] === CELL.EMPTY), UNITS[18 + boxOfK(k)].filter((x) => b[x] === CELL.EMPTY), [...Array(81).keys()].filter((x) => b[x] === CELL.EMPTY)];
     for (let i = 0; i < n; i++) {
-      const pool = pools.map((pl) => pl.filter((x) => b[x] === 0)).find((pl) => pl.length);
+      const pool = pools.map((pl) => pl.filter((x) => b[x] === CELL.EMPTY)).find((pl) => pl.length);
       if (!pool) return;
       const to = pick(pool);
       b[to] = 3; g.mon[to] = newMon('ink');
@@ -7801,7 +6740,7 @@ function createPetGame(opts) {
     const was = [...set].filter((x) => EATABLE(b[x]));
     const c0 = ev.collected.length;
     clearCells(b, [...set], ev, false, () => true);
-    const cells = was.filter((x) => b[x] === 0);
+    const cells = was.filter((x) => b[x] === CELL.EMPTY);
     (ev.crawlClear = ev.crawlClear || []).push({ units, cells, collected: ev.collected.slice(c0) });
     if ('lines' in g.got) g.got.lines += units.length;
     for (const pt of st.rush ? [] : g.team) pt.energy = Math.min(energyMax(g, pt) * 2 - 1, pt.energy + units.length);
@@ -7812,10 +6751,10 @@ function createPetGame(opts) {
     const claimed = new Set();
     for (let k = 0; k < 81; k++) {
       const m = g.mon[k];
-      if (b[k] !== 3 || !m || m.moved === g.moves || (m.t !== 'ink' && m.t !== 'moss')) continue;
+      if (b[k] !== CELL.MON || !m || m.moved === g.moves || (m.t !== 'ink' && m.t !== 'moss')) continue;
       if (m.step !== undefined && m.step !== null) {
         const t = m.step; m.step = null; m.walk = st.crawl;
-        if (b[t] === 0 && !claimed.has(t)) {
+        if (b[t] === CELL.EMPTY && !claimed.has(t)) {
           moveMon(b, k, t); g.mon[t].moved = g.moves; claimed.add(t);
           if (m.t === 'moss') { inkAt(b, k); g.monStats.moss++; (ev.moss = ev.moss || []).push({ from: t, k }); }
           (ev.crawl = ev.crawl || []).push({ from: k, to: t, t: m.t }); g.monStats.crawls = (g.monStats.crawls || 0) + 1;
@@ -7825,7 +6764,7 @@ function createPetGame(opts) {
       }
       if (m.walk === undefined) m.walk = st.crawl;
       if (--m.walk > 0) continue;
-      const opts2 = near4(k).filter((x) => b[x] === 0 && !claimed.has(x) && !Object.values(g.mon).some((o) => o && o.step === x));
+      const opts2 = near4(k).filter((x) => b[x] === CELL.EMPTY && !claimed.has(x) && !Object.values(g.mon).some((o) => o && o.step === x));
       if (!opts2.length) { m.walk = 1; continue; }
       m.step = pick(opts2); claimed.add(m.step); (ev.footprint = ev.footprint || []).push({ from: k, to: m.step });
     }
@@ -7858,11 +6797,11 @@ function createPetGame(opts) {
   function stickyTurn(b, ev) {
     for (let k = 0; k < 81; k++) {
       const m = g.mon[k];
-      if (b[k] !== 3 || !m || m.t !== 'sticky' || m.moved === g.moves) continue;
+      if (b[k] !== CELL.MON || !m || m.t !== 'sticky' || m.moved === g.moves) continue;
       if (m.glare !== undefined && m.glare !== null) {
         mudTurn(m, k, ev); m.cd = MON.sticky.cd;
         // 吐完爬一格（往空格）
-        const opts2 = near4(k).filter((x) => b[x] === 0);
+        const opts2 = near4(k).filter((x) => b[x] === CELL.EMPTY);
         if (opts2.length) { const t = opts2[Math.floor(g.rand() * opts2.length)]; moveMon(b, k, t); g.mon[t].moved = g.moves; (ev.crawl = ev.crawl || []).push({ from: k, to: t, t: 'sticky' }); crawlClear(b, [t], ev); }
       } else if (--m.cd <= 1) mudTurn(m, k, ev);
     }
@@ -7874,19 +6813,19 @@ function createPetGame(opts) {
     for (const from of Object.keys(g.jumpPlan).map(Number)) {
       const to = g.jumpPlan[from];
       delete g.jumpPlan[from];
-      if (b[from] === 3 && g.mon[from] && g.mon[from].t === 'jump' && b[to] === 0) { moveMon(b, from, to); (ev.jumps = ev.jumps || []).push({ from, to }); }
+      if (b[from] === CELL.MON && g.mon[from] && g.mon[from].t === 'jump' && b[to] === CELL.EMPTY) { moveMon(b, from, to); (ev.jumps = ev.jumps || []).push({ from, to }); }
     }
     if (g.moves % 3 === 2) {
       for (let k = 0; k < 81; k++) {
-        if (b[k] !== 3 || !g.mon[k] || g.mon[k].t !== 'jump') continue;
-        const empty = UNITS[18 + boxOfK(k)].filter((x) => b[x] === 0 && !Object.values(g.jumpPlan).includes(x));
+        if (b[k] !== CELL.MON || !g.mon[k] || g.mon[k].t !== 'jump') continue;
+        const empty = UNITS[18 + boxOfK(k)].filter((x) => b[x] === CELL.EMPTY && !Object.values(g.jumpPlan).includes(x));
         if (empty.length) g.jumpPlan[k] = pick(empty);
       }
     }
     // 馋嘴怪 / 墨苔怪：每隔几手先亮出要动的那格（tgt），下一手动手；炸弹怪：倒数到 0 溅墨
     for (let k = 0; k < 81; k++) {
       const m = g.mon[k];
-      if (b[k] !== 3 || !m) continue;
+      if (b[k] !== CELL.MON || !m) continue;
       if (RULES.pester[m.t] > 0) {
         // 冲宠物喷墨：先瞪一手（ev.glare），下一手偷能量
         if (m.tgt !== null) { m.tgt = null; m.cd = RULES.pester[m.t]; drainPets(m, k, ev); }
@@ -7894,17 +6833,17 @@ function createPetGame(opts) {
       } else if (m.t === 'eat' || (m.t === 'moss' && !st.crawl)) {
         if (m.tgt !== null) {
           const t = m.tgt; m.tgt = null; m.cd = MON[m.t].cd;
-          if (m.t === 'eat' && b[t] === 1) { b[t] = 0; g.color[t] = 0; g.gem[t] = 0; g.monStats.eats++; (ev.eats = ev.eats || []).push({ from: k, k: t }); drainPets(m, k, ev); }
-          if (m.t === 'moss' && b[t] === 0) { inkAt(b, t); g.monStats.moss++; (ev.moss = ev.moss || []).push({ from: k, k: t }); drainPets(m, k, ev); }
+          if (m.t === 'eat' && b[t] === CELL.BLOCK) { b[t] = 0; g.color[t] = 0; g.gem[t] = 0; g.monStats.eats++; (ev.eats = ev.eats || []).push({ from: k, k: t }); drainPets(m, k, ev); }
+          if (m.t === 'moss' && b[t] === CELL.EMPTY) { inkAt(b, t); g.monStats.moss++; (ev.moss = ev.moss || []).push({ from: k, k: t }); drainPets(m, k, ev); }
         } else if (--m.cd <= 0) {
-          const opts2 = near8(k).filter((x) => (m.t === 'eat' ? b[x] === 1 : b[x] === 0));
+          const opts2 = near8(k).filter((x) => (m.t === 'eat' ? b[x] === CELL.BLOCK : b[x] === CELL.EMPTY));
           if (!opts2.length) { m.cd = 1; continue; }
           if (m.t === 'eat') { const best = Math.max(...opts2.map((x) => crowd(b, x))); m.tgt = pick(opts2.filter((x) => crowd(b, x) === best)); }
           else m.tgt = pick(opts2);
         }
       } else if (m.t === 'bomb') {
         if (--m.cd <= 0) {
-          const ring1 = near8(k).filter((x) => b[x] === 0), ring2 = [...new Set(ring1.flatMap(near8))].filter((x) => b[x] === 0 && !ring1.includes(x));
+          const ring1 = near8(k).filter((x) => b[x] === CELL.EMPTY), ring2 = [...new Set(ring1.flatMap(near8))].filter((x) => b[x] === CELL.EMPTY && !ring1.includes(x));
           const cells = ring1.concat(ring2).slice(0, 6);
           cells.forEach((x) => inkAt(b, x));
           (ev.bombs = ev.bombs || []).push({ k, cells }); g.monStats.bombs++; drainPets(m, k, ev);
@@ -7935,7 +6874,7 @@ function createPetGame(opts) {
       for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
         const tl = r * 9 + c, cells = [tl, tl + 1, tl + 9, tl + 10];
         if (cells.some((k) => g.bigCells.includes(k))) continue;
-        if (cells.every((k) => b[k] === 0 || b[k] === 1)) opts2.push(tl);
+        if (cells.every((k) => b[k] === CELL.EMPTY || b[k] === CELL.BLOCK)) opts2.push(tl);
       }
       if (opts2.length) { bs.jumpTo = pick(opts2); ev.bossJumpPlan = bs.jumpTo; }
     }
@@ -7948,14 +6887,14 @@ function createPetGame(opts) {
     if (bs.kind === 'eat') {
       // 大馋嘴：上一手亮过牙印的两块，这一手啃掉；啃完嘴里塞满在嚼（这一手打它掉 2 颗心）
       if (bs.eatPlan) {
-        const got = bs.eatPlan.filter((k) => b[k] === 1);
+        const got = bs.eatPlan.filter((k) => b[k] === CELL.BLOCK);
         got.forEach((k) => { b[k] = 0; g.color[k] = 0; g.gem[k] = 0; });
         if (got.length) { ev.bossEats = got; g.monStats.eats += got.length; drainPets({ t: 'eat' }, g.bigCells[0], ev); }
         bs.eatPlan = null; bs.stun = true; return;
       }
       bs.stun = false;
       if (bs.count % every === every - 1) {
-        const pool = nearCells((v) => v === 1).sort((x, y) => crowd(b, y) - crowd(b, x)).slice(0, 6);
+        const pool = nearCells((v) => v === CELL.BLOCK).sort((x, y) => crowd(b, y) - crowd(b, x)).slice(0, 6);
         if (pool.length) { const a = pick(pool); const rest = pool.filter((x) => x !== a); bs.eatPlan = rest.length ? [a, pick(rest)] : [a]; }
       }
       return;
@@ -7964,12 +6903,12 @@ function createPetGame(opts) {
     if (bs.nextSpit !== null) {
       const k = bs.nextSpit;
       bs.nextSpit = null;
-      if (b[k] === 0) { inkAt(b, k); ev.bossSpit = k; bs.stun = true; g.spits = (g.spits || 0) + 1; return; }
+      if (b[k] === CELL.EMPTY) { inkAt(b, k); ev.bossSpit = k; bs.stun = true; g.spits = (g.spits || 0) + 1; return; }
     }
     bs.stun = false;
     if (bs.count % every === every - 1) {
-      const near = nearCells((v) => v === 0);
-      const pool = near.length ? near : [...Array(81).keys()].filter((k) => b[k] === 0);
+      const near = nearCells((v) => v === CELL.EMPTY);
+      const pool = near.length ? near : [...Array(81).keys()].filter((k) => b[k] === CELL.EMPTY);
       if (pool.length) bs.nextSpit = pick(pool);
     }
   }
@@ -7988,7 +6927,7 @@ function createPetGame(opts) {
     const placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc);
     placed.forEach((k) => { b[k] = 1; g.color[k] = ci; });
     // 0.9.20（Cc 定 A）：爆竹鼠啃过的块上留着一个点着的小爆竹，放下去，上下左右挨着的土堆全炸塌
-    if (p.gnawed) { const blown = [...new Set(placed.flatMap(near4))].filter((x) => b[x] === 7); blown.forEach((x) => { b[x] = 0; g.color[x] = 0; }); if (blown.length) { ev0.blast = blown; g.monStats.dirt = (g.monStats.dirt || 0) + blown.length; } }
+    if (p.gnawed) { const blown = [...new Set(placed.flatMap(near4))].filter((x) => b[x] === CELL.DIRT); blown.forEach((x) => { b[x] = 0; g.color[x] = 0; }); if (blown.length) { ev0.blast = blown; g.monStats.dirt = (g.monStats.dirt || 0) + blown.length; } }
     const hg = g.handGem && g.handGem[i];
     if (hg) g.gem[placed[hg.cell]] = hg.kind;
     if (g.handGem) g.handGem[i] = null;
@@ -8009,10 +6948,10 @@ function createPetGame(opts) {
     if (units.length) {
       const set = new Set();
       units.forEach((u) => { unitTouches(b, UNITS[u], ev); UNITS[u].forEach((k) => set.add(k)); });
-      clearedCells = [...set].filter((k) => b[k] === 1 || b[k] === 8 || (IS_MON(b[k]) && !(g.mon[k] && g.mon[k].t === 'shell' && g.mon[k].hp > 0)));
+      clearedCells = [...set].filter((k) => b[k] === CELL.BLOCK || b[k] === CELL.BRICK || (IS_MON(b[k]) && !(g.mon[k] && g.mon[k].t === 'shell' && g.mon[k].hp > 0)));
       // 挑色怪：它在的那几排 / 大格里，有没有它那种颜色的方块
       const b0 = b.slice(); // 先拍一张：清的过程中格子会一格格变空
-      const colorOk = (k, col) => units.some((u) => UNITS[u].includes(k) && UNITS[u].some((x) => b0[x] === 1 && g.color[x] === col));
+      const colorOk = (k, col) => units.some((u) => UNITS[u].includes(k) && UNITS[u].some((x) => b0[x] === CELL.BLOCK && g.color[x] === col));
       clearCells(b, [...set], ev, false, colorOk);
     }
     ev.units = units; ev.cells = clearedCells;
@@ -8104,7 +7043,7 @@ function bestMove(g, skill) {
       if (p.special === 'fire') {
         const cells = (p.power || 9) >= 9 ? UNITS[18 + core.boxOf(r, c)] : crossCells(r, c);
         board = g.board.slice(); cells.forEach((k) => { if (EATABLE(board[k])) board[k] = 0; });
-        v = cells.filter((k) => EATABLE(g.board[k])).length * 2 + cells.filter((k) => IS_MON(g.board[k])).length * 14 + (cells.some((k) => g.board[k] === 4) ? 16 : 0) + cells.filter((k) => g.board[k] === 5).length * 12 + core.evalBoard(board, null);
+        v = cells.filter((k) => EATABLE(g.board[k])).length * 2 + cells.filter((k) => IS_MON(g.board[k])).length * 14 + (cells.some((k) => g.board[k] === CELL.BOSS) ? 16 : 0) + cells.filter((k) => g.board[k] === CELL.ROCK).length * 12 + core.evalBoard(board, null);
       } else {
         const res = core.placeAndClear(g.board, p, r, c);
         board = res.board;
@@ -8112,20 +7051,20 @@ function bestMove(g, skill) {
         // 墨怪：甲壳怪敲一层也算进展；挑色怪要那排里有它的颜色；会还手的（啃、长墨、快爆）不管目标是什么都值得先打
         const ci0 = g.handColor[i];
         for (const k of res.cells) {
-          const m = g.board[k] === 3 && g.mon[k];
+          const m = g.board[k] === CELL.MON && g.mon[k];
           if (!m) continue;
           let hitV = 14;
           if (m.t === 'shell' && m.hp > 0) hitV = 7;
           if (m.t === 'color') {
-            const ok = res.units.some((u) => UNITS[u].includes(k) && UNITS[u].some((x) => (placed.includes(x) ? ci0 : g.board[x] === 1 ? g.color[x] : -9) === m.col));
+            const ok = res.units.some((u) => UNITS[u].includes(k) && UNITS[u].some((x) => (placed.includes(x) ? ci0 : g.board[x] === CELL.BLOCK ? g.color[x] : -9) === m.col));
             hitV = ok ? 16 : 0;
           }
           v += left.monster > 0 || left.all > 0 ? hitV : 0;
           if (m.t === 'eat' || m.t === 'moss') v += 6;
           if (m.t === 'bomb') v += m.cd <= 3 ? 12 : 4;
         }
-        if (left.boss > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === 4))) v += 16 + (g.boss && g.boss.stun ? 16 : 0);
-        if (left.box > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === 2))) v += 16;
+        if (left.boss > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === CELL.BOSS))) v += 16 + (g.boss && g.boss.stun ? 16 : 0);
+        if (left.box > 0 && res.units.some((u) => UNITS[u].some((k) => g.board[k] === CELL.CHEST))) v += 16;
         if (left.rock > 0 || left.acts > 0) v += res.units.length * 3;
         for (const k of res.cells) if (g.gem[k] && left[core.GEMS[g.gem[k]].id] > 0) v += 14;
         if (left.bubble > 0) v += res.cells.filter((k) => g.bubble[k]).length * 8;
@@ -8181,10 +7120,10 @@ function skillBest(g) {
     let v = 0, boss = false;
     for (const x of cells) {
       const bv = b[x];
-      if (bv === 3 && g.mon[x]) { if (isCounter(g.mon[x], pet)) { v += (wantMon ? 100 : 30) + (g.mon[x].t !== 'ink' ? 20 : 0); nb[x] = 0; } }
-      else if (bv === 5) { v += left.rock > 0 ? 100 : 3; if (g.rockHp[x] <= (pet.act === RULES.rockNemesis ? RULES.rockDmg : 1)) nb[x] = 0; }
-      else if (bv === 4) boss = true;
-      else if (bv === 1) { v += (g.gem[x] && left[core.GEMS[g.gem[x]].id] > 0 ? 100 : 0) + (g.color[x] === -2 ? 2 : 0.5); nb[x] = 0; }
+      if (bv === CELL.MON && g.mon[x]) { if (isCounter(g.mon[x], pet)) { v += (wantMon ? 100 : 30) + (g.mon[x].t !== 'ink' ? 20 : 0); nb[x] = 0; } }
+      else if (bv === CELL.ROCK) { v += left.rock > 0 ? 100 : 3; if (g.rockHp[x] <= (pet.act === RULES.rockNemesis ? RULES.rockDmg : 1)) nb[x] = 0; }
+      else if (bv === CELL.BOSS) boss = true;
+      else if (bv === CELL.BLOCK) { v += (g.gem[x] && left[core.GEMS[g.gem[x]].id] > 0 ? 100 : 0) + (g.color[x] === -2 ? 2 : 0.5); nb[x] = 0; }
     }
     if (boss && g.bigHp > 0 && !p.bossBit) v += bossV();
     return v;
@@ -8208,9 +7147,9 @@ function skillBest(g) {
       const units = []; for (let u = 0; u < 27; u++) if (UNITS[u].every((x) => nb[x])) units.push(u);
       const set = new Set(); units.forEach((u) => UNITS[u].forEach((x) => set.add(x)));
       for (const x of set) {
-        if (nb[x] === 3 && g.mon[x]) { const m = g.mon[x]; const ok = m.t === 'color' ? false : !(m.t === 'shell' && m.hp > 0); v += wantMon ? (ok ? 100 : m.t === 'shell' ? 40 : 0) : 10; if (ok) nb[x] = 0; }
-        else if (nb[x] === 1) { if (g.gem[x] && left[core.GEMS[g.gem[x]].id] > 0) v += 100; nb[x] = 0; }
-        else if (nb[x] === 4 && left.boss > 0) v += 100; else if (nb[x] === 2 && left.box > 0) v += 100;
+        if (nb[x] === CELL.MON && g.mon[x]) { const m = g.mon[x]; const ok = m.t === 'color' ? false : !(m.t === 'shell' && m.hp > 0); v += wantMon ? (ok ? 100 : m.t === 'shell' ? 40 : 0) : 10; if (ok) nb[x] = 0; }
+        else if (nb[x] === CELL.BLOCK) { if (g.gem[x] && left[core.GEMS[g.gem[x]].id] > 0) v += 100; nb[x] = 0; }
+        else if (nb[x] === CELL.BOSS && left.boss > 0) v += 100; else if (nb[x] === CELL.CHEST && left.box > 0) v += 100;
       }
       v += units.length * 30 - (units.length ? 0 : pl.fill.length * 3); // 补了没消掉：白占地方
       offer({ r: Math.floor(k / 9), c: k % 9 }, v + unstick(nb));
@@ -8218,7 +7157,7 @@ function skillBest(g) {
   }
   if (p.kind === 'gnaw' && RULES.handMode === 'gnaw') {
     // 啃手上的块：① 它本来放不下，啃一口就放得下；② 啃一口以后正好能消掉一排带墨怪的（原来那块办不到）
-    const catchOf = (q) => { let m = 0; for (const [r, c] of core.placements(b, q)) { const res = core.placeAndClear(b, q, r, c); if (!res.units.length) continue; let n = 0; for (const x of res.cells) if (b[x] === 3) n++; for (const u of res.units) if (UNITS[u].some((x) => (b[x] === 4 && left.boss > 0) || (b[x] === 2 && left.box > 0))) n++; if (n + res.units.length * 0.1 > m) m = n + res.units.length * 0.1; } return m; };
+    const catchOf = (q) => { let m = 0; for (const [r, c] of core.placements(b, q)) { const res = core.placeAndClear(b, q, r, c); if (!res.units.length) continue; let n = 0; for (const x of res.cells) if (b[x] === CELL.MON) n++; for (const u of res.units) if (UNITS[u].some((x) => (b[x] === CELL.BOSS && left.boss > 0) || (b[x] === CELL.CHEST && left.box > 0))) n++; if (n + res.units.length * 0.1 > m) m = n + res.units.length * 0.1; } return m; };
     [0, 1, 2].forEach((i) => {
       const h = g.hand[i]; if (!h) return;
       const fit0 = core.anyPlacement(b, h), c0 = fit0 ? catchOf(h) : 0;
@@ -8247,1351 +7186,8 @@ module.exports = { waveTotalOf, petGain, lookOf, startOf, SKILL, skillKind, skil
 
 });
 __def("js/petlevels.js", function (module, exports, require) {
-// 0.9.12 起用这张表：Fable「宠物技能重做」版（test/fable_skills/gen_s.js 生成）。三段式（dSeg：送 / 挤 / 收尾）、不再有 luck（发牌一定有活路）、铁石每关 2 块放在最后一段、前三关换了新盘面。
-// 注意：第 15、19、29 关（爆竹鼠的硬关）机器人赢的局要 65–92 手，超了 35–55 手的线，Fable 说要重排，还没调。
-// 0.9.17：这张旧表（0.9.12 的 30 关）不再直接用。现在只上新版第一章（js/chapter1.js），第二章起等新设计做好再开。旧表留在 module.exports.old 给老测试看
-const OLD = [
- {
-  "goal": {
-   "lines": 3
-  },
-  "tutHand": ["5h", "4h", "sq3"],
-  "d": 0,
-  "colors": [
-   3,
-   2,
-   1
-  ],
-  "gift": "tongque",
-  "board": [
-   ".........",
-   ".#.....#.",
-   ".........",
-   "####.....",
-   ".........",
-   "....#####",
-   ".........",
-   ".#.....#.",
-   "........."
-  ]
- },
- {
-  "goal": {
-   "monster": 6
-  },
-  "d": 0,
-  "colors": [
-   0,
-   3,
-   2
-  ],
-  "lend": 1,
-  "fastCharge": true,
-  "intro": "pet",
-  "only": "tongque",
-  "board": [
-   ".........",
-   "......m..",
-   "###m..###",
-   ".........",
-   "..mm.....",
-   ".........",
-   ".........",
-   "m###.###m",
-   "........."
-  ]
- },
- {
-  "goal": {
-   "b": 6
-  },
-  "d": 0,
-  "intro": "gem",
-  "colors": [
-   0,
-   3,
-   2
-  ],
-  "board": [
-   ".........",
-   "...bbb...",
-   ".........",
-   ".........",
-   "###b..###",
-   ".........",
-   "b........",
-   "b##...###",
-   "........."
-  ],
-  "fastCharge": true,
-  "only": "tongque"
- },
- {
-  "goal": {
-   "monster": 12
-  },
-  "d": 0.04,
-  "colors": [
-   0,
-   0,
-   3,
-   2
-  ],
-  "intro": "wave",
-  "best": "tongque",
-  "board": [
-   ".........",
-   "###...###",
-   "....m....",
-   "..m...m..",
-   ".........",
-   "..m...m..",
-   "....m....",
-   "###...###",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    ".........",
-    "...m.m...",
-    ".........",
-    "..m...m..",
-    ".........",
-    ".........",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..m...m..",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.04,
-   0.04,
-   0.29
-  ]
- },
- {
-  "goal": {
-   "monster": 16
-  },
-  "d": 0.17,
-  "colors": [
-   0,
-   3,
-   2
-  ],
-  "best": "tongque",
-  "board": [
-   "###...###",
-   "..m......",
-   ".m..m..m.",
-   ".........",
-   "##m...m##",
-   ".........",
-   ".m.....m.",
-   ".........",
-   "###...###"
-  ],
-  "waves": [
-   [
-    ".........",
-    ".........",
-    ".m.......",
-    ".........",
-    "..m...m..",
-    ".........",
-    ".m.....m.",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..m...m..",
-    ".........",
-    ".........",
-    ".........",
-    "..m......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.17,
-   0.42
-  ]
- },
- {
-  "goal": {
-   "b": 4,
-   "g": 4
-  },
-  "d": 0.7,
-  "intro": "gempiece",
-  "gemRate": 0.4,
-  "colors": [
-   0,
-   3,
-   2
-  ],
-  "board": [
-   ".........",
-   ".........",
-   "###b..###",
-   ".........",
-   "b#.....#g",
-   ".........",
-   "###..g###",
-   ".........",
-   "........."
-  ]
- },
- {
-  "goal": {
-   "box": 3
-  },
-  "d": 1.05,
-  "intro": "box",
-  "colors": [
-   0,
-   3,
-   2
-  ],
-  "board": [
-   "....#....",
-   "....#....",
-   ".........",
-   "....#....",
-   "##.#M#.##",
-   "....#....",
-   ".........",
-   "....#....",
-   "....#...."
-  ]
- },
- {
-  "goal": {
-   "monster": 18
-  },
-  "d": 0.81,
-  "colors": [
-   0,
-   3,
-   1
-  ],
-  "best": "tongque",
-  "hard": 1,
-  "board": [
-   "#..###..#",
-   "....m....",
-   ".#m#.#m..",
-   ".........",
-   ".m..m..m.",
-   ".........",
-   "..m#.#m#.",
-   "....m....",
-   "#..###..#"
-  ],
-  "waves": [
-   [
-    ".........",
-    "....m....",
-    "..m...m..",
-    ".........",
-    "....m....",
-    ".........",
-    "..m...m..",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..m...m..",
-    ".........",
-    ".........",
-    ".........",
-    "..m......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.81,
-   1.06
-  ]
- },
- {
-  "goal": {
-   "monster": 15,
-   "rock": 2
-  },
-  "d": 1.38,
-  "colors": [
-   0,
-   3,
-   2
-  ],
-  "intro": "rock",
-  "best": "tongque",
-  "hard": 2,
-  "board": [
-   ".........",
-   "...m.m...",
-   "###...###",
-   ".......m.",
-   "....m....",
-   ".m.......",
-   "###...###",
-   "...m.m...",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    "...m.m...",
-    ".........",
-    ".m.......",
-    ".........",
-    ".........",
-    ".........",
-    "...m.m...",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..m...m..",
-    ".........",
-    "..R...R..",
-    ".........",
-    "..m......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   1.38,
-   1.63
-  ]
- },
- {
-  "goal": {
-   "boss": 1
-  },
-  "intro": "boss",
-  "colors": [
-   0,
-   1,
-   3
-  ],
-  "gift": "baozhu",
-  "bigHp": 17,
-  "d": 0.1,
-  "best": "tongque",
-  "board": [
-   ".........",
-   ".#.....#.",
-   ".........",
-   ".........",
-   "...KK....",
-   "...KK....",
-   ".........",
-   ".#.....#.",
-   "........."
-  ],
-  "dBoss2": 1.3,
-  "dBoss3": 0.3
- },
- {
-  "goal": {
-   "monster": 4,
-   "rock": 2
-  },
-  "d": 0.28,
-  "lend": 2,
-  "fastCharge": true,
-  "colors": [
-   1,
-   0,
-   3
-  ],
-  "intro": "baozhu",
-  "only": "baozhu",
-  "board": [
-   ".........",
-   "###...###",
-   ".........",
-   ".......m.",
-   ".........",
-   ".m.......",
-   ".........",
-   "###...###",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    "###...###",
-    ".........",
-    ".m.......",
-    "..R...R..",
-    ".......m.",
-    ".........",
-    "###...###",
-    "........."
-   ]
-  ]
- },
- {
-  "goal": {
-   "monster": 9
-  },
-  "d": 0.17,
-  "colors": [
-   0,
-   3,
-   2
-  ],
-  "intro": "shell",
-  "best": "tongque",
-  "board": [
-   ".........",
-   "....A....",
-   "##m#..###",
-   ".........",
-   ".##.m.##.",
-   ".........",
-   "###..#A##",
-   "....A....",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    ".........",
-    "......A..",
-    ".........",
-    "....A....",
-    ".........",
-    ".........",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..A...B..",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.17,
-   0.42
-  ]
- },
- {
-  "goal": {
-   "monster": 10
-  },
-  "d": 0.02,
-  "colors": [
-   0,
-   3,
-   2
-  ],
-  "only": "tongque",
-  "board": [
-   "###...###",
-   "....A....",
-   "#.m.....#",
-   ".........",
-   "#.m.....#",
-   ".........",
-   "#.....A.#",
-   "....A....",
-   ".#.....#."
-  ],
-  "waves": [
-   [
-    ".........",
-    ".........",
-    "..B......",
-    ".........",
-    ".........",
-    ".........",
-    "......A..",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..B...B..",
-    ".........",
-    ".........",
-    ".........",
-    "..B......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.02,
-   0.02,
-   0.27
-  ]
- },
- {
-  "goal": {
-   "monster": 12
-  },
-  "d": 0.35,
-  "colors": [
-   1,
-   0,
-   3
-  ],
-  "intro": "jumper",
-  "only": "baozhu",
-  "board": [
-   ".........",
-   ".m..J..m.",
-   "###...###",
-   ".........",
-   "....J....",
-   ".........",
-   "###...###",
-   ".m.....m.",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    ".J.....J.",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    ".J.....J.",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..J...J..",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.35,
-   0.6
-  ]
- },
- {
-  "goal": {
-   "monster": 13,
-   "rock": 2
-  },
-  "d": 1.05,
-  "colors": [
-   1,
-   0,
-   3
-  ],
-  "best": "baozhu",
-  "hard": 1,
-  "board": [
-   "J........",
-   ".m.....m.",
-   "###...###",
-   ".........",
-   ".#..m..#.",
-   ".........",
-   "###...###",
-   "....J..m.",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    ".J.....J.",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    ".J.....J.",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..J...J..",
-    ".........",
-    "..R...R..",
-    ".........",
-    "..J......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   1.05,
-   1.3
-  ]
- },
- {
-  "goal": {
-   "monster": 24
-  },
-  "d": 0.09,
-  "colors": [
-   0,
-   1,
-   3
-  ],
-  "gift": "modou",
-  "board": [
-   "m###.###m",
-   "#m.....m#",
-   "##.....##",
-   "###m.m###",
-   ".........",
-   "###m.m###",
-   "##.....##",
-   "#m.....m#",
-   "m###.###m"
-  ],
-  "waves": [
-   [
-    "m.......m",
-    ".m.....m.",
-    ".........",
-    "...m.m...",
-    ".........",
-    "...m.m...",
-    ".........",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..m...m..",
-    ".........",
-    ".........",
-    ".........",
-    "..m...m..",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.09,
-   0.09,
-   0.34
-  ]
- },
- {
-  "goal": {
-   "monster": 16
-  },
-  "d": 0.35,
-  "lend": 2,
-  "fastCharge": true,
-  "colors": [
-   2,
-   0,
-   3
-  ],
-  "intro": "modou",
-  "only": "modou",
-  "board": [
-   ".........",
-   ".m...m...",
-   "###...###",
-   "...m...m.",
-   ".........",
-   ".m...m...",
-   "###...###",
-   "...m...m.",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    "...m...m.",
-    "###...###",
-    ".m...m...",
-    ".........",
-    "...m...m.",
-    "###...###",
-    ".m...m...",
-    "........."
-   ]
-  ]
- },
- {
-  "goal": {
-   "monster": 15
-  },
-  "d": 0.07,
-  "colors": [
-   0,
-   2,
-   3
-  ],
-  "intro": "eat",
-  "best": "modou",
-  "board": [
-   ".........",
-   ".m..m..m.",
-   "##m#..#..",
-   ".........",
-   ".#.#m#.#.",
-   ".........",
-   "..#..#m##",
-   ".m.....m.",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    ".........",
-    "......m..",
-    ".........",
-    "....m....",
-    ".........",
-    "..m......",
-    ".m.......",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..E...E..",
-    ".........",
-    ".........",
-    ".........",
-    "..2......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.07,
-   0.07,
-   0.32
-  ]
- },
- {
-  "goal": {
-   "monster": 13,
-   "rock": 2
-  },
-  "d": 1.38,
-  "colors": [
-   1,
-   0,
-   3
-  ],
-  "best": "baozhu",
-  "hard": 2,
-  "board": [
-   ".....#.#.",
-   ".#m...m..",
-   ".....#m#.",
-   ".......m.",
-   "....#..m.",
-   ".........",
-   ".#.#.....",
-   "..m...#..",
-   ".#.#...#."
-  ],
-  "waves": [
-   [
-    ".........",
-    "..J...J..",
-    ".........",
-    ".........",
-    ".J.......",
-    ".........",
-    ".........",
-    "......J..",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..J...J..",
-    ".........",
-    "..R...R..",
-    ".........",
-    "..J......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   1.38,
-   1.63
-  ]
- },
- {
-  "goal": {
-   "boss": 1
-  },
-  "colors": [
-   1,
-   0,
-   3
-  ],
-  "gift": "qilin",
-  "bigHp": 19,
-  "d": 0.1,
-  "bossKind": "eat",
-  "intro": "boss2",
-  "best": "modou",
-  "board": [
-   ".........",
-   ".#.....#.",
-   ".........",
-   "..#...#..",
-   "...KK....",
-   "...KK....",
-   "..#...#..",
-   ".#.....#.",
-   "........."
-  ],
-  "dBoss2": 1.21,
-  "dBoss3": 0.3
- },
- {
-  "goal": {
-   "monster": 12
-  },
-  "d": 0.04,
-  "lend": 2,
-  "fastCharge": true,
-  "colors": [
-   5,
-   0,
-   3
-  ],
-  "intro": "qilin",
-  "only": "qilin",
-  "board": [
-   "..m......",
-   ".##......",
-   "..m.....#",
-   ".##...m..",
-   ".........",
-   "......m#.",
-   "#....#...",
-   "...###m..",
-   "m..#.#..."
-  ],
-  "waves": [
-   [
-    "......m..",
-    "......##.",
-    "#.....m..",
-    "..m...##.",
-    ".........",
-    ".#m......",
-    "...#....#",
-    "..m###...",
-    "...#.#..m"
-   ]
-  ]
- },
- {
-  "goal": {
-   "monster": 12
-  },
-  "d": 0.35,
-  "colors": [
-   1,
-   0,
-   3
-  ],
-  "intro": "color",
-  "best": "baozhu",
-  "board": [
-   ".........",
-   "....1....",
-   "##m#..###",
-   ".........",
-   ".#m.1.m#.",
-   ".........",
-   "###..#m##",
-   ".........",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    ".........",
-    "......1..",
-    ".........",
-    "..1...1..",
-    ".........",
-    "..1......",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..1...1..",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.35,
-   0.6
-  ]
- },
- {
-  "goal": {
-   "monster": 15
-  },
-  "d": 0.39,
-  "colors": [
-   2,
-   0,
-   3
-  ],
-  "intro": "moss",
-  "only": "modou",
-  "board": [
-   "2........",
-   "....m....",
-   "##m#..#..",
-   ".........",
-   ".m..m..m.",
-   ".........",
-   "..#..#m##",
-   "....G....",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    ".........",
-    "......2..",
-    ".........",
-    ".G..G..2.",
-    ".........",
-    ".........",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..2...2..",
-    ".........",
-    ".........",
-    ".........",
-    "..2......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.39,
-   0.64
-  ]
- },
- {
-  "goal": {
-   "monster": 15
-  },
-  "d": 0.26,
-  "colors": [
-   5,
-   0,
-   3
-  ],
-  "intro": "bomb",
-  "best": "qilin",
-  "board": [
-   "...T.m...",
-   ".##......",
-   ".#m#..T.#",
-   ".##......",
-   ".........",
-   "......##.",
-   "#.5..#m#.",
-   "...###...",
-   "m..#5#..."
-  ],
-  "waves": [
-   [
-    "...T.....",
-    ".........",
-    "......T..",
-    ".........",
-    ".........",
-    ".........",
-    "..5......",
-    ".........",
-    "....5...."
-   ],
-   [
-    ".........",
-    ".........",
-    "..T...T..",
-    ".........",
-    ".........",
-    ".........",
-    "..5......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.26,
-   0.51
-  ]
- },
- {
-  "goal": {
-   "monster": 16
-  },
-  "d": 0.61,
-  "colors": [
-   0,
-   3,
-   1
-  ],
-  "best": "tongque",
-  "hard": 1,
-  "board": [
-   "##.....##",
-   "#.mm....#",
-   ".........",
-   "....m....",
-   "...A.....",
-   ".........",
-   ".........",
-   "#...m.m.#",
-   "##.....##"
-  ],
-  "waves": [
-   [
-    ".........",
-    "..0.0....",
-    ".........",
-    ".........",
-    ".........",
-    "....A....",
-    ".........",
-    "......0..",
-    "........."
-   ],
-   [
-    ".........",
-    "...B.B...",
-    "..0...B..",
-    ".........",
-    ".........",
-    ".........",
-    "..B...B..",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.61,
-   0.86
-  ]
- },
- {
-  "goal": {
-   "monster": 15
-  },
-  "d": 0.17,
-  "colors": [
-   2,
-   0,
-   3
-  ],
-  "best": "modou",
-  "board": [
-   "2.......G",
-   ".#.....#.",
-   "##.#.#m.#",
-   ".........",
-   "....#....",
-   ".........",
-   "#.m#.#m##",
-   ".#.....#.",
-   "........2"
-  ],
-  "waves": [
-   [
-    ".........",
-    "..2...2..",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    "..2......",
-    "......E..",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..2...2..",
-    ".........",
-    ".2.......",
-    ".........",
-    "..G...E..",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.17,
-   0.42
-  ]
- },
- {
-  "goal": {
-   "all": 1
-  },
-  "d": 0.09,
-  "colors": [
-   1,
-   0,
-   3
-  ],
-  "intro": "split",
-  "only": "baozhu",
-  "board": [
-   ".........",
-   ".m.....S.",
-   "##m#..###",
-   ".........",
-   "...#.#...",
-   ".........",
-   "###..#S##",
-   ".J.......",
-   "........."
-  ],
-  "waves": [
-   [
-    ".........",
-    ".......S.",
-    "......S..",
-    ".........",
-    ".........",
-    ".........",
-    "..J......",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..S...J..",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.09,
-   0.09,
-   0.34
-  ]
- },
- {
-  "goal": {
-   "monster": 20
-  },
-  "d": 0.17,
-  "colors": [
-   5,
-   2,
-   3
-  ],
-  "best": "qilin",
-  "board": [
-   "#.......#",
-   ".#..5..#.",
-   "..#.m.#..",
-   "...T.5...",
-   ".mT.m.5T.",
-   ".........",
-   "..#.5.#..",
-   ".#..T..#.",
-   "#.......#"
-  ],
-  "waves": [
-   [
-    ".........",
-    "....5....",
-    "....T....",
-    ".........",
-    "..T.T.T..",
-    ".........",
-    ".........",
-    "....5....",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..5...5..",
-    ".........",
-    ".........",
-    ".........",
-    "..T......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.17,
-   0.42
-  ]
- },
- {
-  "goal": {
-   "all": 1,
-   "rock": 2
-  },
-  "d": 0.94,
-  "colors": [
-   0,
-   1,
-   3
-  ],
-  "best": "baozhu",
-  "hard": 2,
-  "board": [
-   "........#",
-   ".#.......",
-   "..1#S#...",
-   ".#.....#.",
-   "..J...J..",
-   ".#.....#.",
-   "...#S#S..",
-   ".......#.",
-   "#........"
-  ],
-  "waves": [
-   [
-    ".........",
-    ".........",
-    "..1.J....",
-    ".........",
-    "......S..",
-    ".........",
-    "....S....",
-    ".........",
-    "........."
-   ],
-   [
-    ".........",
-    ".........",
-    "..S...S..",
-    ".........",
-    "..R...R..",
-    ".........",
-    "..J......",
-    ".........",
-    "........."
-   ]
-  ],
-  "dSeg": [
-   0.1,
-   0.94,
-   1.19
-  ]
- },
- {
-  "goal": {
-   "boss": 1
-  },
-  "colors": [
-   1,
-   0,
-   3
-  ],
-  "bigHp": 34,
-  "d": 0.1,
-  "bossKind": "split",
-  "intro": "boss3",
-  "best": "baozhu",
-  "board": [
-   ".........",
-   ".#.....#.",
-   ".........",
-   "..#...#..",
-   "...KK....",
-   "...KK....",
-   "..#...#..",
-   ".#.....#.",
-   "........."
-  ],
-  "dBoss2": 1.28,
-  "dBoss3": 0.3
- }
-];
+// 关卡表：前两章（0.9.20 起，Cc 11-27：所有新改动只做前两章）。旧的 30 关表 0.9.25 收拾时删了，要找回看 git 里 v0.9.24 的这个文件
 module.exports = require('./chapter1.js').concat(require('./chapter2.js')); // 0.9.20：前两章（Cc 11-27：所有新改动只做前两章）
-module.exports.old = OLD;
-module.exports.evolveStage = (petId, color) => ({
-  goal: { evolve: 9 }, d: 0.1, evolve: { pet: petId }, team: null, colors: [color, -1, 3],
-  board: ['#.......#', '.........', '..#...#..', '.........', '.........', '.........', '..#...#..', '.........', '#.......#'],
-});
 
 });
 __def("js/platform.js", function (module, exports, require) {
@@ -10139,482 +7735,6 @@ function make(name, sr) {
 }
 
 module.exports = { make, NAMES: Object.keys(RECIPES), pn };
-
-});
-__def("js/siege.js", function (module, exports, require) {
-// 守城（肉鸽试玩版）的规则层：波次、攻城车、8 件机关、三选一、机器人。不画图，Node 里也能跑（test/measure_siege.js）。
-// 设计见 ../肉鸽构筑分析_20261120.md 第三、七节。拖块、凑满、消掉不变；消除 = 打攻城车，打掉一辆三选一拿一件机关，机关全自动发动。
-const C = require('./config.js');
-const core = require('./core.js');
-const { UNITS, PIECES } = core;
-
-// ---------- 波次 ----------
-// 每波 4 轮（一轮 = 发三块），车每轮走一步，4 轮里血没打光 = 城破
-const WAVES = [
-  { name: '小车', hp: 40 },
-  { name: '冲车', hp: 65 },
-  { name: '云梯', hp: 90, boss: 'ladder', bossLine: '云梯：只有消掉一排才打得到它' },
-  { name: '重车', hp: 115 },
-  { name: '铁甲车', hp: 160, boss: 'armor', bossLine: '铁甲车：一下打不到 25 点就打不动' },
-];
-const FIRST_RUN_WAVES = 3; // 试玩版：3 波算守住，之后可以「继续守」
-const ROUNDS = 4;
-const LINE_DMG = 20; // 消一条（行 / 列 / 宫）打多少；一手里第 n 条打 20 × n（连锁越长越疼，机关叠起来才有质变）
-const CELL_DMG = 3; // 机关打掉一格打多少
-const SLOTS = 5; // 机关栏几格
-
-// ---------- 洛书飞星：星按 5 → 6 → 7 → 8 → 9 → 1 → 2 → 3 → 4 的顺序每轮飞一宫 ----------
-// 洛书九宫：4 9 2 / 3 5 7 / 8 1 6
-const LUOSHU_BOX = { 4: 0, 9: 1, 2: 2, 3: 3, 5: 4, 7: 5, 8: 6, 1: 7, 6: 8 };
-const STAR_PATH = [5, 6, 7, 8, 9, 1, 2, 3, 4].map((n) => LUOSHU_BOX[n]);
-
-// ---------- 8 件机关 ----------
-// 说明只用大白话（Cc 11-21：「什么中宫这个那个的，完全让人看不懂」）：
-//   「一排」= 横着或竖着一整排；「大格」= 棋盘上被铜线隔开的 3×3 那一块（共 9 个）；「正中间」= 正中那个大格
-// school：流派（卡片边的颜色）  pal：能和谁连（三选一卡上标「配你的 XX」）
-const RELICS = {
-  crossbow: { name: '连弩', glyph: '弩', school: 'bow', pal: ['loader', 'inkline'],
-    desc: ['消掉一排，旁边一排也射掉', '消掉一排，两边各射掉一排', '两边各射掉一排，打得更疼'],
-    first: '连弩：你消掉一排，它把旁边一排也射掉了！' },
-  loader: { name: '弩机上弦', glyph: '弦', school: 'bow', pal: ['crossbow'],
-    desc: ['消掉一排，下一次打车翻倍', '消掉一排，下一次打车 ×2.5', '消掉一排，下一次打车 ×3'],
-    first: '弩机上弦：消掉了一排，下一次打车翻倍！' },
-  inkline: { name: '墨斗', glyph: '墨', school: 'ink', pal: ['crossbow', 'thunder'],
-    desc: ['一消掉东西，就补满快满的一排', '能补满差得更多的一排', '一次补满两排'],
-    first: '墨斗：它把一排快满的补满，又消掉了一排！' },
-  thunder: { name: '火雷', glyph: '雷', school: 'fire', pal: ['chain', 'inkline'],
-    desc: ['消掉一个大格，旁边大格也炸掉', '旁边两个大格都炸掉', '炸掉两个大格，打得更疼'],
-    first: '火雷：你消掉一个大格，它把旁边的大格也炸了！' },
-  chain: { name: '连环雷', glyph: '连', school: 'fire', pal: ['thunder'],
-    desc: ['火雷炸掉的大格，会接着炸旁边', '接着炸，最多 3 下', '接着炸，最多 4 下'],
-    first: '连环雷：炸掉的大格又接着炸了旁边！' },
-  center5: { name: '五居中', glyph: '五', school: 'luoshu', pal: ['hetu', 'star'],
-    desc: ['消掉正中间的大格，伤害 ×5', '消掉正中间的大格，伤害 ×6', '消掉正中间的大格，伤害 ×8'],
-    first: '五居中：消掉了正中间，伤害 ×5！' },
-  hetu: { name: '河图', glyph: '河', school: 'luoshu', pal: ['center5', 'star'],
-    desc: ['每消一次正中间，以后都更疼', '每消一次正中间，以后更疼', '每消一次正中间，以后狠狠更疼'],
-    first: '河图：消了正中间，这局以后每下都更疼了！' },
-  star: { name: '飞星', glyph: '星', school: 'star', pal: ['center5', 'hetu'],
-    desc: ['星星在哪个大格，消到那里 ×3', '星星在哪，消到那里 ×4', '星星在哪，消到那里 ×5'],
-    first: '飞星：消到了星星那个大格，伤害 ×3！星星每轮会挪一格' },
-};
-// 循序渐进（Cc：「刚开始先玩什么道具都没有的，再加一个道具，再逐渐越加越多」）
-// 第 1 局：第 1 波什么都没有；打掉以后送连弩；打掉第 2 波，再二选一；之后每局多开放几件
-const POOL_BY_RUN = [
-  ['crossbow', 'inkline', 'thunder'],
-  ['crossbow', 'inkline', 'thunder', 'loader'],
-  ['crossbow', 'inkline', 'thunder', 'loader', 'chain', 'center5'],
-];
-const offerCount = (runNo) => (runNo <= 2 ? 2 : 3);
-const RELIC_IDS = Object.keys(RELICS);
-const lv = (st, id) => st.relics.find((r) => r.id === id)?.lv || 0;
-
-// ---------- 小工具 ----------
-const lineCells = (axis, i) => UNITS[axis === 'row' ? i : 9 + i];
-const boxCells = (b) => UNITS[18 + b];
-const countBlocks = (board, cells) => cells.filter((k) => board[k] === 1).length;
-function fullUnits(b) {
-  const out = [];
-  for (let u = 0; u < 27; u++) if (UNITS[u].every((k) => b[k])) out.push(u);
-  return out;
-}
-// 第 b 宫和第 nb 宫贴着的那一边，往 nb 里数 depth 层
-function edgeCells(b, nb, depth) {
-  const br = Math.floor(nb / 3) * 3, bc = (nb % 3) * 3;
-  const out = [];
-  for (let d = 0; d < depth; d++) {
-    for (let i = 0; i < 3; i++) {
-      if (nb === b - 3) out.push((br + 2 - d) * 9 + bc + i); // 上面那宫的下边
-      else if (nb === b + 3) out.push((br + d) * 9 + bc + i); // 下面那宫的上边
-      else if (nb === b - 1) out.push((br + i) * 9 + bc + 2 - d); // 左边那宫的右边
-      else out.push((br + i) * 9 + bc + d); // 右边那宫的左边
-    }
-  }
-  return out;
-}
-function neighbors(b) {
-  const out = [];
-  if (b >= 3) out.push(b - 3);
-  if (b <= 5) out.push(b + 3);
-  if (b % 3 > 0) out.push(b - 1);
-  if (b % 3 < 2) out.push(b + 1);
-  return out;
-}
-
-// ---------- 一手的结算（纯函数：不改 st，返回新棋盘、伤害、一串步骤给画面放） ----------
-// st：{ relics:[{id,lv}], starBox, hetuBonus, boss, tutorialX5 }
-function resolve(board, st, p, r, c) {
-  const b = board.slice();
-  const placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc);
-  placed.forEach((k) => (b[k] = 1));
-  const steps = [];
-  const events = []; // 消掉的「一条」：{ type: 'row'|'col'|'box', idx, by }
-  const touched = new Set(); // 这一手打掉 / 消掉的所有格子（看有没有碰到星）
-  let base = placed.length;
-  let lineN = 0;
-  const lineDmg = (type) => { lineN++; return st.boss === 'ladder' && type === 'box' ? 0 : LINE_DMG * lineN; };
-
-  // 1. 先照常消
-  const units = fullUnits(b);
-  if (units.length) {
-    const cells = new Set();
-    units.forEach((u) => UNITS[u].forEach((k) => cells.add(k)));
-    cells.forEach((k) => { if (b[k] !== 2) b[k] = 0; touched.add(k); });
-    units.forEach((u) => {
-      const type = u < 9 ? 'row' : u < 18 ? 'col' : 'box';
-      events.push({ type, idx: u % 9, by: null });
-      base += lineDmg(type);
-    });
-    steps.push({ kind: 'clear', units, cells: [...cells], dmg: base });
-  }
-  // 没消掉就不打车（Cc 11-24 看不懂上面在干嘛：只放块也掉血会让人糊涂，改成「消掉才打车」）
-  if (!events.length) return { board: b, dmg: 0, base: 0, mult: 1, mults: [], steps, events, loader: 0, centerHit: false, starHit: false, placed };
-
-  // 火雷：把 bx 旁边最满的宫炸平（算消一宫）；连环雷：炸平的宫再引爆它旁边最满的，一层层传
-  let chainLeft = lv(st, 'chain') ? lv(st, 'chain') + 1 : 0;
-  const blasted = new Set();
-  const blast = (bx, step, count, depth) => {
-    const L = lv(st, 'thunder');
-    const per = CELL_DMG + (L >= 3 ? 3 : 0);
-    const targets = neighbors(bx).filter((nb) => !blasted.has(nb))
-      .map((nb) => ({ nb, n: countBlocks(b, boxCells(nb)) })).filter((x) => x.n > 0)
-      .sort((x, y) => y.n - x.n).slice(0, count);
-    for (const { nb } of targets) {
-      blasted.add(nb);
-      const hit = boxCells(nb).filter((k) => b[k] === 1);
-      hit.forEach((k) => { b[k] = 0; touched.add(k); });
-      events.push({ type: 'box', idx: nb, by: depth ? 'chain' : 'thunder' });
-      const dmg = lineDmg('box') + hit.length * per;
-      base += dmg; step.dmg += dmg;
-      step.cells = step.cells.concat(hit);
-      (step.boxes = step.boxes || []).push(nb);
-      if (chainLeft > 0) {
-        chainLeft--;
-        const s2 = { kind: 'relic', id: 'chain', box: nb, cells: [], dmg: 0 };
-        steps.push(s2);
-        blast(nb, s2, 1, depth + 1);
-        if (!s2.cells.length) steps.splice(steps.indexOf(s2), 1);
-      }
-    }
-  };
-  const chainCheck = () => {};
-
-  // 2. 机关从左到右轮一遍，每件一手最多发动一次；谁发动出了新的「一条」，再轮一遍
-  const used = new Set();
-  let loader = 0;
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const { id, lv: L } of st.relics) {
-      if (used.has(id)) continue;
-      const lastLine = [...events].reverse().find((e) => e.type !== 'box');
-      const lastBox = [...events].reverse().find((e) => e.type === 'box');
-      if (id === 'crossbow' && lastLine) {
-        used.add(id); changed = true;
-        const before = b.slice();
-        const cand = [lastLine.idx - 1, lastLine.idx + 1].filter((i) => i >= 0 && i <= 8)
-          .map((i) => ({ i, n: countBlocks(b, lineCells(lastLine.type, i)) })).filter((x) => x.n > 0)
-          .sort((x, y) => y.n - x.n);
-        const shoot = L >= 2 ? cand : cand.slice(0, 1);
-        const step = { kind: 'relic', id, lines: [], cells: [], dmg: 0 };
-        for (const { i } of shoot) {
-          const hit = lineCells(lastLine.type, i).filter((k) => b[k] === 1);
-          hit.forEach((k) => { b[k] = 0; touched.add(k); });
-          events.push({ type: lastLine.type, idx: i, by: id });
-          const dmg = lineDmg(lastLine.type) + hit.length * (CELL_DMG + (L >= 3 ? 2 : 0));
-          base += dmg; step.dmg += dmg;
-          step.lines.push({ axis: lastLine.type, idx: i });
-          step.cells = step.cells.concat(hit);
-        }
-        if (shoot.length) { steps.push(step); chainCheck(before, step); }
-      } else if (id === 'loader' && lastLine) {
-        used.add(id); changed = true;
-        loader = L;
-        steps.push({ kind: 'relic', id, cells: [], dmg: 0 });
-      } else if (id === 'inkline' && events.length) {
-        used.add(id); changed = true;
-        const maxE = L >= 2 ? 4 : 3;
-        const times = L >= 3 ? 2 : 1;
-        const step = { kind: 'relic', id, lines: [], cells: [], dmg: 0 };
-        for (let t = 0; t < times; t++) {
-          let best = null;
-          for (const axis of ['row', 'col']) for (let i = 0; i < 9; i++) {
-            const cells = lineCells(axis, i);
-            const e = cells.filter((k) => !b[k]).length;
-            if (e >= 1 && e <= maxE && (!best || e < best.e)) best = { axis, i, e };
-          }
-          if (!best) break;
-          const cells = lineCells(best.axis, best.i);
-          const filled = cells.filter((k) => !b[k]);
-          cells.forEach((k) => { if (b[k] !== 2) b[k] = 0; touched.add(k); });
-          events.push({ type: best.axis, idx: best.i, by: id });
-          const ld = lineDmg(best.axis);
-          base += ld; step.dmg += ld;
-          step.lines.push({ axis: best.axis, idx: best.i, filled });
-          step.cells = step.cells.concat(cells);
-        }
-        if (step.lines.length) steps.push(step);
-      } else if (id === 'thunder' && lastBox) {
-        used.add(id); changed = true;
-        const step = { kind: 'relic', id, box: lastBox.idx, cells: [], dmg: 0 };
-        steps.push(step);
-        blasted.add(lastBox.idx);
-        blast(lastBox.idx, step, L >= 2 ? 2 : 1, 0);
-      }
-    }
-  }
-
-  // 3. 倍率
-  const centerHit = events.some((e) => e.type === 'box' && e.idx === 4);
-  const starHit = lv(st, 'star') > 0 && st.starBox !== undefined && boxCells(st.starBox).some((k) => touched.has(k));
-  let mult = 1 + (st.hetuBonus || 0);
-  const mults = [];
-  if (st.charge > 1) { mult *= st.charge; mults.push({ id: 'loader', m: st.charge }); } // 上弦的倍率：下一次有消除的那一手用掉
-  if (centerHit && (lv(st, 'center5') || st.tutorialX5)) {
-    const m = [5, 5, 6, 8][lv(st, 'center5')] || 5;
-    mult *= m; mults.push({ id: 'center5', m });
-  }
-  if (starHit) { const m = [0, 3, 4, 5][lv(st, 'star')]; mult *= m; mults.push({ id: 'star', m }); }
-  if (st.hetuBonus) mults.push({ id: 'hetu', m: 1 + st.hetuBonus });
-  let dmg = Math.round(base * mult);
-  if (st.boss === 'armor' && dmg < 25) dmg = 0;
-  return { board: b, dmg, base, mult, mults, steps, events, loader, centerHit, starHit, placed };
-}
-
-// ---------- 一局 ----------
-// opts: { seed, tutorial, daily（每日一城：当天日期 20261121 这样的数）, relics:[{id,lv}]（测试用：开局直接带）, noRelics（测试用：不拿机关） }
-// 每日一城：所有人当天同一串候选块、每一波同一组三选一；不封顶，一直守到城破，比谁守的波数多
-function createSiege(opts) {
-  const o = opts || {};
-  const stage = { goal: {}, board: ['.........', '....#....'.replace('#', '.'), '.........', '.........', '.........', '.........', '.........', '.........', '.........'], d: 0.12 };
-  const g = core.createGame({ stage, seed: o.seed, tutorial: o.tutorial });
-  // 开局盘面：照旅程第 1 关摆 12 块旧铁块（中宫空着，教学第一块 3×3 放进去）
-  const START = ['....#....', '.#.....#.', '.........', '#.......#', '#.......#', '#.......#', '.........', '.#.....#.', '....#....'];
-  START.forEach((row, r) => row.split('').forEach((ch, c) => { if (ch === '#') g.board[r * 9 + c] = 1; }));
-  Object.assign(g, {
-    siege: true,
-    wave: 0, waveDef: WAVES[0], hp: WAVES[0].hp, hpMax: WAVES[0].hp, round: 1,
-    hpScale: o.tutorial ? 0.6 : (o.runNo || 0) <= 2 && !o.daily ? 0.8 : 1, // 第一局车血六折（必须守得住），第 2、3 局八折（机关还少）
-    runNo: o.daily ? 99 : o.runNo || 0, // 这是第几局守城（0 起）：决定开放几件机关、三选一还是二选一
-    relics: (o.relics || []).map((x) => ({ ...x })),
-    starBox: STAR_PATH[0], starStep: 0, hetuBonus: 0,
-    pendingLoader: 0, tutorialX5: false, // 不再白送 ×5（第一下太多数字，看不懂）
-    phase: 'play', // play / choose / won（守住 3 波）
-    offer: null, wavesWon: 0, totalDmg: 0, waveDmg: 0, bestHit: 0, maxChain: 0,
-    triggers: {}, firstRun: !!o.tutorial,
-  });
-  if (o.tutorial) { g.hp = 25; g.hpMax = 25; } // 第一辆车：第一手 3×3 一放就打掉
-  if (o.daily) {
-    g.daily = o.daily;
-    g.endlessOn = true; // 不在第 3 波停，一直守
-    g.pieceRand = core.rng((o.daily * 2654435761) >>> 0); // 出块单独一条随机数：不受拿了什么机关影响
-    g.hand = core.dealHand(g.board, g.pieceRand, g.diff(), true);
-  }
-  g.prefilled = new Set(START.flatMap((row, r) => row.split('').map((ch, c) => (ch === '#' ? r * 9 + c : -1))).filter((k) => k >= 0));
-  g.diff = () => Math.min(0.6, 0.12 + g.wave * 0.08);
-  const baseDeal = g.deal;
-  // 发一轮：车走一步（第一轮不算）、星飞一宫、弩机上弦的长条
-  g.newRound = () => {
-    if (g.pieceRand) { g.deals++; g.hand = core.dealHand(g.board, g.pieceRand, g.diff(), true); }
-    else baseDeal();
-    if (g.pendingLoader) {
-      const L = g.pendingLoader;
-      const ids = L >= 2 ? ['5h', '5v'] : ['4h', '4v'];
-      const slots = L >= 3 ? [0, 1] : [0];
-      const hand = g.hand.slice();
-      slots.forEach((s) => (hand[s] = PIECES[ids[Math.floor(g.rand() * 2)]]));
-      if (core.solvable(g.board, hand)) g.hand = hand;
-      else {
-        // 换个方向再试一次
-        slots.forEach((s) => (hand[s] = PIECES[hand[s].id === ids[0] ? ids[1] : ids[0]]));
-        if (core.solvable(g.board, hand)) g.hand = hand;
-      }
-      g.pendingLoader = 0;
-      g.loaderDealt = true;
-    } else g.loaderDealt = false;
-    g.handGem = [null, null, null];
-  };
-  g.moveStar = () => {
-    g.starStep = (g.starStep + 1) % 9;
-    g.starBox = STAR_PATH[g.starStep];
-  };
-  g.charge = 1; // 弩机上弦：下一手的倍率
-  g.state = () => ({ relics: g.relics, starBox: g.starBox, hetuBonus: g.hetuBonus, boss: g.waveDef.boss, tutorialX5: g.tutorialX5, charge: g.charge });
-
-  g.place = (i, r, c) => {
-    const p = g.hand[i];
-    if (!p || g.over || g.phase !== 'play' || !core.canPlace(g.board, p, r, c)) return null;
-    const res = resolve(g.board, g.state(), p, r, c);
-    g.board = res.board;
-    g.hand[i] = null;
-    g.moves++;
-    if (res.events.length) g.tutorialX5 = false; // 教学白送的 ×5 只给第一次
-    if (res.centerHit && lv(g, 'hetu')) g.hetuBonus += [0, 0.3, 0.45, 0.6][lv(g, 'hetu')];
-    // 弩机上弦：有消除的这一手用掉攒着的倍率；这一手又消了行列，就重新上弦
-    if (res.events.length) g.charge = res.loader ? [1, 2, 2.5, 3][res.loader] : 1;
-    if (res.loader) g.pendingLoader = Math.max(g.pendingLoader, res.loader);
-    res.steps.forEach((s) => { if (s.kind === 'relic') g.triggers[s.id] = (g.triggers[s.id] || 0) + 1; });
-    const relicSteps = res.steps.filter((s) => s.kind === 'relic').length + (res.mults || []).length;
-    g.maxChain = Math.max(g.maxChain, relicSteps);
-    g.streak = res.events.length ? g.streak + 1 : 0;
-    const ev = { piece: p, r, c, res, dmg: res.dmg, killed: false, waveWon: false, runWon: false, gate: false, stuck: false };
-    g.hp = Math.max(0, g.hp - res.dmg);
-    g.score += res.dmg; g.totalDmg += res.dmg; g.waveDmg += res.dmg;
-    g.bestHit = Math.max(g.bestHit, res.dmg);
-    if (g.hp <= 0) {
-      ev.killed = true;
-      g.wavesWon++;
-      if (!g.daily && g.wavesWon >= FIRST_RUN_WAVES && !g.endlessOn) { // 每局守住 3 波算赢，之后可以继续守
-        g.phase = 'won'; ev.runWon = true; g.over = true; g.won = true; g.reason = 'win';
-        return ev;
-      }
-      g.phase = 'choose';
-      g.offer = makeOffer(g);
-      return ev;
-    }
-    if (!g.hand.some(Boolean)) {
-      if (g.round >= ROUNDS) {
-        g.over = true; g.reason = 'gate'; ev.gate = true;
-        return ev;
-      }
-      g.round++;
-      g.moveStar();
-      g.newRound();
-    }
-    if (g.stuck()) { g.over = true; g.reason = 'stuck'; ev.stuck = true; }
-    return ev;
-  };
-  // 三选一拿了一件（或升级）
-  g.pick = (id) => {
-    if (g.phase !== 'choose') return;
-    const have = g.relics.find((r) => r.id === id);
-    if (have) have.lv = Math.min(3, have.lv + 1);
-    else if (g.relics.length < SLOTS) g.relics.push({ id, lv: 1 });
-    g.offer = null;
-    if (g.openingPick) { g.openingPick = false; g.phase = 'play'; return; } // 开局那一次不换波
-    g.nextWave();
-  };
-  g.nextWave = () => {
-    g.wave++;
-    const w = WAVES[g.wave] || { name: '重车', hp: Math.round(WAVES[WAVES.length - 1].hp * Math.pow(1.4, g.wave - WAVES.length + 1)) };
-    g.waveDef = w; g.hp = Math.round(w.hp * g.hpScale); g.hpMax = g.hp; g.round = 1; g.waveDmg = 0;
-    g.phase = 'play';
-    // 手上还剩的块留着；手空了就发新的一轮
-    if (!g.hand.some(Boolean)) { g.moveStar(); g.newRound(); }
-    if (g.stuck()) { g.over = true; g.reason = 'stuck'; }
-  };
-  // 守住 3 波以后「继续守」
-  g.continueRun = () => {
-    g.endlessOn = true; g.over = false; g.won = false; g.reason = null;
-    g.phase = 'choose'; g.offer = makeOffer(g);
-  };
-  // 假广告复活：城破 → 多打一轮；堵死 → 清空中宫再发
-  const baseRevive = g.revive;
-  g.revive = () => {
-    if (g.reason === 'gate') {
-      g.adsUsed++;
-      g.round--; g.over = false; g.reason = null;
-      g.moveStar(); g.newRound();
-    } else baseRevive();
-  };
-  g.nearMiss = () => !g.won && g.reason === 'gate' && g.hp <= g.hpMax * 0.3;
-  g.lvOf = (id) => lv(g, id);
-  // 开局：第一局先打一辆车再选；以后开局先三选一
-  // 开局先挑一件：玩过 3 局以后才有（之前都是空手开局，打掉车才拿）
-  if (!o.tutorial && !o.noRelics && !o.relics && g.runNo >= 3) { g.phase = 'choose'; g.offer = makeOffer(g); g.openingPick = true; }
-  return g;
-}
-
-// 三选一：第一局固定连弩 / 火雷 / 墨斗；之后随机，偏向「能和已有的连上」和升级。机关栏满了只出升级
-function makeOffer(g) {
-  // 第一局：打掉第 1 辆车只送连弩一件；打掉第 2 辆，在墨斗和火雷里挑一件
-  if (g.firstRun && g.wavesWon === 1 && !g.relics.length) return ['crossbow'];
-  if (g.firstRun && g.wavesWon === 2) return ['inkline', 'thunder'];
-  const owned = g.relics.map((r) => r.id);
-  const open = POOL_BY_RUN[g.runNo] || RELIC_IDS;
-  let pool = open.filter((id) => (owned.includes(id) ? lv(g, id) < 3 : owned.length < SLOTS));
-  // 每日一城：每一波的三选一按日期和第几波定，人人一样（不按各人拿过什么调权重）
-  const rnd = g.daily ? core.rng(((g.daily ^ ((g.wavesWon + 1) * 40503)) * 2246822519) >>> 0) : g.rand;
-  const weight = g.daily ? () => 1 : (id) => {
-    let w = 1;
-    if (owned.includes(id)) w += 0.6;
-    if (owned.some((o2) => RELICS[o2].pal.includes(id))) w += 1.2;
-    return w;
-  };
-  const out = [];
-  while (out.length < (g.daily ? 3 : offerCount(g.runNo)) && pool.length) {
-    const tot = pool.reduce((a, id) => a + weight(id), 0);
-    let t = rnd() * tot;
-    let k = 0;
-    while (k < pool.length - 1 && t > weight(pool[k])) { t -= weight(pool[k]); k++; }
-    out.push(pool[k]);
-    pool = pool.filter((x) => x !== pool[k]);
-  }
-  return out;
-}
-// 卡上写「配你的 XX」
-function palOf(g, id) {
-  const mate = g.relics.find((r) => RELICS[r.id].pal.includes(id) || RELICS[id].pal.includes(r.id));
-  return mate ? RELICS[mate.id].name : null;
-}
-
-// ---------- 机器人：按手里的机关挑落点 ----------
-function bestMove(g, skill) {
-  const st = g.state();
-  const cands = [];
-  g.hand.forEach((p, i) => {
-    if (!p) return;
-    for (const [r, c] of core.placements(g.board, p)) {
-      const res = resolve(g.board, st, p, r, c);
-      // 伤害要紧，但别把盘面堆死；离城门越近越看重伤害
-      const urgency = 0.35 + (g.round / ROUNDS) * 0.5;
-      let v = res.dmg * urgency + res.events.length * 4 + core.evalBoard(res.board, null);
-      // 有飞星就往星那宫凑，有五居中 / 河图就往中宫凑
-      if (lv(g, 'star')) v += countBlocks(res.board, boxCells(g.starBox)) * 0.6;
-      if (lv(g, 'center5') || lv(g, 'hetu')) v += countBlocks(res.board, boxCells(4)) * 0.5;
-      cands.push({ i, r, c, v, board: res.board });
-    }
-  });
-  if (!cands.length) return null;
-  cands.sort((a, b) => b.v - a.v);
-  const top = cands.slice(0, 10);
-  for (const m of top) {
-    const rest = g.hand.filter((p, k) => p && k !== m.i);
-    if (rest.length && !core.solvable(m.board, rest)) m.v -= 100;
-  }
-  top.sort((a, b) => b.v - a.v);
-  const s = skill === undefined ? 1 : skill;
-  if (s >= 1 || g.rand() < s) return top[0];
-  return top[Math.min(top.length - 1, 1 + Math.floor(g.rand() * 4))];
-}
-// 机器人三选一：有能连上的先拿能连上的，再升级
-function bestPick(g, prefer) {
-  if (prefer) { const hit = g.offer.find((id) => prefer.includes(id)); if (hit) return hit; }
-  const owned = g.relics.map((r) => r.id);
-  const score = (id) => (owned.some((o2) => RELICS[o2].pal.includes(id)) ? 2 : 0) + (owned.includes(id) ? 1 : 0) + g.rand() * 0.1;
-  return g.offer.slice().sort((a, b) => score(b) - score(a))[0];
-}
-// 模拟一局。opts.pick：'none' 不拿 / 'auto' / 数组＝优先拿这几件
-function simulate(opts) {
-  const o = Object.assign({ skill: 1, secPerMove: () => 3 }, opts);
-  const g = createSiege(o);
-  let guard = 0;
-  while (!g.over && guard++ < 400) {
-    if (g.phase === 'choose') {
-      if (o.pick === 'none') { g.offer = null; if (g.openingPick) { g.openingPick = false; g.phase = 'play'; } else g.nextWave(); continue; }
-      g.pick(bestPick(g, Array.isArray(o.pick) ? o.pick : null));
-      continue;
-    }
-    const m = bestMove(g, o.skill);
-    if (!m) break;
-    g.elapsed += o.secPerMove(g);
-    g.place(m.i, m.r, m.c);
-    if (o.maxWaves && g.wavesWon >= o.maxWaves) break;
-  }
-  return g;
-}
-
-module.exports = { POOL_BY_RUN, WAVES, FIRST_RUN_WAVES, ROUNDS, SLOTS, RELICS, RELIC_IDS, STAR_PATH, resolve, createSiege, makeOffer, palOf, bestMove, bestPick, simulate };
 
 });
 __def("js/telemetry.js", function (module, exports, require) {

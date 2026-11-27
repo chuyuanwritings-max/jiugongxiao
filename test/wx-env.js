@@ -62,7 +62,7 @@ function boot(opts) {
   run(5);
   const G = globalThis.__game;
   const btn = (id) => G.buttons().find((b) => b.id === id);
-  const tap = (b, id) => { touch('down', b.x + b.w / 2, b.y + b.h / 2, id); run(1); touch('up', b.x + b.w / 2, b.y + b.h / 2, id); run(3); };
+  const tap = (b, id) => { if (!b) return false; touch('down', b.x + b.w / 2, b.y + b.h / 2, id); run(1); touch('up', b.x + b.w / 2, b.y + b.h / 2, id); run(3); };
   const events = () => { if (G.T) G.T.flush(); try { return JSON.parse(store['jgx_ev1'] || '[]'); } catch (e) { return []; } };
   const errs = () => { if (G.T) G.T.flush(); return events().filter((e) => e[1] === 'X'); };
   const frameDrawn = () => { drawn.length = 0; run(1); return drawn.slice(); };
@@ -74,7 +74,12 @@ function playStep(E, skill) {
   const { G, run, touch } = E, g = G.g;
   let from, to;
   const fitsAny = [0, 1, 2].some((i) => g.hand[i] && G.core.anyPlacement(g.board, g.hand[i]));
-  const sk = g.hand[3] && G.PG.skillBest(g);
+  let sk = g.hand[3] && G.PG.skillBest(g);
+  // 0.9.25：三块都放不下、机器人又挑不出「好用」的技能时，真人还是会随便用一下技能（不然就停在那儿了）。照真人：找任意一个能用的地方用掉
+  if (!sk && g.hand[3] && !fitsAny) {
+    for (let j = 0; j < 3 && !sk; j++) if (g.hand[j]) for (let n = 0; n < g.hand[j].cells.length && !sk; n++) if (g.skillPlan({ hand: j, cell: n })) sk = { hand: j, cell: n, v: 1 };
+    for (let k = 0; k < 81 && !sk; k++) if (g.skillPlan({ r: Math.floor(k / 9), c: k % 9 })) sk = { r: Math.floor(k / 9), c: k % 9, v: 1 };
+  }
   if (sk && (sk.v >= 100 || !fitsAny)) {
     if (sk.hand !== undefined) { const f = G.fingerForHand(sk.hand, sk.cell); from = G.slotCenter(3); touch('down', from.x, from.y); run(2); touch('move', f.enter.x, f.enter.y); run(2); touch('move', f.x, f.y); run(2); touch('up', f.x, f.y); run(30); return 'skill-hand'; }
     from = G.slotCenter(3); to = G.fingerFor(g.hand[3], sk.r, sk.c);

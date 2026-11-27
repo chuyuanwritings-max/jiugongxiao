@@ -106,7 +106,7 @@ function gnawPiece(p, j) {
   const r0 = Math.min(...rest.map((x) => x[0])), c0 = Math.min(...rest.map((x) => x[1]));
   const cells = rest.map(([a, b]) => [a - r0, b - c0]);
   const mud = p.mud === undefined || p.mud === j ? undefined : p.mud > j ? p.mud - 1 : p.mud;
-  return { id: p.id + '~', cat: p.cat, cells, h: Math.max(...cells.map((x) => x[0])) + 1, w: Math.max(...cells.map((x) => x[1])) + 1, gnawed: (p.gnawed || 0) + 1, mud };
+  return { id: p.id + '~', cat: p.cat, cells, h: Math.max(...cells.map((x) => x[0])) + 1, w: Math.max(...cells.map((x) => x[1])) + 1, gnawed: (p.gnawed || 0) + 1, mud, mudded: p.mudded };
 }
 const near4 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; if (r > 0) out.push(k - 9); if (r < 8) out.push(k + 9); if (c > 0) out.push(k - 1); if (c < 8) out.push(k + 1); return out; };
 // 铜雀的同一类：metal 金属 / ink 墨块 / block 普通块（你放的、旧块、泥巴格）；别的啄不到
@@ -438,7 +438,13 @@ function createPetGame(opts) {
     if (tg.hand !== undefined) {
       const p = g.hand[tg.hand];
       if (!p || p.special || tg.hand > 2) return null;
-      if (kind === 'gnaw') { const q = gnawPiece(p, tg.cell); return q === undefined ? null : { hand: tg.hand, cell: tg.cell, to: q, cells: [], fill: [] }; }
+      if (kind === 'gnaw') {
+        // 段 1 规则 4（Cc 同意的收紧第 1 条）：只剩 1 格的块、已经带着小爆竹的块（一块只挨一口）、啃了会断成两截的格子，都啃不了
+        if (p.cells.length <= 1 || p.gnawed) return null;
+        const q = gnawPiece(p, tg.cell); if (!q) return null;
+        if ((pc.lv || 1) >= EVO_LV) q.blast8 = true; // 鼠王啃过的块：小爆竹炸周围一圈 8 格
+        return { hand: tg.hand, cell: tg.cell, to: q, cells: [], fill: [] };
+      }
       return null;
     }
     const k = tg.r * 9 + tg.c;
@@ -462,6 +468,9 @@ function createPetGame(opts) {
   g.skillPlan = (tg) => (g.hand[3] ? skillPlan(g.hand[3], tg) : null);
   // 0.9.25 修卡死：手上只剩斜着连的块（哪一格都啃不了）时，原来还当技能能用、不判堵死，玩家就卡在那儿（全流程测试「手生」那趟查出来的）
   g.skillUsable = () => { const pc = g.hand[3]; if (!pc) return false; if (pc.kind === 'gnaw') return [0, 1, 2].some((j) => g.hand[j] && g.hand[j].cells.some((_, n) => !!g.skillPlan({ hand: j, cell: n }))); return pc.kind === 'silk' ? g.board.some((v) => v === CELL.EMPTY) : pc.kind === 'peck' ? g.board.some(PECKABLE) : false; };
+  // 小土块也算「手上的块」：盘上有空格就不算堵死（附录 C）
+  const baseStuck = g.stuck;
+  g.stuck = () => baseStuck() && !(g.crumb && g.board.some((v) => v === CELL.EMPTY));
   const baseFits = g.fits;
   g.fits = (i) => (i === 3 ? g.skillUsable() : baseFits(i));
   // 用技能块。不算一手，墨怪不动，不发新块。
@@ -475,6 +484,8 @@ function createPetGame(opts) {
     if (plan.hand !== undefined) {
       g.skillStats.hand++;
       g.hand[plan.hand] = plan.to;
+      // 10 级绝招：啃下来的那一格变成一块 1 格小土块，放在宠物格旁边的小位子（最多存 1 块，有了就不留）
+      if (p.kind === 'gnaw' && (p.lv || 1) >= ULT_LV && !g.crumb) { g.crumb = { id: 'crumb', cat: 0, cells: [[0, 0]], h: 1, w: 1, crumb: true }; ev.crumb = true; }
       if (!g.hand.slice(0, 3).some(Boolean)) { const keep = g.hand[3]; g.deal(); g.hand[3] = keep; } // 啃光了最后一块：发新的
     } else {
       g.skillStats.board++;
@@ -510,10 +521,7 @@ function createPetGame(opts) {
     return ev;
   }
   g.useSkill = (tg) => (g.hand[3] && !g.over ? useSkill(3, tg) : null);
-  // 0.9.20 爆竹鼠 5 级进化「转」：技能块停在托盘里一块上，它转四分之一圈；松手就算用掉一口（不啃）
-  g.canRotate = () => !!(g.hand[3] && g.hand[3].pet === 'baozhuwang');
-  g.rotateHand = (i) => { const p = g.hand[i]; if (!p || p.special || i > 2) return false; const cells = p.cells.map(([r, c]) => [c, p.h - 1 - r]); const mi = p.mud; g.hand[i] = Object.assign({}, p, { id: p.id + 'r', cells, h: p.w, w: p.h, mud: mi }); return true; };
-  g.spendBite = () => { const p = g.hand[3]; if (!p) return; p.uses--; if (p.uses <= 0) { g.hand[3] = null; g.skillUses++; g.petActsTotal[p.pet] = (g.petActsTotal[p.pet] || 0) + 1; } };
+  // 鼠王不会转块（段 1 规则 4：转归绿龟）
 
   // ---------- 墨怪的回合（每放一块之后） ----------
   const pick = (arr) => arr[Math.floor(g.rand() * arr.length)];
@@ -566,7 +574,7 @@ function createPetGame(opts) {
     for (let t = 0; t < cand.length * 2; t++) {
       const [nr, nc] = cand[Math.floor(g.rand() * cand.length)].split(',').map(Number);
       const raw = p.cells.concat([[nr, nc]]), r0 = Math.min(...raw.map((x) => x[0])), c0 = Math.min(...raw.map((x) => x[1]));
-      const cells = raw.map(([a, b2]) => [a - r0, b2 - c0]), q = { id: p.id + '+', cat: Math.min(2, p.cat + 1), cells, h: Math.max(...cells.map((x) => x[0])) + 1, w: Math.max(...cells.map((x) => x[1])) + 1, gnawed: p.gnawed, mud: cells.length - 1 };
+      const cells = raw.map(([a, b2]) => [a - r0, b2 - c0]), q = { id: p.id + '+', cat: Math.min(2, p.cat + 1), cells, h: Math.max(...cells.map((x) => x[0])) + 1, w: Math.max(...cells.map((x) => x[1])) + 1, gnawed: p.gnawed, blast8: p.blast8, mud: cells.length - 1 };
       if (q.h <= 5 && q.w <= 5 && (anywhere || core.anyPlacement(g.board, q))) return q;
     }
     return null;
@@ -626,19 +634,19 @@ function createPetGame(opts) {
   function syncAll() { g.monLeft = g.mon.filter(Boolean).length + waveMonCount(); if ('all' in g.got) g.got.all = g.monLeft ? 0 : 1; }
   syncAll();
   g.place = (i, r, c) => {
-    const p = g.hand[i];
+    const p = i === 4 ? g.crumb : g.hand[i]; // 第 4 格 = 10 级鼠的小土块（放它算正常的一手）
     if (p && !g.over && p.special === 'skill') return useSkill(i, { r, c });
     if (!p || g.over || !core.canPlace(g.board, p, r, c)) return null;
     if (st.rush && !g.rushOK(i, r, c)) return null; // 0.9.21 冲锋关：只收「一放就消」的位置（小块塞进大空的一角不算，弹回去）
-    const ci = g.handColor[i];
+    const ci = i === 4 ? PETS.baozhu.color : g.handColor[i];
     const b = g.board.slice();
     const ev0 = {};
     const placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc);
     placed.forEach((k) => { b[k] = 1; g.color[k] = ci; });
     if (p.mud !== undefined && placed[p.mud] !== undefined) g.color[placed[p.mud]] = -3; // 泥巴格落盘：普通块，颜色记 -3（和墨块 -2 一个路数；画法段 4）
     // 0.9.20（Cc 定 A）：爆竹鼠啃过的块上留着一个点着的小爆竹，放下去，上下左右挨着的土堆全打开（段 1 规则 2：变一格土色普通块，和这块一起检查满没满）
-    if (p.gnawed) [...new Set(placed.flatMap(near4))].filter((x) => b[x] === CELL.DIRT).forEach((x) => openCell(b, x, PETS.baozhu.color, ev0));
-    g.hand[i] = null;
+    if (p.gnawed) { [...new Set(placed.flatMap(p.blast8 ? near8 : near4))].filter((x) => b[x] === CELL.DIRT).forEach((x) => openCell(b, x, PETS.baozhu.color, ev0)); if (p.blast8) ev0.blast8 = true; } // 鼠王：周围 8 格（斜角也算）
+    if (i === 4) g.crumb = null; else g.hand[i] = null;
     g.moves++;
     const ev = Object.assign(ev0, { piece: p, r, c, placed, units: [], cells: [], collected: [], bigHits: [], petActs: [], energy: {}, sparks: [], fire: null, gained: p.cells.length, win: false });
     // 1. 照常消
@@ -822,7 +830,7 @@ function skillBest(g) {
       const h = g.hand[i]; if (!h) return;
       const fit0 = core.anyPlacement(b, h), c0 = fit0 ? catchOf(h) : 0;
       h.cells.forEach((_, j) => {
-        const q = gnawPiece(h, j); if (q === undefined) return;
+        const pl = g.skillPlan({ hand: i, cell: j }); if (!pl) return; const q = pl.to; // 照规则能不能啃（一块一口、最后一格不啃）
         let v = 0;
         if (!q) v = fitsNow ? 0 : 20; // 整块吃掉
         else { const fit1 = core.anyPlacement(b, q); if (!fit0 && fit1) v = fitsNow ? 40 : 1000; else if (!fit0) v = fitsNow ? 0 : 10 - q.cells.length; if (fit1 && (wantMon || left.boss > 0)) { const c1 = catchOf(q); if (c1 >= 1 && c1 > c0 + 0.5) v += 100 + (c1 - c0) * 10; } }

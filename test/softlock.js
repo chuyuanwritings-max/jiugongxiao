@@ -249,7 +249,7 @@ section('啃手上的块', () => {
       for (let slot = 0; slot < 3; slot++) for (let j = 0; j < piece.cells.length; j++) {
         if (slot !== (j % 3)) continue; // 每个格子在三个托盘位置里轮着试
         const want = G.PG.gnawPiece(piece, j);
-        if (want === undefined) continue; // 啃了会断成两截：本来就不让啃
+        if (want === undefined || piece.cells.length <= 1) continue; // 啃了会断成两截、只剩 1 格（段 1 规则 4）：本来就不让啃
         g.hand = [null, null, null, Object.assign({}, G.PG.SKILL_PIECE, { pet: 'baozhu', kind: 'gnaw', n: 1, uses: 1 })]; g.hand[slot] = piece; g.hand[(slot + 1) % 3] = G.core.PIECES['2h']; g.handColor[3] = 1; g.over = false;
         run(2); tried++;
         const f = G.fingerForHand(slot, j), from = G.slotCenter(3);

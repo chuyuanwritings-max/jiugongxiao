@@ -810,7 +810,6 @@ function onTouchBody(type, id, x, y, live) {
 function drop() {
   const i = drag.slot;
   const p = g.hand[i];
-  if (p && p.special === 'skill' && drag.rotN) { drag = null; g.spendBite(); P.sound('chirp', 0.4); T.rec('b', 'ratTurn'); return; } // 爆竹鼠王转过块：这一口用掉了，不再啃
   if (p && p.special === 'skill') { // 0.9.12：技能块不走「放进空格」那套，照落点用
     const tg = skillTarget(drag);
     drag = null;
@@ -1430,13 +1429,6 @@ function drawTray() {
     drawPiece(pv, c.x + sx, c.y + Math.sin(clock * 3 + i) * 1.5 + bounce, s, fits ? 1 : 0.28, handColor(i));
     if (i === 3 && p.uses > 1) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.arc(c.x + s * 0.55, c.y - s * 0.55, 10, 0, Math.PI * 2); ctx.fill(); text('×' + p.uses, c.x + s * 0.55, c.y - s * 0.55 + 1, 11, '#fff'); } // 啃：还剩几口
     ctx.restore();
-  }
-  // 0.9.20 爆竹鼠王「转」：技能块停在托盘里一块上 0.7 秒，那块转四分之一圈（再停再转）；松手就算用掉一口
-  if (drag && drag.slot === 3 && g.canRotate && g.canRotate()) {
-    const h = handHover(drag);
-    if (h) { if (!drag.hold || drag.hold.i !== h.hand) drag.hold = { i: h.hand, t: clock }; else if (clock - drag.hold.t > 0.7) { if (g.rotateHand(h.hand)) { drag.rotN = (drag.rotN || 0) + 1; drag.hold.t = clock; P.sound('select', 0.6); haptic('light'); } }
-      const k2 = Math.min(1, (clock - drag.hold.t) / 0.7), o = bigHandOrigin(h.hand), q = g.hand[h.hand]; ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(o.x + (q.w * L.cell) / 2, o.y + (q.h * L.cell) / 2, Math.max(q.w, q.h) * L.cell * 0.62, -Math.PI / 2, -Math.PI / 2 + k2 * Math.PI * 2); ctx.stroke(); }
-    else drag.hold = null;
   }
   // 火麒麟的灯（0.9.12）：一直照着下一批的头几块，画在托盘下面
   // 爆竹鼠的技能块悬在托盘某一块上：那块放大、抬到托盘上方，对准的那格亮牙印（啃了会断成两截的格子打灰叉）

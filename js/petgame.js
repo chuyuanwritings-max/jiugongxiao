@@ -79,7 +79,15 @@ function bestPetFor(st) {
 }
 // 技能块：每只宠物都是这个 1 格的模子
 const SKILL_PIECE = { id: 'skill', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'skill' };
-const skillPiece = (pt) => { const kind = skillKind(pt.id), n = skillN(pt.id, pt.lv); return Object.assign({}, SKILL_PIECE, { pet: pt.id, kind, n, uses: kind === 'gnaw' ? n : 1 }); };
+// 一块技能块用几次：鼠按口数；铜雀 10 级三根羽毛分开用；其余 1 次
+const skillPiece = (pt) => { const kind = skillKind(pt.id), n = skillN(pt.id, pt.lv), lv = pt.lv || 1; return Object.assign({}, SKILL_PIECE, { pet: pt.id, lv, kind, n, uses: kind === 'gnaw' ? n : kind === 'peck' && lv >= ULT_LV ? 3 : 1 }); };
+// 段 1 规则 3：金凤凰拖着羽毛选横竖。prev：'h' | 'v'；dx, dy：羽毛尖离落点格中心的偏移（单位 = 格）。0.15、0.12 是起始值，段 4 拿真手指调
+function peckDir(prev, dx, dy) {
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  if (Math.hypot(dx, dy) < 0.15) return prev;
+  if (prev === 'h') return ay - ax > 0.12 ? 'v' : 'h';
+  return ax - ay > 0.12 ? 'h' : 'v';
+}
 // 自己抽一块（照 core.js 的 pickPiece；core 没导出）
 function pickPiece(rand, d) {
   const w = [C.weightSmall(d), C.weightMid(d), C.weightBig(d)].map((x) => Math.max(0.02, x));
@@ -101,6 +109,8 @@ function gnawPiece(p, j) {
   return { id: p.id + '~', cat: p.cat, cells, h: Math.max(...cells.map((x) => x[0])) + 1, w: Math.max(...cells.map((x) => x[1])) + 1, gnawed: (p.gnawed || 0) + 1, mud };
 }
 const near4 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; if (r > 0) out.push(k - 9); if (r < 8) out.push(k + 9); if (c > 0) out.push(k - 1); if (c < 8) out.push(k + 1); return out; };
+// 铜雀的同一类：metal 金属 / ink 墨块 / block 普通块（你放的、旧块、泥巴格）；别的啄不到
+const peckKindOf = (v, col) => (v === CELL.METAL ? 'metal' : v === CELL.BLOCK ? (col === -2 ? 'ink' : 'block') : null);
 // 铜雀啄得到的：方块（含墨块）、金属。墨怪、头目啄不到（Cc 11-27 第 4 件：除了火，宠物不抓怪、不打头目）
 const PECKABLE = (v) => v === CELL.BLOCK || v === CELL.METAL;
 const petDef = (p) => PETS[p.id];
@@ -433,9 +443,13 @@ function createPetGame(opts) {
     }
     const k = tg.r * 9 + tg.c;
     if (kind === 'peck') {
-      const line = pc.dir === 'v' ? UNITS[9 + tg.c] : UNITS[tg.r], pos = (x) => (pc.dir === 'v' ? Math.floor(x / 9) - tg.r : (x % 9) - tg.c);
-      const row = line.filter((x) => PECKABLE(b[x])).sort((x, y) => Math.abs(pos(x)) - Math.abs(pos(y)) || x - y).slice(0, n);
-      return row.length ? { cells: row, fill: [] } : null;
+      // 段 1 规则 3（Cc 同意的收紧第 2 条）：点什么啄什么。落点那格 + 同一条线上离它最近的同一类（金属 / 墨块 / 普通块），不拿别的类凑数
+      const kd = peckKind(b, k); if (!kd) return null; // 空格、墨怪、头目、土堆：用不了，羽毛滑回去
+      if ((pc.lv || 1) >= ULT_LV) return { cells: [k], fill: [] }; // 10 级三根羽毛：每根只啄落点
+      const dir = (pc.lv || 1) >= EVO_LV && tg.dir === 'v' ? 'v' : 'h'; // 1–4 级只能横着
+      const line = dir === 'v' ? UNITS[9 + tg.c] : UNITS[tg.r], pos = (x) => (dir === 'v' ? Math.floor(x / 9) - tg.r : (x % 9) - tg.c);
+      const more = line.filter((x) => x !== k && peckKind(b, x) === kd).sort((x, y) => Math.abs(pos(x)) - Math.abs(pos(y)) || x - y).slice(0, n - 1); // 等距先左（先上）
+      return { cells: [k].concat(more), fill: [], dir };
     }
     if (kind === 'silk') {
       if (b[k] !== CELL.EMPTY) return null;
@@ -444,6 +458,7 @@ function createPetGame(opts) {
     }
     return null; // 鼠只啃手上的块、不上盘（0.9.20 Cc 定）；火的新写法在段 1 第 9 步
   }
+  const peckKind = (b, x) => peckKindOf(b[x], g.color[x]);
   g.skillPlan = (tg) => (g.hand[3] ? skillPlan(g.hand[3], tg) : null);
   // 0.9.25 修卡死：手上只剩斜着连的块（哪一格都啃不了）时，原来还当技能能用、不判堵死，玩家就卡在那儿（全流程测试「手生」那趟查出来的）
   g.skillUsable = () => { const pc = g.hand[3]; if (!pc) return false; if (pc.kind === 'gnaw') return [0, 1, 2].some((j) => g.hand[j] && g.hand[j].cells.some((_, n) => !!g.skillPlan({ hand: j, cell: n }))); return pc.kind === 'silk' ? g.board.some((v) => v === CELL.EMPTY) : pc.kind === 'peck' ? g.board.some(PECKABLE) : false; };
@@ -774,12 +789,13 @@ function skillBest(g) {
   };
   const unstick = (nb, hs) => (!fitsNow && (hs || hands).some((h) => core.anyPlacement(nb, h)) ? 1000 : 0);
   if (p.kind === 'peck') {
-    for (let k = 0; k < 81; k++) {
-      const pl = g.skillPlan({ r: Math.floor(k / 9), c: k % 9 });
+    for (let k = 0; k < 81; k++) for (const dir of (p.lv || 1) >= EVO_LV && (p.lv || 1) < ULT_LV ? ['h', 'v'] : ['h']) {
+      const tg = { r: Math.floor(k / 9), c: k % 9, dir };
+      const pl = g.skillPlan(tg);
       if (!pl) continue;
       const key = pl.cells.join(','); if (seen.has(key)) continue; seen.add(key);
       const nb = b.slice(); const v = scoreHit(pl.cells, nb);
-      offer({ r: Math.floor(k / 9), c: k % 9 }, v + unstick(nb) + (fitsNow ? 0 : core.evalBoard(nb) * 0.01));
+      offer(tg, v + unstick(nb) + (fitsNow ? 0 : core.evalBoard(nb) * 0.01));
     }
   }
   if (p.kind === 'silk') {
@@ -825,4 +841,4 @@ function useSkillIfGood(g) {
   if (s.v >= 100 || !fits) return !!g.useSkill(s);
   return false;
 }
-module.exports = { skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, petDesc, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, petDesc, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };

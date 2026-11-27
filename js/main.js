@@ -706,7 +706,10 @@ function skillTarget(d) {
   if (h) return h;
   const vx = d.x, vy = d.y - SKL(); // 技能块画在手指上方 SKL 处，落在它中心所在的那一格
   const r = Math.floor((vy - L.by) / L.cell), c = Math.floor((vx - L.bx) / L.cell);
-  return r >= 0 && r < 9 && c >= 0 && c < 9 ? { r, c } : null;
+  if (!(r >= 0 && r < 9 && c >= 0 && c < 9)) return null;
+  // 段 1 规则 3：拖着羽毛时每帧照 peckDir 算横竖（偏左右 = 横、偏上下 = 竖），松手传进 useSkill；亮线归段 4。原来「点一下换方向」拿掉
+  if (p.kind === 'peck') d.dir = PG.peckDir(d.dir || 'h', (vx - L.bx) / L.cell - c - 0.5, (vy - L.by) / L.cell - r - 0.5);
+  return { r, c, dir: d.dir };
 }
 // 反过来：想啃手上第 j 块的第 n 格，手指该在哪（测试用）
 function fingerForHand(j, n) { const q = g.hand[j], o = bigHandOrigin(j), [r, c] = q.cells[n]; return { x: o.x + (c + 0.5) * L.cell, y: o.y + (r + 0.5) * L.cell + SKL(), enter: { x: slotCenter(j).x, y: L.trayY + L.trayH * 0.6 } }; }
@@ -807,9 +810,6 @@ function onTouchBody(type, id, x, y, live) {
 function drop() {
   const i = drag.slot;
   const p = g.hand[i];
-  if (p && p.special === 'skill' && p.pet === 'jinchique' && Math.hypot(drag.x - drag.x0, drag.y - drag.y0) < 12) { // 0.9.17 铜雀 5 级（Cc 11-27 第 10 件定 B）：点一下技能块，羽毛转方向（横着啄 ↔ 竖着啄）
-    p.dir = p.dir === 'v' ? 'h' : 'v'; drag = null; petFx.featherTurn = clock; P.sound('select', 0.6); haptic('light'); T.rec('b', 'featherTurn'); return;
-  }
   if (p && p.special === 'skill' && drag.rotN) { drag = null; g.spendBite(); P.sound('chirp', 0.4); T.rec('b', 'ratTurn'); return; } // 爆竹鼠王转过块：这一口用掉了，不再啃
   if (p && p.special === 'skill') { // 0.9.12：技能块不走「放进空格」那套，照落点用
     const tg = skillTarget(drag);
@@ -819,7 +819,7 @@ function drop() {
     const pev = g.useSkill(tg);
     if (!pev) return;
     for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK) colorAt[k] = g.color[k];
-    T.rec('k', pev.skill.pet, tg.hand !== undefined ? 'h' + tg.hand : tg.r, tg.hand !== undefined ? tg.cell : tg.c, pev.skill.cells.length + (pev.skill.fill || []).length, (pev.counter || []).length, (pev.petMiss || []).length);
+    T.rec('k', pev.skill.pet, tg.hand !== undefined ? 'h' + tg.hand : tg.r, tg.hand !== undefined ? tg.cell : tg.c, pev.skill.cells.length + (pev.skill.fill || []).length, tg.dir || '', (pev.metal || []).length + (pev.blast || []).length); // 段 1 附录 G：克制、打不动两个数删了，换成方向、打开了几个障碍
     if (pev.rescue) T.rec('r', pev.rescue);
     if (pev.wave) T.rec('w', pev.wave.no, pev.wave.of);
     if (pev.win && !g._settled) settlePet();

@@ -158,7 +158,7 @@ winCase('救命的技能块啄开路、普通块抓到最后一只', 12, (E, g) 
 }, (E, g) => {
   dragTo(E, 0, 8, 7); E.run(40); // 放完这块，剩下那根横条哪都放不下 → 宠物提前把技能块给你
   if (!g.hand[3]) throw new Error('宠物没来救（手上没有技能块）'); if (g.over) throw new Error('有救命块却判了输');
-  dragTo(E, 3, 4, 1); E.run(40); // 啄第 4 排：怪旁边空出一条
+  dragTo(E, 3, 4, 2); E.run(40); // 啄第 4 排：怪旁边空出一条（段 1 规则 3：羽毛要落在块上、点什么啄什么，所以落在 (4,2) 而不是空格 (4,1)）
   if (g.over) throw new Error('啄完判了输'); dragTo(E, 1, 4, 1);
 });
 winCase('头目最后一颗心（普通块）', 9, (E, g) => { setBoard(g, { 3: '....KK...', 4: '####KK##.' }); g.bigHp = 1; g.boss.hp = 1; g.boss.jumpTo = null; g.boss.nextSpit = null; g.hand = [P1(E), null, null, null]; }, (E) => dragTo(E, 0, 4, 8));

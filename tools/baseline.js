@@ -1,11 +1,18 @@
 // 拍照留底（0.9.25 收拾第 1 步，Fable 代码体检）：机器人用固定发牌打前 20 关，每一手之后的盘面、手牌、目标都算进指纹。
 // 收拾代码（不该改玩法）的每一步都要跑 check，指纹一模一样才算没改坏。改玩法的那一段结束后再 save 一份新的。
+// 段 1 第 12 步（规则细设计附录 D 丁）：五只宠物都带，等级照 A3 的给法（打到这一关大概几级；第 11 关起丹对半分）
+// 冲锋关（第 7、16 关）的段 0 指纹另由 test/rules_obstacle.js 的 T16 守着
 // 用法：node tools/baseline.js save | check
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const PG = require('../js/petgame.js'), PLV = require('../js/petlevels.js'), core = require('../js/core.js');
 const FILE = path.join(__dirname, '..', 'test', 'baseline', 'engine.json');
+const PETS5 = ['tongque', 'baozhu', 'modou', 'shizi', 'lvgui'];
+const EXP_NEED = [0, 4, 6, 6, 8, 10, 12, 13, 15, 16];
+const lvOf = (dan) => { let lv = 1; while (lv < 10 && dan >= EXP_NEED[lv]) { dan -= EXP_NEED[lv]; lv++; } return lv; };
+const LV_AT = (() => { let d = 0; return PLV.map((st, i) => { const lv = lvOf(d); d += (st.dan || 0) * (i >= 10 ? 0.5 : 1); return lv; }); })();
 function runOne(li, seed, pet) {
-  const team = pet ? [{ id: pet, lv: 3 }] : [];
+  const lv = LV_AT[li], id = pet && lv >= PG.EVO_LV ? PG.PETS[pet].evo : pet;
+  const team = pet ? [{ id, lv }] : [];
   const g = PG.createPetGame({ stage: PLV[li], team, seed });
   const h = crypto.createHash('sha1');
   const snap = () => h.update(JSON.stringify([g.board, g.hand.map((p) => (p ? p.id + (p.mud !== undefined ? 'm' + p.mud : '') : '-')), core.goalLeft(g), g.over, g.won]));
@@ -20,7 +27,7 @@ function runOne(li, seed, pet) {
   return { hash: h.digest('hex').slice(0, 16), moves: g.moves, won: !!g.won };
 }
 const out = {};
-for (let li = 0; li < PLV.length; li++) for (const seed of [11, 22, 33]) for (const pet of li === 0 ? [null] : li < 10 ? ['tongque'] : ['tongque', 'baozhu']) out[(li + 1) + '/' + seed + '/' + (pet || '-')] = runOne(li, seed, pet);
+for (let li = 0; li < PLV.length; li++) for (const seed of [11, 22, 33]) for (const pet of li === 0 ? [null] : PETS5) out[(li + 1) + '/' + seed + '/' + (pet || '-')] = runOne(li, seed, pet);
 const mode = process.argv[2] || 'check';
 if (mode === 'save') { fs.writeFileSync(FILE, JSON.stringify(out, null, 1)); console.log('留底存好：' + Object.keys(out).length + ' 局'); process.exit(0); }
 const old = JSON.parse(fs.readFileSync(FILE, 'utf8'));

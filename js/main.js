@@ -1431,8 +1431,6 @@ function drawTray() {
     if (i === 3 && p.uses > 1) { ctx.fillStyle = COL.red; ctx.beginPath(); ctx.arc(c.x + s * 0.55, c.y - s * 0.55, 10, 0, Math.PI * 2); ctx.fill(); text('×' + p.uses, c.x + s * 0.55, c.y - s * 0.55 + 1, 11, '#fff'); } // 啃：还剩几口
     ctx.restore();
   }
-  // 0.9.20 粘墨怪 / 泥沼怪瞪着托盘里哪一块：那块上面浮一对瞪人的眼睛，一颗泥点在晃（下一手就往上吐泥）
-  if (g.mudGlares) g.mudGlares().forEach((gl) => { const c = slotCenter(gl.slot); if (!g.hand[gl.slot] || (drag && drag.slot === gl.slot)) return; const ex = c.x, ey = c.y - L.trayH * 0.32 + Math.sin(clock * 6) * 2; ctx.fillStyle = '#3a2412'; ctx.beginPath(); ctx.ellipse(ex, ey, 22, 11, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#fff'; [-8, 8].forEach((dx) => { ctx.beginPath(); ctx.arc(ex + dx, ey, 5, 0, Math.PI * 2); ctx.fill(); }); ctx.fillStyle = '#1a0d04'; [-8, 8].forEach((dx) => { ctx.beginPath(); ctx.arc(ex + dx, ey + 1.5, 2.5, 0, Math.PI * 2); ctx.fill(); }); ctx.strokeStyle = '#1a0d04'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ex - 13, ey - 9); ctx.lineTo(ex - 3, ey - 5); ctx.moveTo(ex + 13, ey - 9); ctx.lineTo(ex + 3, ey - 5); ctx.stroke(); const mx = ex + 18 + Math.sin(clock * 9) * 3; ctx.fillStyle = '#9a6a34'; ctx.beginPath(); ctx.arc(mx, ey + 10, 4, 0, Math.PI * 2); ctx.fill(); });
   // 0.9.20 爆竹鼠王「转」：技能块停在托盘里一块上 0.7 秒，那块转四分之一圈（再停再转）；松手就算用掉一口
   if (drag && drag.slot === 3 && g.canRotate && g.canRotate()) {
     const h = handHover(drag);
@@ -2719,7 +2717,6 @@ function juicePets(ev, colorsBefore) {
   (ev.refill || []).forEach((k, j) => { cellIn[k] = clock + 0.3 + j * 0.006; });
   (ev.blast || []).forEach((k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 16; n++) { const a2 = Math.random() * Math.PI * 2, v = 100 + Math.random() * 160; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 140, t: clock, life: 0.7, s: 3 + Math.random() * 5, col: Math.random() < 0.5 ? '#c08a4a' : '#ffb04a' }); } rings.push({ t: clock, big: false, at: { x, y } }); flash = Math.max(flash, 0.2); shake = Math.max(shake, 7); P.sound('bolt', 0.8); P.sound('thump', 0.5); haptic('heavy'); }); // 小爆竹炸塌土堆
   (ev.mudSpit || []).forEach((e, j) => { petInk.push({ from: { x: cellX(e.from % 9) + L.cell / 2, y: cellY(Math.floor(e.from / 9)) + L.cell / 2 }, toSlot: e.slot, t: clock + 0.2 + j * 0.1, mud: true }); timeline.push({ t: clock + 0.55 + j * 0.1, fn: () => { P.sound('crunch', 0.5); haptic('light'); handSeen[e.slot] = null; } }); });
-  (ev.mudGlare || []).forEach(() => timeline.push({ t: clock + 0.2, fn: () => P.sound('skitter', 0.35) }));
   if (ev.rushFix && !ev.rushBoard) playRushFix(ev.rushFix, clock + 0.25); // 0.9.22 每放一块，宠物都从右下角飞出去修一下剩下的
   if (ev.rushBurst) { ev.rushBurst.forEach((k) => clearing.push({ k, t: clock + 0.06 + ((k % 9) + Math.floor(k / 9)) * 0.008 })); timeline.push({ t: clock + 0.08, fn: () => { P.sound('dong', 0.75); flash = Math.max(flash, 0.25); shake = Math.max(shake, 8); haptic('heavy'); } }); } // 0.9.21 三块塞完：剩下的铜砖整盘炸开
   if (ev.rushBoard) { for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK || g.board[k] === CELL.BRICK) { colorAt[k] = g.color[k]; cellIn[k] = clock + 0.45 + ((k % 9) + Math.floor(k / 9)) * 0.018; } timeline.push({ t: clock + 0.45, fn: () => { P.sound('deal', 0.6); haptic('light'); } }); playRushFix(ev.rushFix, clock + 0.55); } // 冲锋关整盘换新：从左上角一路铺过去，宠物马上飞上去修

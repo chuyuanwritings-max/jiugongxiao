@@ -16,10 +16,11 @@ const IS_MON = (v) => v === CELL.MON;
 const MON = {
   ink: { name: '小墨怪' },
   moss: { name: '墨苔怪', cd: 3 },
-  sticky: { name: '粘墨怪', cd: 4 }, // 0.9.20 第二章：每 4 手往托盘里一块上吐泥（先瞪一手），那块多一格；吐完爬一格
+  sticky: { name: '粘墨怪', cd: 4 }, // 0.9.20 第二章：每 4 手往托盘里一块上吐泥，那块多一格；吐完爬一格（段 1 规则 5：不瞪、不预告吐哪块，m.cd 是还剩几手）
 };
 const MON_CHAR = { m: 'ink', G: 'moss', N: 'sticky' };
 const newMon = (t) => ({ t, cd: MON[t].cd || 0 });
+const BOSS_MUD_CD = 3; // 段 1 规则 5：泥沼怪每 3 手吐一次
 const near8 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const a = r + dr, b = c + dc; if (a >= 0 && a < 9 && b >= 0 && b < 9) out.push(a * 9 + b); } return out; };
 const CLEARABLE = (v) => v === CELL.BLOCK || IS_MON(v); // 消得掉的：方块、墨怪
 
@@ -161,6 +162,7 @@ function createPetGame(opts) {
   if (g.bigCells.length) {
     g.bigHp = st.bigHp || 3;
     g.boss = { kind: st.bossKind || 'spit', hp: g.bigHp, max: g.bigHp, count: 0, jumpTo: null };
+    if (st.bossMud) g.boss.mudCd = BOSS_MUD_CD; // 泥沼怪：还剩几手吐泥（单独的倒数，不和别的计数搅在一起）
   }
   // 发块的颜色：出战宠物的颜色多发（×2.5），这一关的颜色表里没有它的颜色就自动加上
   const palette = (st.colors || [0, 1, 2, 3]).slice();
@@ -549,34 +551,39 @@ function createPetGame(opts) {
     }
     return null;
   }
-  // from：动手的那格（画泥团从哪飞出来）；mon：那只怪（或头目）身上记着瞪的是哪一块
-  function mudTurn(who, from, ev) {
-    if (who.glare !== undefined && who.glare !== null) {
-      const slot = who.glare; who.glare = null;
-      const p = g.hand[slot];
-      if (p && !p.special && p.mud === undefined) { const q = addMud(p); if (q) { g.hand[slot] = q; (ev.mudSpit = ev.mudSpit || []).push({ from, slot }); g.monStats.mud = (g.monStats.mud || 0) + 1; return true; } }
-      return false;
+  // 段 1 规则 5（Cc 11-27「他只要一预告，我就把那块用掉不就好了吗」）：吐的那一手才挑块。
+  // 从手上「还没放、还没沾过泥、不是技能块、加一格以后盘上还放得下」的块里随机挑一块；挑不出来这次不吐（ev.mudSkip）
+  function spitMud(from, ev) {
+    const opts = [0, 1, 2].filter((j) => g.hand[j] && !g.hand[j].special && !g.hand[j].mudded && g.hand[j].mud === undefined);
+    while (opts.length) {
+      const slot = opts.splice(Math.floor(g.rand() * opts.length), 1)[0];
+      const q = addMud(g.hand[slot]);
+      if (q) { q.mudded = true; g.hand[slot] = q; (ev.mudSpit = ev.mudSpit || []).push({ from, slot }); g.monStats.mud = (g.monStats.mud || 0) + 1; return true; }
     }
-    const opts = [0, 1, 2].filter((j) => g.hand[j] && !g.hand[j].special && g.hand[j].mud === undefined);
-    if (opts.length) { who.glare = opts[Math.floor(g.rand() * opts.length)]; (ev.mudGlare = ev.mudGlare || []).push({ from, slot: who.glare }); }
+    (ev.mudSkip = ev.mudSkip || []).push({ from });
     return false;
   }
-  g.mudGlares = () => { const out = []; g.mon.forEach((m, k) => { if (m && m.t === 'sticky' && m.glare !== undefined && m.glare !== null) out.push({ k, slot: m.glare }); }); if (g.boss && g.boss.glare !== undefined && g.boss.glare !== null) out.push({ k: g.bigCells[0], slot: g.boss.glare, boss: true }); return out; };
-  function stickyTurn(b, ev) {
+  // 每放一块，泥怪的倒数减 1（画面读 m.cd / boss.mudCd：3、2、1 越抖越快，归段 4）
+  function mudCount() {
+    g.mon.forEach((m) => { if (m && m.t === 'sticky' && !(m.tied > 0)) m.cd--; });
+    if (g.boss && g.bigHp > 0 && st.bossMud) g.boss.mudCd--;
+  }
+  // 结算顺序第 10 步：手空了先发新三块，再吐泥（不然每次卡着最后一块放，就永远躲得掉）
+  function mudTurn(b, ev) {
     for (let k = 0; k < 81; k++) {
       const m = g.mon[k];
-      if (b[k] !== CELL.MON || !m || m.t !== 'sticky' || m.moved === g.moves) continue;
-      if (m.glare !== undefined && m.glare !== null) {
-        mudTurn(m, k, ev); m.cd = MON.sticky.cd;
-        // 吐完爬一格（往空格）
-        const opts2 = near4(k).filter((x) => b[x] === CELL.EMPTY);
-        if (opts2.length) { const t = opts2[Math.floor(g.rand() * opts2.length)]; moveMon(b, k, t); g.mon[t].moved = g.moves; (ev.crawl = ev.crawl || []).push({ from: k, to: t, t: 'sticky' }); crawlClear(b, [t], ev); }
-      } else if (--m.cd <= 1) mudTurn(m, k, ev);
+      if (b[k] !== CELL.MON || !m || m.t !== 'sticky' || m.cd > 0 || m.spat === g.moves) continue;
+      m.spat = g.moves; spitMud(k, ev); m.cd = MON.sticky.cd;
+      // 吐完爬一格（往空格）
+      const opts2 = near4(k).filter((x) => b[x] === CELL.EMPTY);
+      if (opts2.length) { const t = opts2[Math.floor(g.rand() * opts2.length)]; moveMon(b, k, t); g.mon[t].moved = g.moves; (ev.crawl = ev.crawl || []).push({ from: k, to: t, t: 'sticky' }); crawlClear(b, [t], ev); }
     }
+    const bs = g.boss;
+    if (bs && g.bigHp > 0 && st.bossMud && bs.mudCd <= 0) { spitMud(g.bigCells[0], ev); bs.mudCd = BOSS_MUD_CD; }
   }
   function monsterTurn(b, ev) {
     crawlTurn(b, ev);
-    stickyTurn(b, ev);
+    mudCount();
     // 头目
     const bs = g.boss;
     if (!bs || g.bigHp <= 0) return;
@@ -593,7 +600,6 @@ function createPetGame(opts) {
       ev.bossJump = { from: old[0], to: tl, crushed };
       bs.jumpTo = null;
     }
-    if (st.bossMud) { if (bs.glare !== undefined && bs.glare !== null) mudTurn(bs, g.bigCells[0], ev); else if (bs.count % 3 === 2) mudTurn(bs, g.bigCells[0], ev); } // 0.9.20 第二章头目泥沼怪：每 3 手往托盘里一块上吐泥（先瞪一手）
   }
 
   // 目标「抓光盘上的墨怪」：all = 1 表示抓光了；monLeft = 还剩几只（顶上显示这个数）
@@ -609,6 +615,7 @@ function createPetGame(opts) {
     const ev0 = {};
     const placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc);
     placed.forEach((k) => { b[k] = 1; g.color[k] = ci; });
+    if (p.mud !== undefined && placed[p.mud] !== undefined) g.color[placed[p.mud]] = -3; // 泥巴格落盘：普通块，颜色记 -3（和墨块 -2 一个路数；画法段 4）
     // 0.9.20（Cc 定 A）：爆竹鼠啃过的块上留着一个点着的小爆竹，放下去，上下左右挨着的土堆全打开（段 1 规则 2：变一格土色普通块，和这块一起检查满没满）
     if (p.gnawed) [...new Set(placed.flatMap(near4))].filter((x) => b[x] === CELL.DIRT).forEach((x) => openCell(b, x, PETS.baozhu.color, ev0));
     g.hand[i] = null;
@@ -665,6 +672,9 @@ function createPetGame(opts) {
     if (done()) { if (st.rush) ev.rushStep = 5; ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
     if (st.rush) { g.rushChain = (g.rushChain || 0) + 1; ev.rushStep = (g.rushChain - 1) % 6; rushAfter(ev, i); return ev; } // 0.9.22 冲锋关的连消声：一块一级往上爬，第 6 块到顶扫上去，再从头来 // 冲锋关：补满、重挖，三块塞完整盘换新
     if (!g.hand.slice(0, 3).some(Boolean)) g.deal();
+    mudTurn(g.board, ev);
+    syncAll(); left = core.goalLeft(g);
+    if (done()) { ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; } // 粘墨怪吐完爬进去凑满、抓到最后一只
     rescue(ev);
     if (g.stuck()) { g.over = true; g.reason = 'stuck'; ev.stuck = true; }
     return ev;

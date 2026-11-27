@@ -80,6 +80,9 @@ function playStep(E, skill) {
     for (let j = 0; j < 3 && !sk; j++) if (g.hand[j]) for (let n = 0; n < g.hand[j].cells.length && !sk; n++) if (g.skillPlan({ hand: j, cell: n })) sk = { hand: j, cell: n, v: 1 };
     for (let k = 0; k < 81 && !sk; k++) if (g.skillPlan({ r: Math.floor(k / 9), c: k % 9 })) sk = { r: Math.floor(k / 9), c: k % 9, v: 1 };
   }
+  // 段 1：羽毛要落在块上（点什么啄什么），最下面一排靠右的几格手指会压到宠物格、松手等于取消（R-007），真人也点不到：换一格点得到的（这个画面问题记进段 4）
+  const reach = (t) => { if (t.hand !== undefined) return true; const f = G.fingerFor(g.hand[3], t.r, t.c), got = G.skillTarget({ x: f.x, y: f.y }); return !!got && got.r === t.r && got.c === t.c; };
+  if (sk && !reach(sk)) { sk = null; if (!fitsAny) for (let k = 0; k < 81 && !sk; k++) { const t = { r: Math.floor(k / 9), c: k % 9 }; if (g.skillPlan(t) && reach(t)) sk = Object.assign(t, { v: 1 }); } }
   if (sk && (sk.v >= 100 || !fitsAny)) {
     if (sk.hand !== undefined) { const f = G.fingerForHand(sk.hand, sk.cell); from = G.slotCenter(3); touch('down', from.x, from.y); run(2); touch('move', f.enter.x, f.enter.y); run(2); touch('move', f.x, f.y); run(2); touch('up', f.x, f.y); run(30); return 'skill-hand'; }
     from = G.slotCenter(3); to = G.fingerFor(g.hand[3], sk.r, sk.c);

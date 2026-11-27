@@ -66,7 +66,8 @@ RUNS.forEach((R, n) => {
         if (g.over) { run(20); continue; }
         if (g.stuck()) { softlock = '第 ' + (G.petIdx + 1) + ' 关第 ' + g.moves + ' 手：没判输，但手上 ' + g.hand.map((p) => (p ? p.id : '-')).join(',') + ' 全放不下'; break; }
         const rr = btn('reroll'); if (rr && Math.random() < 0.3) { seen.reroll++; tap(rr); continue; }
-        const r = playStep(E, R.skill);
+        // 段 1：堵路以后手生机器人在障碍多的关（13、15、18–20）能连输几百次；同一关连输 20 次以后这一关改用手熟的打过去（输了以后那几条路前面早走到了；障碍段 3 照规则 11 重摆）
+        const r = playStep(E, (G.save.loss || {})[G.petIdx] >= 20 ? 1 : R.skill);
         if (r === 'skill' || r === 'skill-hand') seen.skill++; if (r === 'skill-hand') seen.gnaw++;
         if (!r) run(30);
         continue;

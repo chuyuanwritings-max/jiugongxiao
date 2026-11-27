@@ -208,7 +208,6 @@ module.exports = function (api) {
                { at: 0, fx: 'rays', origin: [0.5, 0.44], z: 0.5, fadeIn: 8, alpha: 0.22, color: '#FFE6A0', dur: 110 },
                { at: 0, fx: 'camera', to: 1.08, dur: 50, ease: 'out', focus: [0.5, 0.44] },
                { at: 8, fx: 'text', str: '新伙伴 · ' + d.name, in: 'pop', pos: [0.5, 0.74], size: 32, color: '#f3d27a', dur: 102 },
-               { at: 16, fx: 'text', str: api.PG.petDesc(id, 1), in: 'fade', pos: [0.5, 0.8], size: 16, color: '#e8e2d0', strokeWidth: 4, dur: 94 },
                { at: 0, sfx: 'sting' }] },
         { id: 'hold', type: 'hold', dur: 60, tracks: [{ layer: 'hero', prop: 'scale', from: 1, to: 1.03, ease: 'breathe' }] },
         { id: 'out', type: 'out', dur: 16, fx: [{ at: 0, fx: 'fade', from: 0, to: 1, dur: 16 }] },

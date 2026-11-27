@@ -50,25 +50,15 @@ const PETS = {
   shizi: { name: '小狮子', color: 5, evo: 'qilin', evoLv: EVO_LV }, qilin: { name: '麒麟', color: 5 },
   lvgui: { name: '绿龟', color: 6, evo: 'dagui', evoLv: EVO_LV }, dagui: { name: '大龟', color: 6 },
 };
-Object.keys(PETS).forEach((id) => { PETS[id].energy = (lv) => ringOf(id, lv); }); // 旧接口：main.js 还在读
-// 每只宠物这一级的本事（一行字；0.9.12 照 Fable 技能重做第七节第 15 条的底稿，等和 Cc 逐字定）
-function petDesc(id, lv) {
-  lv = lv || 1;
-  const k = skillKind(id), n = skillN(id, lv), e = PETS[id].energy(lv);
-  if (k === 'peck') return '啄：啄掉这一排最近的 ' + n + ' 格 · 消 ' + e + ' 排出一块';
-  if (k === 'gnaw') return '啃：啃掉手上的块 ' + n + ' 格 · 消 ' + e + ' 排出一块';
-  if (k === 'silk') return '吐丝：补 ' + n + ' 个空格 · 消 ' + e + ' 排出一块';
-  if (k === 'fire') return '火珠 · 消 ' + e + ' 排出一颗';
-  return '';
-}
-// 升一级多了什么（一句话；升级那一下、营地卡片上写）
+// 升到下一级变的是哪一样（段 1 附录 D 丁；给升级演示 R-087 和 T107 用）：'n' 打得多 / 'ring' 攒得快 / 'evo' 5 级长大 / 'ult' 10 级绝招；满级返回 ''
 function petGain(id, lv) {
-  const k = skillKind(id), out = [];
-  const n0 = skillN(id, lv), n1 = skillN(id, lv + 1), e0 = ringOf(id, lv), e1 = ringOf(id, lv + 1);
-  const verb = { peck: '啄', gnaw: '啃', silk: '补', fire: '火苗', turn: '转' }[k] || '';
-  if (n1 > n0) out.push(verb + ' ' + n0 + ' 格 → ' + n1 + ' 格');
-  if (e1 < e0) out.push('消 ' + e0 + ' 排 → ' + e1 + ' 排出一块');
-  return out.join('，');
+  const to = lv + 1;
+  if (to > ULT_LV) return '';
+  if (to === EVO_LV) return 'evo';
+  if (to === ULT_LV) return 'ult';
+  if (skillN(id, to) !== skillN(id, lv)) return 'n';
+  if (ringOf(id, to) !== ringOf(id, lv)) return 'ring';
+  return '';
 }
 // 这一关带谁最顺（段 1 附录 D 丁）：数盘上的金属 → 铜雀，数土堆 → 爆竹鼠，都没有 → 空
 function bestPetFor(st) {
@@ -129,7 +119,7 @@ function energyMax(g, p) {
 // 这一关一共几波：开局盘上那一波 + 后面一波一波冒出来的（关卡卡片、宠物园、关里顶上的圆点都用这一个数）
 const waveTotalOf = (st) => 1 + ((st && st.waves) || []).length;
 
-// opts: { stage, team:[{id,lv}], seed, tutorial }
+// opts: { stage, team:[{id,lv}], seed, tutorial, crumb }（crumb: false = 不给 10 级鼠的小土块，main.js 画面接上以前用）
 function createPetGame(opts) {
   const o = opts || {};
   const st = o.stage;
@@ -543,7 +533,7 @@ function createPetGame(opts) {
       g.hand[plan.hand] = plan.to;
       if (p.kind === 'turn') ev.turn = { hand: plan.hand, to: plan.to, rot: plan.rot, flip: plan.flip, shape: plan.shape };
       // 10 级绝招：啃下来的那一格变成一块 1 格小土块，放在宠物格旁边的小位子（最多存 1 块，有了就不留）
-      if (p.kind === 'gnaw' && (p.lv || 1) >= ULT_LV && !g.crumb) { g.crumb = { id: 'crumb', cat: 0, cells: [[0, 0]], h: 1, w: 1, crumb: true }; ev.crumb = true; }
+      if (p.kind === 'gnaw' && (p.lv || 1) >= ULT_LV && !g.crumb && o.crumb !== false) { g.crumb = { id: 'crumb', cat: 0, cells: [[0, 0]], h: 1, w: 1, crumb: true }; ev.crumb = true; }
       if (!g.hand.slice(0, 3).some(Boolean)) { const keep = g.hand[3]; g.deal(); g.hand[3] = keep; } // 啃光了最后一块：发新的
     } else if (p.kind === 'fire') {
       // 小狮子：烫走小墨怪 / 墨苔怪（不留墨）/ 粘墨怪，算你抓的；头目掉 1 心、算挨了一下；6 级起头目身上留火苗（n − 1 个），每放一块再烧 1 心，头目一跳就灭
@@ -925,4 +915,4 @@ function useSkillIfGood(g) {
   if (s.v >= 100 || !fits) return !!g.useSkill(s);
   return false;
 }
-module.exports = { peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, petDesc, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };

@@ -1612,7 +1612,7 @@ function drawInfo() {
   if (!info || mode !== 'play' || clock - info.t > 3.5) { if (info && clock - info.t > 3.5) info = null; return; }
   let pic = null, name = '', line = '', pets = [];
   const k = info.k;
-  if (info.pet) { const pt = g.team.find((x) => x.id === info.pet) || { lv: 1 }; name = PG.PETS[info.pet].name + ' Lv' + pt.lv; line = PG.petDesc(info.pet, pt.lv); pic = () => petIcon(info.pet, 0, 0, 40, 0, 0); }
+  if (info.pet) { const pt = g.team.find((x) => x.id === info.pet) || { lv: 1 }; name = PG.PETS[info.pet].name + ' Lv' + pt.lv; line = ''; pic = () => petIcon(info.pet, 0, 0, 40, 0, 0); }
   else if (k !== undefined && g.board[k] === CELL.MON && g.mon[k]) { const m = g.mon[k], mi = MON_INFO[m.t] || MON_INFO.ink; name = mi[0]; line = mi[1]; pets = []; pic = () => drawMon(m, -1, 0, 0, 18);
     if (g.stage.crawl && (m.t === 'ink' || m.t === 'moss')) { pets = []; pic = () => introPic(m.t === 'moss' ? 'moss' : 'crawl', 70, 2, 150); }
     if (m.t === 'sticky') { pets = []; pic = () => introPic('sticky', 70, 2, 150); } } // 0.9.20 无字：气泡里放它干什么的小动画（会爬 / 爬过留墨）；第一章宠物不抓怪，不画「克它」
@@ -2389,7 +2389,9 @@ const EXP_NEED = [0, 4, 6, 6, 8, 10, 12, 13, 15, 16, 999];
 // 重打拿丹：同一关一天一次（Cc 11-27 第 12 件定 A）。地图上今天还能拿丹的关亮一颗小丹
 const dayKey = () => { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
 const replayDanToday = (i) => i < save.petStage && !(save.danDay && save.danDay[i] === dayKey());
-const baseOf = (id) => (id === 'jinchique' ? 'tongque' : id);
+const baseOf = (id) => PG.baseId(id); // 段 1：五只宠物长大版都映回小时候版
+// 段 1：PG.petGain 改成返回「这一级变的是哪一样」，屏幕上先借一个词（正式画法段 5、6）
+const GAIN_WORD = { n: '打得多', ring: '攒得快', evo: '长大', ult: '学绝招' };
 const DAN_EXP = 1;
 const LV_CAP = 10;
 function petNodeLabel(i) { return String(i + 1); }
@@ -2474,7 +2476,7 @@ function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好�
   // 升级后的第一关（只算第一次打）：开局能量只差一格就满，马上用到新本事（Fable 技能重做第六节第 6 件，Kira 先定 A，待 Cc 看）
   const fresh = team[0] && save.freshPet && save.freshPet[baseOf(team[0].id)] && i >= save.petStage ? baseOf(team[0].id) : null;
   if (fresh) st1.fastCharge = true; // 0.9.14 debug：点「开打」才算用掉（原来一摆出关卡卡片就用掉，在卡片上换一只再换回来、或者退回地图，这份好处就没了）
-  g = PG.createPetGame({ stage: st1, team, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone });
+  g = PG.createPetGame({ stage: st1, team, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone, crumb: false }); // 段 1：10 级鼠的小土块还没有地方画、拖不了（段 4、5），画面接上以前游戏里先不给，免得「没输也动不了」
   g.onlyPet = st0.only ? team[0].id : null;
   g._fresh = fresh;
   chapView = null; chapSel = null;
@@ -2591,7 +2593,7 @@ function drawPetBar() {
       ctx.fillStyle = COL.ink; rr(p.x - bw / 2 + k * (seg + 3) - 1, by - 1, seg + 2, 9, 3); ctx.fill();
       ctx.fillStyle = k < Math.min(max, pt.energy) ? C.blockColors[d.color][1] : COL.woodDark; rr(p.x - bw / 2 + k * (seg + 3), by, seg, 7, 3); ctx.fill();
     }
-    buttons.push({ id: 'pet' + n, x: p.x - 28, y: p.y - 28, w: 56, h: 56, fn: () => { petFx.caption = { text: d.name + ' ' + pt.lv + ' 级：' + PG.petDesc(pt.id, pt.lv), t: clock }; } });
+    buttons.push({ id: 'pet' + n, x: p.x - 28, y: p.y - 28, w: 56, h: 56, fn: () => { petFx.caption = { text: d.name + ' ' + pt.lv + ' 级', t: clock }; } }); // 段 1：petDesc 拆了（游戏不用字），只说名字和等级
   });
 }
 // 进化关：正中间铺一层宠物颜色、一亮一暗；亮了的格子金边
@@ -3064,7 +3066,7 @@ function drawPetOver() {
   if (r.evolved) {
     text(PG.PETS[r.evolved.from].name + ' 进化了！', W / 2, y, 26, COL.brassLight);
     petIcon(r.evolved.to, W / 2, y + 74, 80, save.pets[r.evolved.to].lv, Math.sin(clock * 3) * 0.08);
-    text(PG.PETS[r.evolved.to].name + '：' + PG.petDesc(r.evolved.to, save.pets[r.evolved.to].lv), W / 2, y + 140, 16, COL.text, 'center', 'normal');
+    text(PG.PETS[r.evolved.to].name + ' ' + save.pets[r.evolved.to].lv + ' 级', W / 2, y + 140, 16, COL.text, 'center', 'normal');
     y += 160;
   } else if (r.won) {
     text(petLevelName() + ' 完成！', W / 2, y, 26, COL.brassLight);
@@ -3085,7 +3087,6 @@ function drawPetOver() {
     if (r.gift) {
       petIcon(r.gift, W / 2, y + 30, 64, 1, Math.sin(clock * 3) * 0.08);
       text('新宠物：' + PG.PETS[r.gift].name, W / 2, y + 80, 18, COL.jade);
-      text(PG.petDesc(r.gift, 1).split(' · ')[0], W / 2, y + 104, 12, COL.dim, 'center', 'normal'); // 新宠物：一行小字（Cc：「技能说明变小一点」）
       y += 122;
     }
   } else {
@@ -3149,7 +3150,7 @@ function drawPetOver() {
   } else {
     button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => newPetLevel(petIdx) });
     const lost2 = save.loss && save.loss[petIdx] >= 2;
-    const lendLv = g.onlyPet && lost2 ? Math.max(3, (g.team[0] ? g.team[0].lv : 1) + 2) : 0;
+    const lendLv = g.onlyPet && lost2 ? Math.min(LV_CAP, Math.max(3, (g.team[0] ? g.team[0].lv : 1) + 2)) : 0; // 段 1 修：原来借来的能到 11、12 级（满级 10）
     // 0.9.12：不点名的关连输两次，带的不是对口的 → 「这关的怪不怕 X。请 Y 来？」借一只 3 级的（Cc 11-25 定三层网的第一层，看得见、在教她带谁）
     const rank = !g.onlyPet && lost2 && g.team[0] ? PG.bestPetFor(g.stage) : [];
     const top = rank.find((x) => ownedOf(x.id)), mine = rank.find((x) => baseOf(x.id) === baseOf(g.team[0].id)); // 自己有的里面最对口的那只，比带着的这只更对口才请
@@ -3267,7 +3268,7 @@ function drawCamp() {
       button('feedG', bx + 14, yb, half, 42, '', { kind: 'sub', hot: ok, fn: () => feedFx(id) });
       danOrb(bx + 14 + half * 0.32, yb + 21, 9); text('×' + cost, bx + 14 + half * 0.66, yb + 22, 16, ok ? COL.brassLight : COL.dim);
     }
-    if (!canEvolve) text(PG.petGain(id, rec.lv) || '', bx + 22 + half + half / 2, yb + 21, 11, COL.dim, 'center', 'normal'); // 气泡右半：下一级多什么（一行小字）
+    if (!canEvolve) text(GAIN_WORD[PG.petGain(id, rec.lv)] || '', bx + 22 + half + half / 2, yb + 21, 11, COL.dim, 'center', 'normal'); // 气泡右半：下一级多什么（一行小字）
   }
   // 喂丹：丹从右上角飞到宠物身上
   danOrbs = danOrbs.filter((o) => {
@@ -3286,7 +3287,7 @@ function drawCamp() {
       for (let n = 0; n < 8; n++) { const ang = (n / 8) * Math.PI * 2 + ua, rad = sz * (0.3 + ua * 0.8); starShape(p.x + Math.cos(ang) * rad, p.y + Math.sin(ang) * rad, 5 * Math.max(0, 1 - ua / 1.5), COL.brassLight); }
       const flip = Math.min(1, ua / 0.35), txt = flip < 0.5 ? 'Lv' + u.from : 'Lv' + u.to;
       ctx.save(); ctx.translate(p.x, p.y - sz * 0.75 - ua * 10); ctx.scale(1, Math.abs(Math.cos(flip * Math.PI))); if (wordsOff()) lvPips(0, 0, flip < 0.5 ? u.from : u.to, 60); else text(txt, 0, 0, 22, COL.brassLight); ctx.restore(); // 0.9.20：升级时小金点多一颗（翻一下）
-      if (ua > 0.4) { ctx.globalAlpha = Math.min(1, (2 - ua) * 2); text(PG.petGain(id, u.from) || '', p.x, p.y + sz * 0.75, 13, COL.text); ctx.globalAlpha = 1; }
+      if (ua > 0.4) { ctx.globalAlpha = Math.min(1, (2 - ua) * 2); text(GAIN_WORD[PG.petGain(id, u.from)] || '', p.x, p.y + sz * 0.75, 13, COL.text); ctx.globalAlpha = 1; }
     }
   });
   // 喂丹引导（0.9.16，Cc：「你这没有任何提示让我喂它」；Sylvie 打到第 8 关铜雀还是 1 级）：第一次攒够丹，一只手指先点宠物、气泡出来后再点丹的按钮；喂过一次就不再出现
@@ -3350,7 +3351,7 @@ function levelUpPet(id) {
   petFx.pop[id] = clock;
   save.lastFed = id; // 掉丹「向难关凑」看的是你在喂哪只
   if (rec.lv > lv0) { save.freshPet = save.freshPet || {}; save.freshPet[baseOf(id)] = true; }
-  const d = PG.PETS[id], gain = rec.lv > lv0 ? PG.petGain(id, lv0) : '';
+  const d = PG.PETS[id], gain = rec.lv > lv0 ? GAIN_WORD[PG.petGain(id, lv0)] || '' : '';
   petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (gain ? gain : ''), t: clock };
   // 0.9.17 进化关砍了（Cc 11-27 第 9 件定 A 全砍）：喂到 5 级直接进化，演一段（金光、换成进化后的样子）
   if (d.evo && rec.lv >= d.evoLv) evolvePet(id, true);
@@ -3382,7 +3383,7 @@ function feedPet(id) {
   if (!up) petMsg = { text: PG.PETS[id].name + ' 经验 +' + DAN_EXP + '（' + rec.exp + ' / ' + EXP_NEED[rec.lv] + '）', t: clock };
   if (up) {
     const d = PG.PETS[id];
-    petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (d.evo && rec.lv >= d.evoLv ? '可以进化了！' : '现在能' + PG.petDesc(id, rec.lv)), t: clock };
+    petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (d.evo && rec.lv >= d.evoLv ? '可以进化了！' : ''), t: clock };
     P.sound('lit', 0.7);
   }
   persist();
@@ -3432,6 +3433,8 @@ function fixSave() {
   if (save.freshPet !== undefined && !obj(save.freshPet)) delete save.freshPet;
   ['dan', 'gourd', 'coins', 'plays'].forEach((k) => { save[k] = int(save[k], 0, 1e9); });
   save.petStage = int(save.petStage, 0, PLV.length);
+  // 段 1（附录 G）：老存档里 1 级就叫「火麒麟」的 qilin，现在是小狮子长大的样子；5 级以下的改回小狮子 shizi，等级照旧
+  if (obj(save.pets) && obj(save.pets.qilin) && !save.pets.shizi && int(save.pets.qilin.lv, 1, LV_CAP) < PG.EVO_LV) { save.pets.shizi = save.pets.qilin; delete save.pets.qilin; if (Array.isArray(save.petOrder)) save.petOrder = save.petOrder.map((x) => (x === 'qilin' ? 'shizi' : x)); if (save.activePet === 'qilin') save.activePet = 'shizi'; }
   // 宠物：只留认得的；等级、经验落在范围里（经验的算法 0.9.8 改过：现在是「这一级喂了几颗丹」，老存档的数可能比一级要的还多）
   Object.keys(save.pets).forEach((id) => {
     const r = save.pets[id];

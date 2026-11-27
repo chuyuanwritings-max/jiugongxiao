@@ -288,4 +288,6 @@ function sting(kind) {
   bgmBus = saveBus;
   return len;
 }
-module.exports = { init, play, stop, outro, pause, resume, setMuted, sting, SONGS, playing: () => curC };
+// 0.9.22 现在在这一拍的哪里（0 = 正在拍点上，越接近 1 越靠近下一拍）；没在放就是 null。冲锋关画面跟着鼓点闪用
+const beat = () => (timer && ctx && q > 0 ? ((((now() - t0) / q) % 1) + 1) % 1 : null);
+module.exports = { init, play, stop, outro, pause, resume, setMuted, sting, SONGS, playing: () => curC, beat };

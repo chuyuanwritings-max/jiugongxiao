@@ -226,6 +226,7 @@ const bgm = {
   outro: (c) => { try { if (musicReady()) music.outro(c); } catch (e) { /* */ } },
   sting: (k) => { try { return musicReady() ? music.sting(k) : 0; } catch (e) { return 0; } },
   playing: () => music.playing(),
+  beat: () => { try { return music.beat(); } catch (e) { return null; } },
 };
 
 // 存档：微信用 wx.setStorageSync，浏览器用 localStorage

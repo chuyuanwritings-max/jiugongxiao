@@ -9,7 +9,7 @@ const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
 const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
-const VERSION = '0.9.21'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.22'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -961,7 +961,8 @@ function juice(ev) {
   if (g && g.pets) {
     const mons = (ev.collected || []).filter((c) => c.what === 'monster').length;
     for (let n = 0; n < Math.min(4, mons); n++) setTimeout(() => P.sound('pop', 0.55), 260 + n * 110); // 墨怪吸进葫芦「啵」
-    const lv = Math.max(0, (ev.streak || 1) - 1);
+    // 0.9.22 冲锋关（Cc 11-27：「不是一消、二消、三消、四消、五消之后，连消最后的那个音乐是很爽的吗？你现在这个怎么感觉都一样啊？」）：原来一块就消两三处，两块以后就一直顶在最高那声。改成一块升一级，第 6 块扫上去，再从头爬
+    const lv = g.rush && ev.rushStep !== undefined ? ev.rushStep : Math.max(0, (ev.streak || 1) - 1);
     if (ev.beat >= 2) P.sound(lv >= 5 ? 'sweep' : 'clear' + lv, 0.75);
     if (ev.beat >= 2 && ((ev.units && ev.units.length >= 5) || ev.win)) setTimeout(() => P.sound('dong', 0.8), 60);
   } else {
@@ -1496,7 +1497,7 @@ function drawTray() {
     // 0.9.20「危险」的比划（Cc 定 A 炸毛盯着）：有墨怪下一手就要走（冒脚印了），宠物一圈尖刺炸开、抖一下
     if (g.mon && g.mon.some((m) => m && m.step !== undefined && m.step !== null)) { const rr0 = Math.min(w3, h3) * 0.36; ctx.fillStyle = 'rgba(226,85,59,' + (0.55 + Math.sin(clock * 14) * 0.3) + ')'; for (let n = 0; n < 10; n++) { const an = (n / 10) * Math.PI * 2 + Math.sin(clock * 20) * 0.05; const bx0 = c3.x + Math.cos(an) * rr0, by0 = c3.y - 10 + Math.sin(an) * rr0; ctx.beginPath(); ctx.moveTo(bx0 + Math.cos(an + 0.25) * 2, by0 + Math.sin(an + 0.25) * 2); ctx.lineTo(bx0 + Math.cos(an) * 9, by0 + Math.sin(an) * 9); ctx.lineTo(bx0 + Math.cos(an - 0.25) * 2, by0 + Math.sin(an - 0.25) * 2); ctx.fill(); } }
     const bw = w3 - 18, seg = (bw - (max - 1) * 2) / max, by = c3.y + h3 / 2 - 14;
-    for (let k = 0; k < max; k++) { ctx.fillStyle = COL.ink; rr(c3.x - bw / 2 + k * (seg + 2) - 1, by - 1, seg + 2, 8, 3); ctx.fill(); ctx.fillStyle = k < Math.min(max, pt.energy) ? col[1] : COL.woodDark; rr(c3.x - bw / 2 + k * (seg + 2), by, seg, 6, 3); ctx.fill(); }
+    for (let k = 0; k < max; k++) { ctx.fillStyle = COL.ink; rr(c3.x - bw / 2 + k * (seg + 2) - 1, by - 1, seg + 2, 8, 3); ctx.fill(); ctx.fillStyle = g.rush || k < Math.min(max, pt.energy) ? col[1] : COL.woodDark; rr(c3.x - bw / 2 + k * (seg + 2), by, seg, 6, 3); ctx.fill(); }
     if (!g.hand[3]) buttons.push({ id: 'petSlot', x: c3.x - w3 / 2, y: c3.y - h3 / 2, w: w3, h: h3, fn: () => showInfo({ pet: pt.id }) });
   }
   for (let i = 0; i < 4; i++) {
@@ -2322,11 +2323,14 @@ const INTRO = {
 };
 // 关卡卡片：第几关、难不难、目标、谁出战（被点名换人时演一下换人），点「开打」进关
 // 0.9.21 冲锋关进关前（关牌、选宠物）：整个画面跟着鼓点一下一下抖、发热（Cc 11-27：「效果能不能做的不一样一点？让整个界面都在抖动」）
+function rushPhase() { const b = P.bgm.beat ? P.bgm.beat() : null; return b === null ? (clock * 2.4) % 1 : b; } // 跟着音乐的拍子；没音乐就照冲锋关的速度自己打拍
 function rushCardBeat() {
   if (mode !== 'start' || !startCard || !PLV[startCard.i] || !PLV[startCard.i].rush) return null;
-  const ph = (clock * 2.4) % 1, pulse = Math.pow(1 - ph, 3), amp = 4.5 * pulse;
+  const ph = rushPhase(), pulse = Math.pow(1 - ph, 3), amp = 4.5 * pulse;
   return { x: Math.sin(clock * 61) * amp, y: Math.cos(clock * 53) * amp * 0.7, pulse };
 }
+// 0.9.22 冲锋关打的时候：整个画面跟着同一个鼓点缓缓地一闪一闪（Cc 11-27：「整个屏幕也在缓缓地跟着节奏一起闪……跟外面的那个闪动节奏是一样的，跟着音乐走」）
+function rushPlayPulse() { if (mode !== 'play' || !g || !g.rush || g.over) return 0; return Math.pow(1 - rushPhase(), 2.2); }
 function drawStartCard() {
   const c = startCard, st = PLV[c.i], age = clock - c.t, ease = Math.min(1, age * 4);
   ctx.fillStyle = COL.shade + (0.78 * ease) + ')'; ctx.fillRect(0, 0, W, H);
@@ -3011,13 +3015,7 @@ function drawStuckHint() {
 }
 function drawPetBoard() {
   drawStuckHint();
-  // 冲锋关：手停了 2 秒，能塞的那个空（手上第一块有家的那块）轻轻闪一下
-  if (g.rush && !g.over && !drag && P.now() - Math.max(lastTouchMs, g.startMs || 0) > 2000) {
-    const key = g.board.join('') + g.hand.map((q) => (q ? q.id : '-')).join(',');
-    if (!rushHintCache || rushHintCache.key !== key) { const i = [0, 1, 2].find((j) => g.hand[j] && g.rushHome(j)); rushHintCache = { key, i, h: i === undefined ? null : g.rushHome(i) }; }
-    const hh = rushHintCache;
-    if (hh.h) { ctx.globalAlpha = 0.25 + Math.sin(clock * 5) * 0.2; g.hand[hh.i].cells.forEach(([dr, dc]) => block(cellX(hh.h.c + dc), cellY(hh.h.r + dr), L.cell, 1, handColor(hh.i))); ctx.globalAlpha = 1; }
-  }
+  // 0.9.22 冲锋关不再提示（Cc 11-27：「提示老是闪出来很讨厌，时不时就闪一下」——原来手停 2 秒就闪一下能塞的空，冲锋关本来就一眼看得出）
   if (g.bigHp > 0) drawBossHints();
   if (g.mon) drawMonHints();
   // 能量只差 1 格时，它下一次要下手的地方淡淡亮起它的颜色：可以顺着它来，也可以不管
@@ -3112,7 +3110,8 @@ function juicePets(ev, colorsBefore) {
   (ev.blast || []).forEach((k) => { const x = cellX(k % 9) + L.cell / 2, y = cellY(Math.floor(k / 9)) + L.cell / 2; for (let n = 0; n < 16; n++) { const a2 = Math.random() * Math.PI * 2, v = 100 + Math.random() * 160; fx.push({ kind: 'shard', x, y, vx: Math.cos(a2) * v, vy: Math.sin(a2) * v - 140, t: clock, life: 0.7, s: 3 + Math.random() * 5, col: Math.random() < 0.5 ? '#c08a4a' : '#ffb04a' }); } rings.push({ t: clock, big: false, at: { x, y } }); flash = Math.max(flash, 0.2); shake = Math.max(shake, 7); P.sound('bolt', 0.8); P.sound('thump', 0.5); haptic('heavy'); }); // 小爆竹炸塌土堆
   (ev.mudSpit || []).forEach((e, j) => { petInk.push({ from: { x: cellX(e.from % 9) + L.cell / 2, y: cellY(Math.floor(e.from / 9)) + L.cell / 2 }, toSlot: e.slot, t: clock + 0.2 + j * 0.1, mud: true }); timeline.push({ t: clock + 0.55 + j * 0.1, fn: () => { P.sound('crunch', 0.5); haptic('light'); handSeen[e.slot] = null; } }); });
   (ev.mudGlare || []).forEach(() => timeline.push({ t: clock + 0.2, fn: () => P.sound('skitter', 0.35) }));
-  if (ev.rushBurst) { ev.rushBurst.forEach((k) => clearing.push({ k, t: clock + 0.06 + ((k % 9) + Math.floor(k / 9)) * 0.008 })); timeline.push({ t: clock + 0.08, fn: () => { P.sound('clear4', 0.7); flash = Math.max(flash, 0.25); shake = Math.max(shake, 8); haptic('heavy'); } }); } // 0.9.21 三块塞完：剩下的铜砖整盘炸开
+  if (ev.rushFix && !ev.rushBoard) playRushFix(ev.rushFix, clock + 0.25); // 0.9.22 每放一块，宠物都从右下角飞出去修一下剩下的
+  if (ev.rushBurst) { ev.rushBurst.forEach((k) => clearing.push({ k, t: clock + 0.06 + ((k % 9) + Math.floor(k / 9)) * 0.008 })); timeline.push({ t: clock + 0.08, fn: () => { P.sound('dong', 0.75); flash = Math.max(flash, 0.25); shake = Math.max(shake, 8); haptic('heavy'); } }); } // 0.9.21 三块塞完：剩下的铜砖整盘炸开
   if (ev.rushBoard) { for (let k = 0; k < 81; k++) if (g.board[k] === 1 || g.board[k] === 8) { colorAt[k] = g.color[k]; cellIn[k] = clock + 0.45 + ((k % 9) + Math.floor(k / 9)) * 0.018; } timeline.push({ t: clock + 0.45, fn: () => { P.sound('deal', 0.6); haptic('light'); } }); playRushFix(ev.rushFix, clock + 0.55); } // 冲锋关整盘换新：从左上角一路铺过去，宠物马上飞上去修
   (ev.crawlClear || []).forEach((cc) => timeline.push({ t: clock + 0.45, fn: () => { const monK = new Set(cc.collected.filter((c) => c.what === 'monster').map((c) => c.k)); cc.cells.forEach((k) => clearing.push({ k, t: clock, mon: monK.has(k) })); P.sound('clear' + Math.min(4, Math.max(0, (g.streak || 1) - 1)), 0.7); if (monK.size) setTimeout(() => P.sound('pop', 0.55), 250); shake = Math.max(shake, 5); flash = Math.max(flash, 0.15); haptic('medium'); } })); // 墨怪爬进去凑满：当场消
   if (ev.bossJumpPlan !== undefined) timeline.push({ t: clock + 0.15, fn: () => { P.sound('skitter', 0.5); haptic('medium'); } });
@@ -3197,12 +3196,12 @@ function playRushFix(fix, t0) {
   if (fix.kind === 'peck') {
     const k = fix.k, pt = { x: cellX(k % 9) + L.cell / 2, y: cellY(Math.floor(k / 9)) + L.cell / 2 };
     rushPatch = { k, until: hitT };
-    petRuns.push({ id: fix.pet, from, pts: [pt], t0, jump: 0.26, per: 0.12, ret: 0.2, style: 'fly', end: t0 + 0.58 });
+    petRuns.push({ id: fix.pet, from, pts: [pt], t0, jump: 0.26, per: 0.12, ret: 0.2, style: 'fly', end: t0 + 0.58, keep: true });
     timeline.push({ t: hitT, fn: () => { shards(pt.x, pt.y, ['#6e5833', '#9C7F42', '#4a3b26']); P.sound('tap', 0.65); haptic('light'); } });
   } else {
     const sc = slotCenter(fix.slot);
     rushMud = { slot: fix.slot, orig: fix.orig, piece: fix.piece, until: hitT };
-    petRuns.push({ id: fix.pet, from, pts: [sc], t0, jump: 0.26, per: 0.12, ret: 0.2, style: 'gnaw', end: t0 + 0.58 });
+    petRuns.push({ id: fix.pet, from, pts: [sc], t0, jump: 0.26, per: 0.12, ret: 0.2, style: 'gnaw', end: t0 + 0.58, keep: true });
     timeline.push({ t: hitT, fn: () => { shards(sc.x, sc.y, ['#7a5228', '#c08a4a']); P.sound('crunch', 0.6); haptic('light'); } });
   }
 }
@@ -3304,7 +3303,7 @@ function drawPetRuns() {
     }
   });
 }
-const petOut = (id) => petRuns.some((r) => r.id === id && r.style !== 'spit' && clock >= r.t0 && clock < r.end);
+const petOut = (id) => petRuns.some((r) => r.id === id && r.style !== 'spit' && !r.keep && clock >= r.t0 && clock < r.end); // keep：冲锋关飞出去的是分身，右下角的宠物留在原地
 
 // 局里画面：被宠物打掉、还没轮到它碎的格子先照原样画着；竖射的箭；宠物连到棋盘的光（借用守城的那一套）
 const _drawPetBoard = drawPetBoard;
@@ -4378,6 +4377,7 @@ function frameBody() {
     drawTutorial();
     ctx.restore();
     if (flash > 0) { ctx.fillStyle = 'rgba(255,244,214,' + flash + ')'; ctx.fillRect(0, 0, W, H); }
+    { const rp = rushPlayPulse(); if (rp > 0.01) { ctx.fillStyle = 'rgba(255,110,50,' + (0.03 + rp * 0.09) + ')'; ctx.fillRect(0, 0, W, H); ctx.strokeStyle = 'rgba(255,190,90,' + (rp * 0.55) + ')'; ctx.lineWidth = 6 + rp * 6; ctx.strokeRect(L.bx - 6, L.by - 6, L.board + 12, L.board + 12); } }
     if (mode === 'over' || mode === 'share' || (mode === 'ad' && result)) drawOver();
     if (mode === 'share') { buttons = buttons.filter((b) => b.id === 'map'); drawShareCard(); }
     if (mode === 'intro') drawIntro();

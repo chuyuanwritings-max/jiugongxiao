@@ -317,9 +317,28 @@ function createPetGame(opts) {
   g.rushGap = [null, null, null]; // 每块对应的空：{ r, c }
   const gapCells = (p, at) => p.cells.map(([dr, dc]) => (at.r + dr) * 9 + at.c + dc);
   const unitsOf = (cells) => { const s2 = new Set(); cells.forEach((k) => { const r = Math.floor(k / 9), c = k % 9; s2.add(r); s2.add(9 + c); s2.add(18 + core.boxOf(r, c)); }); return s2; };
-  // 0.9.21 冲锋关垫满的格子用「铜砖」（盘面值 8，Cc 11-27：「专门换另外一种填满了也不会消的特殊色块来表示……这样就不会打破我们的九宫消规则了」）：
-  // 铜砖算满，但一整排全是铜砖不消；玩家塞进去那块所在的排 / 列 / 大格才消（连铜砖一起炸）
-  function fillAll(b, keep) { const added = []; for (let k = 0; k < 81; k++) if (b[k] === 0 && !keep.has(k)) { b[k] = 8; g.color[k] = 0; added.push(k); } return added; }
+  // 冲锋关的盘：平常的彩色方块铺满，只在「本来该消、却没消」的排 / 列 / 大格里放一块「铜砖」（盘面值 8）
+  // 0.9.22 Cc 11-27：「是指能消除而没消除的部分用特殊块儿，而不是全图都用特殊块儿。全图都用特殊块儿的话，爽感不太好」
+  // 规矩：只有你这一块塞进去的那几排 / 列 / 大格会消（连里面的铜砖一起炸）；别的满着的排，里面一定有铜砖，所以一看就知道它不会自己消
+  function fillAll(b, keep) { const added = []; for (let k = 0; k < 81; k++) if (b[k] === 0 && !keep.has(k)) { b[k] = 1; g.color[k] = g.pickColor(); added.push(k); } placeBricks(new Set(added)); return added; }
+  function placeBricks(prefer) {
+    const b = g.board;
+    for (let t = 0; t < 30; t++) {
+      const open = UNITS.map((u, ui) => ui).filter((ui) => UNITS[ui].every((k) => b[k]) && !UNITS[ui].some((k) => b[k] === 8));
+      if (!open.length) return;
+      const openSet = new Set(open);
+      let best = -1, bs = -1;
+      for (let k = 0; k < 81; k++) {
+        if (b[k] !== 1) continue;
+        const r = Math.floor(k / 9), c = k % 9, hits = [r, 9 + c, 18 + core.boxOf(r, c)].filter((u) => openSet.has(u)).length;
+        if (!hits) continue;
+        const sc = hits * 10 + (prefer && prefer.has(k) ? 4 : 0) + g.rand() * 3;
+        if (sc > bs) { bs = sc; best = k; }
+      }
+      if (best < 0) return;
+      b[best] = 8; g.color[best] = 0;
+    }
+  }
   // 给第 i 块挖一个空：不碰别的块的空所在的行、列、大格
   function carve(b, i) {
     const p = g.hand[i]; if (!p) return false;
@@ -338,7 +357,7 @@ function createPetGame(opts) {
     for (let t = 0; t < 60; t++) {
       for (let i = 0; i < 3; i++) { g.hand[i] = core.PIECES[RUSH_POOL[Math.floor(g.rand() * RUSH_POOL.length)]]; g.handColor[i] = g.pickColor(); g.handGem[i] = null; }
       g.rushGap = [null, null, null];
-      for (let k = 0; k < 81; k++) { b[k] = 8; g.color[k] = 0; }
+      for (let k = 0; k < 81; k++) { b[k] = 1; g.color[k] = g.pickColor(); }
       if ([0, 1, 2].every((i) => carve(b, i))) break;
     }
     ensureGaps([0, 1, 2]);
@@ -350,18 +369,19 @@ function createPetGame(opts) {
   g.rushOK = (i, r, c) => { const p = g.hand[i]; if (!p || !core.canPlace(g.board, p, r, c)) return false; const b2 = g.board.slice(), placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc); placed.forEach((k) => { b2[k] = 1; }); return placed.some((k) => UNITS.some((u) => u.includes(k) && u.every((x) => b2[x]))); };
   // 万一哪条路把手上的块换了（看广告换一批之类）：重挖到每块都有一放就消的空
   g.rushStuck = () => st.rush && !g.over && [0, 1, 2].some((i) => g.hand[i] && !core.placements(g.board, g.hand[i]).some(([r, c]) => g.rushOK(i, r, c)));
-  g.rushRepair = () => { for (let k = 0; k < 81; k++) if (g.board[k] === 0) g.board[k] = 8; g.rushGap = [null, null, null]; ensureGaps([0, 1, 2]); };
+  g.rushRepair = () => { for (let k = 0; k < 81; k++) if (g.board[k] === 0) { g.board[k] = 1; g.color[k] = g.pickColor(); } g.rushGap = [null, null, null]; ensureGaps([0, 1, 2]); };
   const rushFits = (i) => { const at = g.rushGap[i]; return !!(at && g.hand[i] && core.canPlace(g.board, g.hand[i], at.r, at.c)); };
   function ensureGaps(slots) {
     const b = g.board;
     slots = slots.filter((i) => g.hand[i]);
     slots.forEach((i) => { if (!rushFits(i)) { g.rushGap[i] = null; carve(b, i); } });
     for (let t = 0; t < 80 && !slots.every(rushFits); t++) {
-      slots.forEach((i) => { const at = g.rushGap[i]; if (at && g.hand[i]) gapCells(g.hand[i], at).forEach((k) => { if (b[k] === 0) b[k] = 8; }); g.rushGap[i] = null; });
+      slots.forEach((i) => { const at = g.rushGap[i]; if (at && g.hand[i]) gapCells(g.hand[i], at).forEach((k) => { if (b[k] === 0) { b[k] = 1; g.color[k] = g.pickColor(); } }); g.rushGap[i] = null; });
       const order = slots.slice().sort(() => g.rand() - 0.5);
       if (t >= 30) { const small = RUSH_POOL.filter((id) => core.PIECES[id].cells.length <= (t >= 55 ? 2 : 3)); const j = order[Math.floor(g.rand() * order.length)]; g.hand[j] = core.PIECES[small[Math.floor(g.rand() * small.length)]]; }
       order.forEach((i) => carve(b, i));
     }
+    placeBricks(null);
   }
   // 0.9.21 宠物自动出击（Cc 11-27：「换新棋盘宠物立马上去修，然后我就放放放」）：新盘面「看上去差一点」，出战宠物飞上去修好。
   // 规则上盘面本来就是好的（只是画面上先多画一格），所以玩家不用等宠物、随时能放；机器人也不受影响
@@ -383,6 +403,7 @@ function createPetGame(opts) {
     const keep = new Set(); left.forEach((i) => { if (g.rushGap[i]) gapCells(g.hand[i], g.rushGap[i]).forEach((k) => keep.add(k)); });
     ev.refill = fillAll(g.board, keep);
     ensureGaps(left);
+    ev.rushFix = rushFixPlan(); // 0.9.22 每放一块，宠物都飞出去修一下剩下的（Cc：「宠物应该自动地从右下角不停地飞出去，要么啃地图，要么啃我手上」）
   }
   if (st.rush) {
     g.rush = true;
@@ -865,7 +886,8 @@ function createPetGame(opts) {
     }
     // 1. 照常消
     const units = [];
-    for (let u = 0; u < 27; u++) if (UNITS[u].every((k) => b[k]) && (!st.rush || UNITS[u].some((k) => b[k] === 1))) units.push(u); // 冲锋关：全是铜砖的排不消
+    const placedSet = new Set(placed);
+    for (let u = 0; u < 27; u++) if (UNITS[u].every((k) => b[k]) && (!st.rush || UNITS[u].some((k) => placedSet.has(k)))) units.push(u); // 冲锋关：只消你这一块塞进去的那几排 / 列 / 大格
     const colorsBefore = g.color.slice();
     let clearedCells = [];
     if (units.length) {
@@ -912,8 +934,8 @@ function createPetGame(opts) {
     ev.beat = !units.length && !ev.petActs.length ? 1 : ev.petActs.length >= 2 || units.length >= 3 ? 5 : ev.petActs.length || units.length >= 2 ? 4 : units.some((u) => u >= 18) ? 3 : 2;
     syncAll();
     left = core.goalLeft(g);
-    if (done()) { ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
-    if (st.rush) { rushAfter(ev, i); return ev; } // 冲锋关：补满、重挖，三块塞完整盘换新
+    if (done()) { if (st.rush) ev.rushStep = 5; ev.win = true; g.over = true; g.won = true; g.reason = 'win'; return ev; }
+    if (st.rush) { g.rushChain = (g.rushChain || 0) + 1; ev.rushStep = (g.rushChain - 1) % 6; rushAfter(ev, i); return ev; } // 0.9.22 冲锋关的连消声：一块一级往上爬，第 6 块到顶扫上去，再从头来 // 冲锋关：补满、重挖，三块塞完整盘换新
     if (RULES.refill) { // 【实验】随用随补：用掉一块马上补一块（照样保证有活路）
       let d = g.diff(), q = null; const others = g.hand.slice(0, 3).filter(Boolean);
       for (let t = 0; t < 40; t++) { q = pickPiece(g.rand, d); if (core.solvable(g.board, others.concat(q))) break; d = Math.max(0, d - 0.08); q = null; }

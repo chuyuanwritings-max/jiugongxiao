@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '0499a067ab01';</script>
+<script>window.__BUILD = 'c2ed903287b2';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -4625,17 +4625,6 @@ function levelTeam(st, i, lendLv, lendId) {
 function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好、不放过场（开机时给老玩家垫底用）；lendLv：借一只几级的
   const st0 = PLV[i];
   if (!st0) return;
-  if (st0.evolveLevel) {
-    // 进化关：要那只宠物够等级
-    const id = st0.evolveLevel, rec = save.pets[id];
-    if (!rec || rec.lv < PG.PETS[id].evoLv) {
-      // 已经进化过了：这一关算过，直接去下一关
-      if (save.pets[PG.PETS[id].evo]) { save.petStage = Math.max(save.petStage, i + 1); persist(); return newPetLevel(i + 1); }
-      petMsg = { text: PG.PETS[id].name + ' 要 ' + PG.PETS[id].evoLv + ' 级才能进化：去宠物园喂丹', t: clock };
-      return openCamp();
-    }
-    return newEvolution(id, i);
-  }
   petIdx = i; stageIdx = -1;
   // 0.9.24 测试员跳到后面的关：前面关送的宠物先给上（Cc：「爽关里还是没有宠物啊」——跳关玩，第 2 关送的铜雀没拿到，冲锋关里就一只宠物都没有）
   if (save.tester) { for (let k = 0; k < i; k++) { const gf = PLV[k].gift; if (gf && !ownedOf(gf)) { save.pets[gf] = { lv: 3, exp: 0 }; save.petOrder.push(gf); if (!save.activePet) save.activePet = gf; } } persist(); }
@@ -4733,14 +4722,6 @@ function drawEvoAnim() {
   if (a > EVO_LEN + 0.6) { ctx.globalAlpha = 0.5 + Math.sin(clock * 4) * 0.3; text('▶', W / 2, H - 70, 26, COL.brassLight); ctx.globalAlpha = 1; } // 演完了：点哪儿都关
   if (a > 3.2) buttons.push({ id: 'evoTap', x: 0, y: 0, w: W, h: H, fn: null, label: '' }); // 整屏都能点（点的效果在 onTouchBody 里）；测试找得到
   if (a > EVO_LEN + 4) evoAnim = null; // 没人点也自己收
-}
-function newEvolution(id, levelIdx) {
-  petIdx = levelIdx === undefined ? PLV.findIndex((x) => x.evolveLevel === id) : levelIdx;
-  stageIdx = -1;
-  const st = PLV.evolveStage(id, PG.PETS[id].color);
-  g = PG.createPetGame({ stage: st, team: [{ id, lv: save.pets[id].lv }], seed: (P.now() ^ (save.plays * 2654435761)) >>> 0 });
-  startPet(st);
-  petFx.banner = { text: '用' + PG.COLOR_NAME[PG.PETS[id].color] + '方块，把正中间的大格一格格点亮', t: clock };
 }
 function startPet(st) {
   startCommon();
@@ -5331,7 +5312,7 @@ function drawPetOver() {
       const ay = gy - 4 - Math.abs(Math.sin(clock * 5)) * 5; ctx.fillStyle = COL.jade; ctx.beginPath(); ctx.moveTo(bx + 44, ay - 10); ctx.lineTo(bx + 52, ay); ctx.lineTo(bx + 36, ay); ctx.fill(); ctx.fillRect(bx + 41, ay, 6, 9);
     }
   } else {
-    button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => (g.stage.evolve ? newEvolution(g.stage.evolve.pet, petIdx) : newPetLevel(petIdx)) });
+    button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => newPetLevel(petIdx) });
     const lost2 = save.loss && save.loss[petIdx] >= 2;
     const lendLv = g.onlyPet && lost2 ? Math.max(3, (g.team[0] ? g.team[0].lv : 1) + 2) : 0;
     // 0.9.12：不点名的关连输两次，带的不是对口的 → 「这关的怪不怕 X。请 Y 来？」借一只 3 级的（Cc 11-25 定三层网的第一层，看得见、在教她带谁）
@@ -5445,7 +5426,7 @@ function drawCamp() {
     ctx.fillStyle = TH.jade; rr(bx + 14, by + 34, Math.max(6, (bw - 28) * Math.min(1, rec.exp / need)), 9, 4.5); ctx.fill();
     for (let n = 0; n < Math.min(need, 12); n++) { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(bx + 14 + ((bw - 28) * (n + 1)) / Math.min(need, 12) - 1, by + 34, 1.5, 9); } // 条上一格一颗丹
     const half = (bw - 36) / 2, yb = by + 56;
-    if (canEvolve) button('evolveG', bx + 14, yb, bw - 28, 42, '进化', { kind: 'sub', hot: true, dot: true, fn: () => { gardenSel = null; newEvolution(id); } });
+    if (canEvolve) button('evolveG', bx + 14, yb, bw - 28, 42, '进化', { kind: 'sub', hot: true, dot: true, fn: () => { gardenSel = null; evolvePet(id, true); } });
     else {
       const cost = danToLevel(id), ok = save.dan >= cost;
       button('feedG', bx + 14, yb, half, 42, '', { kind: 'sub', hot: ok, fn: () => feedFx(id) });
@@ -5537,18 +5518,23 @@ function levelUpPet(id) {
   const d = PG.PETS[id], gain = rec.lv > lv0 ? PG.petGain(id, lv0) : '';
   petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (gain ? gain : ''), t: clock };
   // 0.9.17 进化关砍了（Cc 11-27 第 9 件定 A 全砍）：喂到 5 级直接进化，演一段（金光、换成进化后的样子）
-  if (d.evo && rec.lv >= d.evoLv) {
-    const to = d.evo;
-    save.pets[to] = { lv: rec.lv, exp: rec.exp }; delete save.pets[id];
-    save.petOrder = save.petOrder.map((x) => (x === id ? to : x));
-    if (save.activePet === id) save.activePet = to;
-    if (save.freshPet) save.freshPet[baseOf(to)] = true;
-    petFx.evolveFlash = clock; petFx.pop[to] = clock;
-    petMsg = null;
-    evoAnim = { from: id, to, t: clock + 0.6 }; // 0.9.20：等最后一颗丹落进嘴里再开演
-    T.rec('b', 'evolve_' + id);
-  }
+  if (d.evo && rec.lv >= d.evoLv) evolvePet(id, true);
   P.sound('lit', 0.7);
+  persist();
+}
+// 进化（喂到 5 级自动进化；宠物园的「进化」按钮也走这里）。0.9.25：原来按钮还连着 0.9.17 就删掉的进化关，一点就出错（卡死专项测试查出）
+function evolvePet(id, anim) {
+  const d = PG.PETS[id], rec = save.pets[id];
+  if (!d || !d.evo || !rec) return;
+  const to = d.evo;
+  save.pets[to] = { lv: rec.lv, exp: rec.exp }; delete save.pets[id];
+  save.petOrder = save.petOrder.map((x) => (x === id ? to : x));
+  if (save.activePet === id) save.activePet = to;
+  if (save.freshPet) save.freshPet[baseOf(to)] = true;
+  petFx.evolveFlash = clock; petFx.pop[to] = clock;
+  petMsg = null;
+  if (anim) evoAnim = { from: id, to, t: clock + 0.6 }; // 0.9.20：等最后一颗丹落进嘴里再开演
+  T.rec('b', 'evolve_' + id);
   persist();
 }
 function feedPet(id) {
@@ -5618,6 +5604,8 @@ function fixSave() {
     r.lv = int(r.lv, 1, LV_CAP); r.exp = int(r.exp, 0, Math.max(0, (EXP_NEED[r.lv] || 999) - 1));
   });
   Object.keys(PG.PETS).forEach((id) => { const e = PG.PETS[id].evo; if (e && save.pets[id] && save.pets[e]) delete save.pets[id]; }); // 进化前后两只都在：留进化后的
+  // 0.9.25：够 5 级还没进化的（坏存档、手改的存档）：直接进化掉，不然这只既不能进化也不能再喂
+  Object.keys(save.pets).forEach((id) => { const d = PG.PETS[id]; if (d && d.evo && !save.pets[d.evo] && save.pets[id].lv >= d.evoLv) { save.pets[d.evo] = save.pets[id]; delete save.pets[id]; save.petOrder = save.petOrder.map((x) => (x === id ? d.evo : x)); if (save.activePet === id) save.activePet = d.evo; } });
   save.petOrder = save.petOrder.filter((id, n, a) => save.pets[id] && a.indexOf(id) === n);
   Object.keys(save.pets).forEach((id) => { if (save.petOrder.indexOf(id) < 0) save.petOrder.push(id); });
   // 过了送宠物的那一关、手里却没有那只（0.9.8 以前铜雀是第 3 关才送）：补上，不然后面要打铁石的关没有宠物永远过不了
@@ -5746,7 +5734,7 @@ P.exposeForTest('__game', {
   get g() { return g; }, get mode() { return mode; }, set mode(v) { mode = v; }, get result() { return result; }, get save() { return save; },
   get paintIdx() { return paintIdx; }, stats, L, fingerFor, fingerForHand, skillTarget, tutorialTarget, slotCenter, buttons: () => buttons.slice(),
   get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; },
-  PG, PLV, newPetLevel, newEvolution, openCamp, feedPet, get petIdx() { return petIdx; },
+  PG, PLV, newPetLevel, openCamp, feedPet, get petIdx() { return petIdx; },
   reset() { save = freshSave(); persist(); newPetLevel(0); },
   setSave(o) { Object.assign(save, o); persist(); },
   get cutPlaying() { return CUT.playing; }, levelUpPet, danToLevel, get CUT() { return CUT; }, playCuts, skipCuts() { while (mode === 'cut') { CUT.skip(); if (!CUT.playing) endCuts(); } if (mode === 'start' && startCard) { mode = startCard.next || 'play'; startCard = null; } },

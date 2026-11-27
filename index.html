@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '5c0eebbd21d9';</script>
+<script>window.__BUILD = 'c14ab6d04b2f';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -203,9 +203,9 @@ module.exports = { SIZE: S, PAINTINGS, COUNT: PAINTINGS.length, render };
 __def("js/chapter1.js", function (module, exports, require) {
 // 0.9.17 新版第一章（照 Fable `../九宫消_新版整体设计_Fable_20261126.md` 第三节第一章 + Cc 11-27 逐条定的改动，见全量设计第 99–127 条；
 // 第 5、9 关的怪照理论审查减了：第 5 关 10 → 8 只，第 9 关 12 → 9 只、墨苔怪 3 → 2、金属 4 → 2，「头 10 关九成以上一次过」）。
-// 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  Z 金属（只有铜雀啄得掉）  K 头目（2×2）
+// 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  Z 金属（只有铜雀啄得开，段 1 起堵路）  K 头目（2×2）
 // crawl = 墨怪每几手爬一格（爬之前一手冒脚印）；rush = 冲锋关；bossEvery = 头目每挨几下跳一次；dan = 第一次过这关给几颗丹
-// par = 「标准手数」（星星：过关 1 星、手数 ≤ par 2 星、≤ par 的八成 3 星）= 机器人赢局手数中位 × 0.55（对过真人记录：怪关真人约是机器人的 0.55 倍），见 test/ch1_measure.js
+// par = 「标准手数」（现在的代码：过关 1 星、手数 ≤ par 2 星、≤ par 的八成 3 星；R-050 要改成三槽，段 1 堵路以后 par 段 3 重量）= 机器人赢局手数中位 × 0.55（对过真人记录：怪关真人约是机器人的 0.55 倍），见 test/ch1_measure.js
 const E = '.........';
 module.exports = [
   { // 1 教：拖块、凑满就消。三处缺口正好一横、一竖、一大格（Cc 11-27「教学顺序横 → 竖 → 宫」）；第一手只认那一横
@@ -231,7 +231,7 @@ module.exports = [
     board: [E, '#m##.###.', E, '...m.....', E, '.###.#m##', E, E, E],
     waves: [[E, '......m..', E, E, '.m.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
-  { // 6 教：金属凑满了也不消；铜雀的技能块啄得碎（金属、铜雀、技能块三样一起闪金色）
+  { // 6 教：金属所在的排、列、大格凑满了也不消；铜雀的羽毛啄开它，变一格金色块，满了当场炸（段 1 规则 1、2；金属、铜雀、技能块三样一起闪金色）
     goal: { monster: 5 }, d: 0.1, crawl: 3, colors: [0, 3, 2], fastCharge: true, intro: 'metal', dan: 2, par: 16,
     board: [E, '##Z#m###.', E, '.##..##..', '.##m#Z##.', E, E, '#m###.Z##', E],
     waves: [[E, E, E, '...m.....', E, E, E, E, '......m..']],
@@ -259,7 +259,7 @@ module.exports = [
 });
 __def("js/chapter2.js", function (module, exports, require) {
 // 0.9.20 新版第二章 · 土 · 梯田（照 Fable 新版第三节第二章；第 15、19 关的怪照第一章的审查一样减了，头 20 关都要大多数人一次过得去）
-// 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  N 粘墨怪（往托盘里的块上吐泥）  Z 金属  D 一堆土（只有爆竹鼠啃过的块带的小爆竹炸得塌）  K 头目
+// 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  N 粘墨怪（往托盘里的块上吐泥）  Z 金属  D 一堆土（只有爆竹鼠啃过的块带的小爆竹炸得开，段 1 起堵路）  K 头目
 // par = 机器人赢局手数中位 × 0.55（test/ch1_measure.js 量的）
 const E = '.........';
 module.exports = [
@@ -268,7 +268,7 @@ module.exports = [
     board: [E, '##m###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E],
     waves: [[E, E, E, '.....m...', E, E, E, E, '..m......']],
   },
-  { // 12 教：啃过的块上留一个小爆竹，把它放在土堆旁边，土就塌了
+  { // 12 教：啃过的块上留一个小爆竹，把它放在土堆旁边，土堆打开变一格土色块（段 1 规则 2）
     goal: { monster: 5 }, d: 0.05, crawl: 3, colors: [1, 0, 3], only: 'baozhu', fastCharge: true, intro: 'dirt', dan: 2, par: 17,
     board: [E, '##m#D#.##', E, '.##...##.', '.##D#m##.', E, E, '##.##Dm##', E],
     waves: [[E, E, E, '....m....', E, E, E, E, '..m......']],

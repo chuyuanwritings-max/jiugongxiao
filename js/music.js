@@ -222,7 +222,12 @@ function fire(c, e, t) {
     safe(() => accomp(c, e.i, e.sec, e.bar, e.r, t, q));
     // 难关：多一层低鼓（每拍一下）；头目：每拍大鼓 + 反拍小鼓，最紧张
     if (tension >= 1) safe(() => { for (let b = 0; b < 4; b++) INST.drum(t + b * q, e.r - 12, 0.1); });
-    if (tension >= 2) safe(() => { for (let b = 0; b < 4; b++) { INST.bigdrum(t + b * q, b === 0 ? 0.42 : 0.26); INST.drum(t + (b + 0.5) * q, e.r, 0.08); } });
+    if (tension === 2) safe(() => { for (let b = 0; b < 4; b++) { INST.bigdrum(t + b * q, b === 0 ? 0.42 : 0.26); INST.drum(t + (b + 0.5) * q, e.r, 0.08); } });
+    // 冲锋关（第 4 档，Cc：「很爽，很激昂，快速的那种音乐」）：一三拍大鼓、二四拍小鼓、八分音符的镲，底下一条跑动的低音，一路往前推
+    if (tension === 3) safe(() => {
+      for (let b = 0; b < 4; b++) { if (b % 2 === 0) INST.bigdrum(t + b * q, 0.5); else snare(t + b * q, 0.42); hat(t + b * q, 0.32); hat(t + (b + 0.5) * q, 0.2); }
+      [0, 1.5, 2, 3, 3.5].forEach((b, k) => bass(t + b * q, (k % 2 ? sh(e.r, 2) : e.r), 0.42, q * 0.45));
+    });
   }
 }
 function tick() {
@@ -235,7 +240,7 @@ function play(c, tens) {
   if (curC === c && tension === (tens || 0) && timer) return;
   stop(true);
   curC = c; tension = tens || 0; build(c); ptr = 0; loopN = 0;
-  q = 60 / (SONGS[c].bpm * (tension === 2 ? 1.15 : tension === 1 ? 1.08 : 1));
+  q = 60 / (SONGS[c].bpm * (tension === 3 ? 1.75 : tension === 2 ? 1.15 : tension === 1 ? 1.08 : 1));
   t0 = now() + 0.2;
   if (bgmBus) { bgmBus.gain.cancelScheduledValues(now()); bgmBus.gain.setValueAtTime(0.0001, now()); bgmBus.gain.linearRampToValueAtTime(muted ? 0.0001 : bgmVol, now() + 1.2); }
   tick(); timer = setInterval(tick, 120);

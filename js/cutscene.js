@@ -472,6 +472,7 @@
         }
         case 'text': {
           const inDur = fx.inDur || 10, p = clamp(lt / inDur, 0, 1);
+          if (/[\u3400-\u9fff]/.test(String(fx.str))) break; // 0.9.20 全游戏不用字：过场里的字也不画
           const s = fx.in === 'pop' ? EASE.pop(p) : 1;
           const pos = fx.pos || [0.5, 0.8];
           ctx.globalAlpha = fx.in === 'fade' ? p : clamp(p * 3, 0, 1);

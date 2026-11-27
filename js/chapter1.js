@@ -34,7 +34,7 @@ module.exports = [
     waves: [[E, E, E, '...m.....', E, E, E, E, '......m..']],
   },
   { // 7 爽：冲锋关。开局约六成满，块块有家，炸满 8 处过关；一根香两道刻痕，越快星越多（星给丹 2 / 3 / 4）
-    goal: { lines: 8 }, d: 0, colors: [0, 3, 2, 1], rush: { fill: 0.6, t3: 45, t2: 75 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 8,
+    goal: { lines: 24 }, d: 0, colors: [0, 3, 2, 1], rush: { t3: 50, t2: 80 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 24,
     board: [E, E, E, E, E, E, E, E, E],
   },
   { // 8 教：墨苔怪爬过的地方留一块墨。墨块碍事就用铜雀啄
@@ -48,7 +48,7 @@ module.exports = [
     waves: [[E, '......m..', E, E, '.G.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, '.......m.', E, E]],
   },
   { // 10 头目：大墨怪占 2×2、9 颗心。凑满穿过它的一排掉一颗心；每挨 3 下它跳到别处，跳之前落脚的地方先亮红框一手
-    goal: { boss: 1 }, d: 0.1, bigHp: 9, bossKind: 'spit', bossEvery: 3, bossNoSpit: true, colors: [0, 3, 2], intro: 'boss', dan: 8, par: 30,
+    goal: { boss: 1 }, d: 0.1, bigHp: 9, bossKind: 'spit', gift: 'baozhu', bossEvery: 3, bossNoSpit: true, colors: [0, 3, 2], intro: 'boss', dan: 8, par: 30,
     board: [E, '..#...#..', '.Z.......', E, '...KK....', '...KK....', '.......Z.', '..#...#..', E],
   },
 ];

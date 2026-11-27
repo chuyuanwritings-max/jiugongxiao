@@ -48,6 +48,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
     if (s.mode === 'start') { seen.start++; await page.waitForTimeout(200); if (!(await clickBtn('startGo'))) await clickAt(195, 600); await page.waitForTimeout(150); continue; }
     if (s.mode === 'home') { await clickBtn('homePlay'); await page.waitForTimeout(200); continue; }
     if (s.mode === 'map') { await clickBtn('play'); await page.waitForTimeout(200); continue; }
+    if (s.btns && s.btns.includes('evoTap')) { await clickBtn('evoTap'); await page.waitForTimeout(150); continue; } // 0.9.20 进化动画
     if (s.mode === 'camp') {
       // 像真人：先把丹喂给出战的那只（够就点「升级」），能进化就进化，然后「出发」
       // 0.9.13 宠物园：先点出战的那只（冒气泡），够丹就点丹图标升级、能进化就进化，然后「出发」

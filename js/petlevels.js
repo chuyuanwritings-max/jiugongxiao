@@ -1337,7 +1337,7 @@ const OLD = [
   "dBoss3": 0.3
  }
 ];
-module.exports = require('./chapter1.js');
+module.exports = require('./chapter1.js').concat(require('./chapter2.js')); // 0.9.20：前两章（Cc 11-27：所有新改动只做前两章）
 module.exports.old = OLD;
 module.exports.evolveStage = (petId, color) => ({
   goal: { evolve: 9 }, d: 0.1, evolve: { pet: petId }, team: null, colors: [color, -1, 3],

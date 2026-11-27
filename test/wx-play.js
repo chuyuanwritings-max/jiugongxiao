@@ -33,6 +33,8 @@ try {
     if (mode === 'home') { const b = btn('homePlay'); if (b) tap(b); continue; }
     if (mode === 'map') { const b = btn('play'); if (b) tap(b); continue; }
     if (mode === 'ad') { run(10); continue; }
+    if (G.buttons().some((x) => x.id === 'evoTap')) { tap(btn('evoTap')); run(5); continue; } // 0.9.20 进化动画：点一下跳过 / 关掉
+    if (mode === 'camp' && !btn('campPlay')) { run(10); continue; }
     if (mode === 'camp') { const act = G.save.activePet || G.save.petOrder[0]; const fd = btn('feedG'), ev = btn('evolveG'); if (ev) tap(ev); else if (fd && G.save.dan >= G.danToLevel(act)) tap(fd); else if (!fd && G.save.dan >= G.danToLevel(act)) { const b = btn('gpet_' + act); if (b) tap(b); else tap(btn('campPlay')); } else tap(btn('campPlay')); run(5); continue; }
     if (mode === 'over') { run(80); const r = G.result; const b = r && r.won ? btn('tocamp') : (!revived && btn('revive')) || btn('lend') || btn('again'); if (b) { if (b.id === 'revive') revived = true; tap(b); } run(20); continue; }
     if (mode === 'play') {

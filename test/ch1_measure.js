@@ -5,7 +5,7 @@ const med = (a) => { const s = a.slice().sort((x, y) => x - y); return s.length 
 L.forEach((st, i) => {
   const wins = [], all = []; let crawls = 0, metal = 0, jumps = 0, hearts = 0;
   for (let n = 0; n < N; n++) {
-    const team = i >= 2 ? [{ id: 'tongque', lv: LV }] : [];
+    const team = i >= 10 ? [{ id: (st.only || "baozhu"), lv: LV }] : i >= 2 ? [{ id: "tongque", lv: LV }] : [];
     const g = PG.simulate({ stage: st, team, seed: 1000 + n * 7919, skill: 1 });
     all.push(g.moves); if (g.won) wins.push(g.moves);
     crawls += g.monStats.crawls || 0; metal += g.monStats.metal || 0;

@@ -67,4 +67,59 @@ t('判满唯一入口', () => {
   ok(!bad.length && typeof core.unitFull === 'function', '判满只有 core.unitFull 一处（自己判满的文件：' + (bad.join('、') || '没有') + '）');
 });
 
+// ---------- 规则 2：打开 → 变普通格 → 满了当场炸 ----------
+const BZ = [{ id: 'baozhu', lv: 1 }];
+const GN1 = () => ({ id: '1~', cat: 0, cells: [[0, 0]], h: 1, w: 1, gnawed: 1 }); // 啃过、带小爆竹的 1 格块
+t('T06', () => {
+  const g = mk({ 4: 'Z######m#', 6: '...m.....' }, { team: TQ, hand: ['1'], stage: { crawl: 3 } });
+  g.mon[K(6, 3)].step = K(7, 3); // 它本来下一手要爬
+  giveSkill(g, { n: 1 });
+  const ev = g.useSkill({ r: 4, c: 0 });
+  ok(ev && (ev.metal || []).includes(K(4, 0)) && !!ev.openClear && ev.openClear.units.includes(4), 'T06 羽毛啄金属：金属打开（ev.metal）→ 整排当场消（ev.openClear）');
+  ok(g.board[K(4, 0)] === CELL.EMPTY && g.board[K(4, 7)] === CELL.EMPTY && g.caught === 1, 'T06 整排消掉、抓到排里那只墨怪（抓到 ' + g.caught + '）');
+  ok(g.team[0].energy === 0 && g.moves === 0 && g.board[K(6, 3)] === CELL.MON, 'T06 能量不涨、手数不加、墨怪不动');
+});
+t('T07', () => {
+  const g = mk({ 4: 'Z###.....' }, { team: TQ, hand: ['5h'] });
+  giveSkill(g, { n: 1 });
+  const ev = g.useSkill({ r: 4, c: 0 });
+  ok(ev && g.board[K(4, 0)] === CELL.BLOCK && g.color[K(4, 0)] === 0 && !ev.openClear, 'T07 金属所在的排没满：啄开变一格金色普通块，不消');
+  const ev2 = g.place(0, 4, 4);
+  ok(ev2 && ev2.units.includes(4) && g.board[K(4, 0)] === CELL.EMPTY, 'T07 之后补满这一排：照常消');
+});
+t('T08', () => {
+  const g = mk({ 4: '#######D.' }, { team: BZ, hand: [GN1()] });
+  const ev = g.place(0, 4, 8);
+  ok(ev && (ev.blast || []).includes(K(4, 7)) && ev.units.includes(4) && !!ev.openClear, 'T08 带爆竹的块放进土堆旁的空格：土堆打开 → 整排同一手消（ev.blast、ev.openClear）');
+  ok(ev && ev.energy.baozhu === 1, 'T08 这一下是放块引起的：能量 +1');
+});
+t('T09', () => {
+  const g = mk({ 4: '..D.D....' }, { team: BZ, hand: [GN1()] });
+  const ev = g.place(0, 4, 3);
+  ok(ev && g.board[K(4, 2)] === CELL.BLOCK && g.board[K(4, 4)] === CELL.BLOCK && (ev.blast || []).length === 2, 'T09 一块带爆竹的块挨着 2 个土堆：两个都变普通块');
+});
+t('T10', () => {
+  const g = mk({ 4: '..D......' }, { team: BZ, hand: ['1'] });
+  const ev = g.place(0, 4, 3);
+  ok(ev && g.board[K(4, 2)] === CELL.DIRT && !ev.blast, 'T10 没被啃过的块放在土堆旁边：土堆不变');
+});
+t('T11', () => {
+  const g = mk({ 4: '..Z......' }, { team: BZ, hand: [GN1()] });
+  g.place(0, 4, 3);
+  ok(g.board[K(4, 2)] === CELL.METAL, 'T11 带爆竹的块碰金属：金属不变');
+  const g2 = mk({ 4: '..Z......' }, { team: [{ id: 'modou', lv: 1 }], hand: ['1'] });
+  giveSkill(g2);
+  ok(!g2.skillPlan({ r: 4, c: 2 }) && g2.board[K(4, 2)] === CELL.METAL, 'T11 蚕的丝拖到金属上：用不了，金属不变');
+});
+t('T12', () => {
+  const g = mk({ 4: '##KK###D#', 5: '..KK.....' }, { team: BZ, hand: ['1'] });
+  const hp = g.bigHp; g.place(0, 0, 0);
+  ok(g.bigHp === hp, 'T12 穿过头目的一排里有土堆、其余 8 格满：不掉心');
+});
+t('T13', () => {
+  const g = mk({ 4: '##KK###D.', 5: '..KK.....' }, { team: BZ, hand: [GN1()] });
+  const hp = g.bigHp; const ev = g.place(0, 4, 8);
+  ok(ev && ev.units.includes(4) && g.bigHp === hp - 1, 'T13 炸开那个土堆：整排消，头目掉 1 颗心');
+});
+
 done();

@@ -344,13 +344,32 @@ function createPetGame(opts) {
     for (const k of cells) {
       const v = b[k];
       if (v === CELL.EMPTY || v === CELL.BOSS || v === CELL.DIRT) continue;
-      if (v === CELL.METAL) { if (byPet && baseId(petId) === 'tongque') { b[k] = 0; (ev.metal = ev.metal || []).push(k); g.monStats.metal = (g.monStats.metal || 0) + 1; } continue; } // 金属：只有铜雀（金色）啄得掉
+      if (v === CELL.METAL) { if (byPet && baseId(petId) === 'tongque') openCell(b, k, PETS.tongque.color, ev); continue; } // 金属：只有铜雀的羽毛啄得开
       if (IS_MON(v)) {
         if (byPet) g.playStats.goalsByPet++; else g.playStats.goalsByPlayer++;
         if ('monster' in g.got) g.got.monster++; g.caught++; ev.collected.push({ k, what: 'monster', t: g.mon[k] ? g.mon[k].t : 'ink' }); g.mon[k] = null;
       }
       b[k] = 0;
     }
+  }
+  // 段 1 规则 2（Cc 11-27「泥土块变成普通的格子也能消才对」「金属一样变普通格」）：打开 = 变一格普通方块（打开它的宠物的颜色），不是变空格
+  function openCell(b, k, color, ev) {
+    const was = b[k]; b[k] = CELL.BLOCK; g.color[k] = color;
+    if (was === CELL.METAL) { (ev.metal = ev.metal || []).push(k); g.monStats.metal = (g.monStats.metal || 0) + 1; }
+    else { (ev.blast = ev.blast || []).push(k); g.monStats.dirt = (g.monStats.dirt || 0) + 1; }
+  }
+  // 打开以后马上看它的排、列、大格：满了当场消，算你消的（抓怪、头目掉心、算「消几排」），不攒能量（规则 9）
+  function openClear(b, opened, ev) {
+    const units = [];
+    for (let u = 0; u < 27; u++) if (UNITS[u].some((k) => opened.includes(k)) && core.unitFull(b, u)) units.push(u);
+    if (!units.length) return [];
+    const set = new Set(); units.forEach((u) => { unitTouches(b, UNITS[u], ev); UNITS[u].forEach((k) => set.add(k)); });
+    const was = [...set].filter((k) => CLEARABLE(b[k]));
+    clearCells(b, [...set], ev, false);
+    const cells = was.filter((k) => b[k] === CELL.EMPTY);
+    if ('lines' in g.got) g.got.lines += units.length;
+    ev.openClear = { units, cells };
+    return units;
   }
   // 一次「消掉」（一排 / 一个大格）碰到了头目：掉一颗心
   function unitTouches(b, cells, ev) {
@@ -438,6 +457,7 @@ function createPetGame(opts) {
       clearCells(b, cells, ev, true, p.pet);
       ev.cells = before.filter((k) => b[k] === CELL.EMPTY);
       g.skillStats.cells += ev.cells.length + plan.fill.length;
+      if (ev.metal) { const u = openClear(b, ev.metal, ev); if (u.length) { ev.units = u; ev.cells = ev.cells.concat(ev.openClear.cells); } } // 羽毛啄开金属：这些金属的排满了当场消
       if (plan.fill.length) {
         // 丝补满了一排 / 一个大格：照你自己消的规矩消掉（不给它攒能量，不然它能自己养自己）
         const units = []; for (let u = 0; u < 27; u++) if (core.unitFull(b, u)) units.push(u);
@@ -586,8 +606,8 @@ function createPetGame(opts) {
     const ev0 = {};
     const placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc);
     placed.forEach((k) => { b[k] = 1; g.color[k] = ci; });
-    // 0.9.20（Cc 定 A）：爆竹鼠啃过的块上留着一个点着的小爆竹，放下去，上下左右挨着的土堆全炸塌
-    if (p.gnawed) { const blown = [...new Set(placed.flatMap(near4))].filter((x) => b[x] === CELL.DIRT); blown.forEach((x) => { b[x] = 0; g.color[x] = 0; }); if (blown.length) { ev0.blast = blown; g.monStats.dirt = (g.monStats.dirt || 0) + blown.length; } }
+    // 0.9.20（Cc 定 A）：爆竹鼠啃过的块上留着一个点着的小爆竹，放下去，上下左右挨着的土堆全打开（段 1 规则 2：变一格土色普通块，和这块一起检查满没满）
+    if (p.gnawed) [...new Set(placed.flatMap(near4))].filter((x) => b[x] === CELL.DIRT).forEach((x) => openCell(b, x, PETS.baozhu.color, ev0));
     g.hand[i] = null;
     g.moves++;
     const ev = Object.assign(ev0, { piece: p, r, c, placed, units: [], cells: [], collected: [], bigHits: [], petActs: [], energy: {}, sparks: [], fire: null, gained: p.cells.length, win: false });
@@ -606,6 +626,7 @@ function createPetGame(opts) {
       clearCells(b, [...set], ev, false);
     }
     ev.units = units; ev.cells = clearedCells;
+    if (ev.blast) { const ou = units.filter((u) => UNITS[u].some((k) => ev.blast.includes(k))); if (ou.length) ev.openClear = { units: ou, cells: clearedCells.filter((k) => ou.some((u) => UNITS[u].includes(k))) }; }
     if (units.length) g.got.lines = (g.got.lines || 0) + (st.rush ? 1 : units.length); // 冲锋关按「塞了几块」算 // 0.9.14：「消掉几排」的目标（第 1 关；不管带没带宠物都算）
     const ps = g.playStats; ps.units += units.length;
     if (units.length) { ps.clearMoves++; ps.dry = 0; if (!ps.firstClear) ps.firstClear = g.moves; } else { ps.dry++; ps.maxDry = Math.max(ps.maxDry, ps.dry); }

@@ -8,7 +8,7 @@ let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++; console.log('✗ ' + m); } };
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ['--mute-audio'] });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -23,7 +23,7 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
   const jam = () => page.evaluate(() => {
     const G = window.__game, g = G.g, U = G.core.UNITS;
     // 每排、每竖都正好空 2 格（(c - 2r) mod 9 是 0 或 4），宠物能量清零（不会救命），手上：1 格 + 两块 3×3
-    for (let k = 0; k < 81; k++) { const r = Math.floor(k / 9), c = k % 9, m = ((c - 2 * r) % 9 + 9) % 9; g.board[k] = m === 0 || m === 4 ? 0 : 1; if (g.board[k]) { g.color[k] = 0; g.gem[k] = 0; } g.mon[k] = null; }
+    for (let k = 0; k < 81; k++) { const r = Math.floor(k / 9), c = k % 9, m = ((c - 2 * r) % 9 + 9) % 9; g.board[k] = m === 0 || m === 4 ? 0 : 1; if (g.board[k]) { g.color[k] = 0; } g.mon[k] = null; }
     g.team.forEach((t) => (t.energy = 0));
     g.hand = [G.core.PIECES['1'], G.core.PIECES.sq3, G.core.PIECES.sq3, null];
     // 1 格放哪都凑不满一个单元：挑一个空格，它所在的排、竖、大格都至少还空 2 格

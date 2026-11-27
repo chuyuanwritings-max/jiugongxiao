@@ -38,7 +38,7 @@ async function openWith(browser, init) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ['--mute-audio'] });
 
   // 1. 普通浏览器
   {

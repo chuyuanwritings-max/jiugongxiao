@@ -42,7 +42,7 @@ try {
       // 第 5 关第一次：故意堵死（宠物能量清零、盘面每排空两格、手上 1 格 + 两块 3×3）
       if (G.petIdx === 4 && !revived && g.moves >= 3 && !g._jammed) {
         g._jammed = true; const U = G.core.UNITS;
-        for (let k = 0; k < 81; k++) { if (g.board[k] >= 2) continue; const r = Math.floor(k / 9), c = k % 9, m = ((c - 2 * r) % 9 + 9) % 9; g.board[k] = m === 0 || m === 4 ? 0 : 1; if (g.board[k]) { g.color[k] = 0; g.gem[k] = 0; } } // 墨怪、铁石留着（不然目标永远完不成）
+        for (let k = 0; k < 81; k++) { if (g.board[k] >= 2) continue; const r = Math.floor(k / 9), c = k % 9, m = ((c - 2 * r) % 9 + 9) % 9; g.board[k] = m === 0 || m === 4 ? 0 : 1; if (g.board[k]) { g.color[k] = 0; } } // 墨怪、障碍留着（不然目标永远完不成；段 1 宝石拆了）
         g.team.forEach((t) => (t.energy = 0)); g.hand = [G.core.PIECES['1'], G.core.PIECES.sq3, G.core.PIECES.sq3, null];
         const okK = (k) => U.filter((u) => u.includes(k)).every((u) => u.filter((x) => !g.board[x]).length >= 2);
         const k0 = [...Array(81).keys()].find((k) => !g.board[k] && okK(k));

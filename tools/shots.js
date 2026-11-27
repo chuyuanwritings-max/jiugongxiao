@@ -20,7 +20,7 @@ const SCENES = [
   ['12_结算', (G) => { G.newPetLevel(3); G.skipCuts(); G.mode = 'play'; const g = G.g; g.over = true; g.won = true; g.reason = 'win'; G.endGame(); G.skipCuts(); }],
 ];
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ['--mute-audio'] });
   let n = 0, bad = 0;
   for (const [w, h] of VPS) {
     const dir = path.join(out, w + 'x' + h); fs.mkdirSync(dir, { recursive: true });

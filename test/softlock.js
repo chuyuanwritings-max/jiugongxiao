@@ -26,17 +26,16 @@ function enter(E, i, lendLv, lendId) {
   run(40);
   return G.g;
 }
-// 把盘面清空、只留指定的东西；rows：{ 行号: '9 个字符' }（# 块 m 小墨怪 A 甲壳怪 K 头目 R 铁石 . 空）
+// 把盘面清空、只留指定的东西；rows：{ 行号: '9 个字符' }（# 块 m 小墨怪 K 头目 Z 金属 . 空）
 function setBoard(g, rows) {
-  for (let k = 0; k < 81; k++) { g.board[k] = 0; g.mon[k] = null; g.color[k] = 0; g.gem[k] = 0; g.rockHp[k] = 0; g.bubble[k] = 0; }
-  g.bigCells = []; g.jumpPlan = {};
+  for (let k = 0; k < 81; k++) { g.board[k] = 0; g.mon[k] = null; g.color[k] = 0; }
+  g.bigCells = []; // 段 1：宝石、铁石、泡泡、跳跳怪拆了
   Object.keys(rows).forEach((r) => rows[r].split('').forEach((ch, c) => {
     const k = +r * 9 + c;
     if (ch === '#') { g.board[k] = 1; g.color[k] = 3; }
-    else if (ch === 'm') { g.board[k] = 3; g.mon[k] = { t: 'ink', hp: 0, col: -1, cd: 0, tgt: null }; }
-    else if (ch === 'A') { g.board[k] = 3; g.mon[k] = { t: 'shell', hp: 1, col: -1, cd: 3, tgt: null }; }
+    else if (ch === 'm') { g.board[k] = 3; g.mon[k] = { t: 'ink', cd: 0 }; }
     else if (ch === 'K') { g.board[k] = 4; g.bigCells.push(k); }
-    else if (ch === 'R') { g.board[k] = 5; g.rockHp[k] = 1; }
+    else if (ch === 'Z') g.board[k] = 6;
   }));
 }
 const dragTo = (E, slot, r, c, id) => { const { G, touch, run } = E, from = G.slotCenter(slot), to = G.fingerFor(G.g.hand[slot], r, c); touch('down', from.x, from.y, id); run(2); touch('move', to.x, to.y, id); run(2); touch('up', to.x, to.y, id); };
@@ -109,7 +108,7 @@ section('复活', () => {
   const jam = () => {
     // 每排、每竖、每个大格都留着空格（放一块下去不会消掉什么），但空格全是孤零零的一个：只有 1 格的块放得下
     for (let k = 0; k < 81; k++) { if (g.board[k] >= 2) continue; const r = Math.floor(k / 9), c = k % 9, m = ((c - 2 * r) % 9 + 9) % 9; g.board[k] = m % 3 === 0 ? 0 : 1; g.color[k] = 3; }
-    [30, 31, 32, 39, 40, 41, 48, 49, 50].forEach((k) => { if (g.board[k] === 1) { g.board[k] = 5; g.rockHp[k] = 2; } }); // 正中间没有能清的方块（头目 / 铁石占着）
+    [30, 31, 32, 39, 40, 41, 48, 49, 50].forEach((k) => { if (g.board[k] === 1) g.board[k] = 6; }); // 正中间没有能清的方块（金属占着；段 1 铁石拆了，换成金属）
     g.team.forEach((t) => (t.energy = 0)); g.hand = [G.core.PIECES.sq3, G.core.PIECES['5h'], G.core.PIECES.L5a, null];
   };
   jam();
@@ -208,24 +207,7 @@ section('进化动画', () => {
   if (E3.btn('evolveG')) { E3.tap(E3.btn('evolveG')); E3.run(30); }
   ok(!E3.errs().length && (E3.G.save.pets.baozhuwang || !E3.btn('evolveG')), '存档里 10 级还没进化的爆竹鼠：宠物园里点它、点「进化」不出错，能进化或者不给这个按钮' + (E3.errs().length ? '（出错记账：' + E3.errs()[0].slice(2, 4).join(' / ') + '）' : ''));
 });
-section('说明卡盖着的时候过关', () => {
-  // 第一次被偷能量：1.2 秒后弹「墨怪会偷能量」。那一刻手上正拖着能过关的那一块
-  const seen = Object.assign({}, SEEN); delete seen.steal;
-  const E = boot({ seed: 33, store: { luoshu_save_v1: OLD({ introSeen: seen, activePet: 'baozhu' }) } }), { G, run, touch, btn, tap } = E;
-  const g = enter(E, 11);
-  setBoard(g, { 4: 'm######..', 0: 'A........' }); lastMon(g); g.got.monster = g.stage.goal.monster - 2; // 还差两只：甲壳怪一只、小墨怪一只……其实只要抓到一只就把数补齐
-  g.got.monster = g.stage.goal.monster - 1;
-  g.mon[0].tgt = -1; g.team[0].energy = 3; g.hand = [P1(E), P1(E), null, null]; run(3);
-  dragTo(E, 0, 4, 7); run(10); // 这一手：甲壳怪冲爆竹鼠喷墨（偷能量），1.2 秒后要弹卡
-  ok(!g.over && !!E.G.T, '（前提）放了一手，被偷了能量');
-  const from = G.slotCenter(1), to = G.fingerFor(g.hand[1], 4, 8);
-  touch('down', from.x, from.y, 1); run(2); touch('move', to.x, to.y, 1); run(90); // 拖着不放，等过了弹卡的时间
-  ok(G.mode === 'play', '手上拖着块的时候，说明卡不弹（现在 ' + G.mode + '）');
-  touch('up', to.x, to.y, 1);
-  const got = waitMode(E, 'over', 200);
-  if (G.mode === 'intro') { tap(btn('introOk')); run(250); }
-  ok(got && G.result && G.result.won && noWatchdog(E), '松手过关：结算页直接出来，不靠看门狗（' + G.mode + (E.errs().length ? '；' + E.errs()[0].slice(2, 4).join(' / ') : '') + '）');
-});
+// 段 1：「说明卡盖着的时候过关」拿掉了：它靠「墨怪偷能量」弹卡，偷能量 Cc 11-27 定砍、规则里已拆（附录 D 甲）；过关结算另有 winCase 几条测
 section('点「‹ 地图」', () => {
   const E = boot({ seed: 34, store: { luoshu_save_v1: OLD() } }), { G, run, btn, tap } = E;
   let g = enter(E, 11);
@@ -268,7 +250,7 @@ section('啃手上的块', () => {
         if (slot !== (j % 3)) continue; // 每个格子在三个托盘位置里轮着试
         const want = G.PG.gnawPiece(piece, j);
         if (want === undefined) continue; // 啃了会断成两截：本来就不让啃
-        g.hand = [null, null, null, Object.assign({}, G.PG.FIRE, { pet: 'baozhu', tier: 1, kind: 'gnaw', n: 1, uses: 1 })]; g.hand[slot] = piece; g.hand[(slot + 1) % 3] = G.core.PIECES['2h']; g.handColor[3] = 1; g.over = false;
+        g.hand = [null, null, null, Object.assign({}, G.PG.SKILL_PIECE, { pet: 'baozhu', kind: 'gnaw', n: 1, uses: 1 })]; g.hand[slot] = piece; g.hand[(slot + 1) % 3] = G.core.PIECES['2h']; g.handColor[3] = 1; g.over = false;
         run(2); tried++;
         const f = G.fingerForHand(slot, j), from = G.slotCenter(3);
         touch('down', from.x, from.y); run(1); touch('move', f.enter.x, f.enter.y); run(1);

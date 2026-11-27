@@ -5,7 +5,7 @@ const { chromium } = require('/Users/chuyuannc/Downloads/Cursor/Kira/06_游戏�
 const PY = fs.existsSync('/opt/homebrew/bin/python3.14') ? '/opt/homebrew/bin/python3.14' : 'python3';
 let fail = 0;
 async function run(dev, levels, from) {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ['--mute-audio'] });
   const page = await browser.newPage({ viewport: { width: dev.w, height: dev.h }, deviceScaleFactor: dev.dpr });
   await page.goto('file://' + path.join(__dirname, '..', 'preview.html'));
   await page.waitForTimeout(600);

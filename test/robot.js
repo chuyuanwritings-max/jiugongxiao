@@ -8,7 +8,7 @@ const T0 = Date.now();
 const ok = (c, m) => { const t = ((Date.now() - T0) / 1000).toFixed(0) + 's '; if (c) { pass++; console.log('✓ ' + m + '  [' + t + ']'); } else { fail++; console.log('✗ ' + m + '  [' + t + ']'); } };
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ['--mute-audio'] });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: false });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));

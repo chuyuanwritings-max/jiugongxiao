@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = 'c14ab6d04b2f';</script>
+<script>window.__BUILD = '739a5e94cb6b';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -4590,6 +4590,7 @@ function juicePets(ev, colorsBefore) {
     timeline.push({ t: clock + 0.1, fn: () => P.sound('combo2', 0.5) });
   }
   if (ev.bossJump) { flash = 0.2; shake = Math.max(shake, 9); P.sound('dong', 0.75); haptic('heavy'); } // 头目跳 = 低音大钟
+  if (ev.bossJump && ev.bossJump.crushed) { const t0 = ev.bossJump.to; ev.bossJump.crushed.forEach((k) => { const d = Math.abs(Math.floor(k / 9) - Math.floor(t0 / 9)) + Math.abs((k % 9) - (t0 % 9)); clearing.push({ k, t: clock + 0.05 + d * 0.04 }); }); } // 11-28：落脚处和周围一圈被踩碎的块，从落点往外一圈圈碎（正式画法段 4）
   if (ev.bigHits.length) {
     petFx.bossHit = clock; shake = Math.max(shake, 6); P.sound('thump', 0.75); haptic('medium'); // 头目挨打「嘭」
     // 碎掉的那颗红心飞出去
@@ -6408,12 +6409,15 @@ function createPetGame(opts) {
     const bs = g.boss;
     if (!bs || g.bigHp <= 0) return;
     bs.count++;
-    // 跳：上一手亮过红的地方，这一手跳过去，落下时把那 4 格里的块压碎
+    // 跳：上一手亮过的地方，这一手跳过去，落下时把落脚 4 格和周围一圈的块踩碎（11-28 Cc 定）
     if (bs.jumpTo !== null && !(bs.planMove !== undefined && g.moves <= bs.planMove)) { // 红框至少亮一手再跳
       const tl = bs.jumpTo, cells = [tl, tl + 1, tl + 9, tl + 10];
       const old = g.bigCells.slice();
       old.forEach((k) => (b[k] = 0));
-      const crushed = cells.filter((k) => CLEARABLE(b[k]));
+      // 11-28 Cc 定 B「周围一圈也踩」：落脚的 4 格 + 外面一圈（最多 16 格）。落脚那 4 格照旧什么能清的都压掉；外面那一圈只踩碎方块（墨怪、金属、土堆不动，免得头目替你开障碍、抓怪）
+      const r0 = Math.floor(tl / 9), c0 = tl % 9, ring = [];
+      for (let r = r0 - 1; r <= r0 + 2; r++) for (let c = c0 - 1; c <= c0 + 2; c++) { if (r < 0 || r > 8 || c < 0 || c > 8) continue; const k = r * 9 + c; if (!cells.includes(k) && b[k] === CELL.BLOCK) ring.push(k); }
+      const crushed = cells.filter((k) => CLEARABLE(b[k])).concat(ring);
       clearCells(b, crushed, ev, false);
       cells.forEach((k) => { b[k] = 4; g.color[k] = 0; });
       g.bigCells = cells;

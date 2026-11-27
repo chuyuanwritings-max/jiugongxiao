@@ -9,7 +9,7 @@ if (!m || m[1] !== want) { console.log('✗ preview.html 是旧包（包里 ' + 
 console.log('✓ 包是新的（指纹 ' + want + '）');
 const TESTS = [
   // 不开画面的
-  ['rush_flow', 'node'], ['ch1_measure', 'node', ['20']],
+  ['rush_flow', 'node'], ['rules_boss_stomp', 'node'], ['ch1_measure', 'node', ['20']],
   // 段 1 规则测试（规则细设计第三节）
   ['rules_obstacle', 'node'], ['rules_mud', 'node'], ['rules_energy', 'node'], ['rules_tongque', 'node'], ['rules_baozhu', 'node'], ['rules_pets', 'node'], ['rules_levels', 'node'], ['a3_measure', 'node', ['40']],
   // 开画面的（Playwright，测的是 preview.html）

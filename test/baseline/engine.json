@@ -615,78 +615,78 @@
   "won": true
  },
  "10/11/tongque": {
-  "hash": "dbb66903b9a17629",
-  "moves": 94,
+  "hash": "e9186cfcc7261325",
+  "moves": 89,
   "won": true
  },
  "10/11/baozhu": {
-  "hash": "de0c931b3a1f8220",
-  "moves": 56,
+  "hash": "de581b053572a280",
+  "moves": 70,
   "won": true
  },
  "10/11/modou": {
-  "hash": "f66f62d25b8eff51",
-  "moves": 42,
+  "hash": "74a305f9f2edd26b",
+  "moves": 62,
   "won": true
  },
  "10/11/shizi": {
-  "hash": "34ccef77c8758141",
-  "moves": 38,
-  "won": true
- },
- "10/11/lvgui": {
-  "hash": "99e454af61f1fda0",
-  "moves": 76,
-  "won": true
- },
- "10/22/tongque": {
-  "hash": "cbfe76a52a0ded34",
-  "moves": 82,
-  "won": true
- },
- "10/22/baozhu": {
-  "hash": "9bce5b7391c5df79",
-  "moves": 58,
-  "won": true
- },
- "10/22/modou": {
-  "hash": "cab4fd57a05131c1",
-  "moves": 64,
-  "won": true
- },
- "10/22/shizi": {
-  "hash": "3647034dbbdd56bc",
-  "moves": 49,
-  "won": true
- },
- "10/22/lvgui": {
-  "hash": "221c0e3bdf573f2b",
+  "hash": "cbcdc9794568932b",
   "moves": 55,
   "won": true
  },
+ "10/11/lvgui": {
+  "hash": "631f8b5932b69014",
+  "moves": 79,
+  "won": true
+ },
+ "10/22/tongque": {
+  "hash": "4b311ad5d0efd26a",
+  "moves": 52,
+  "won": true
+ },
+ "10/22/baozhu": {
+  "hash": "7cc058f87b7481ed",
+  "moves": 73,
+  "won": true
+ },
+ "10/22/modou": {
+  "hash": "ac8ef82763179842",
+  "moves": 91,
+  "won": true
+ },
+ "10/22/shizi": {
+  "hash": "1a5e7d45a1f2febf",
+  "moves": 64,
+  "won": true
+ },
+ "10/22/lvgui": {
+  "hash": "24fecafa652fb008",
+  "moves": 66,
+  "won": true
+ },
  "10/33/tongque": {
-  "hash": "a7cc480eb0285ae0",
-  "moves": 34,
+  "hash": "2c211ba9eb46fd21",
+  "moves": 37,
   "won": true
  },
  "10/33/baozhu": {
-  "hash": "06af1e3930265838",
-  "moves": 46,
+  "hash": "d163d89f0c7fb318",
+  "moves": 40,
   "won": true
  },
  "10/33/modou": {
-  "hash": "e4ad13022d2d1bcc",
-  "moves": 75,
+  "hash": "e06400e200ca56e4",
+  "moves": 39,
   "won": true
  },
  "10/33/shizi": {
-  "hash": "7b3823c39de6b3f7",
-  "moves": 38,
+  "hash": "f2bea7cacfe635fa",
+  "moves": 49,
   "won": true
  },
  "10/33/lvgui": {
-  "hash": "eddaffe3731e2e18",
-  "moves": 41,
+  "hash": "46fa7527621081ab",
+  "moves": 49,
   "won": true
  },
  "11/11/tongque": {
@@ -1365,78 +1365,78 @@
   "won": true
  },
  "20/11/tongque": {
-  "hash": "e49926bee454f443",
-  "moves": 94,
+  "hash": "d30dd9fbef891ce8",
+  "moves": 99,
   "won": true
  },
  "20/11/baozhu": {
-  "hash": "635d075a0acf49b6",
-  "moves": 46,
+  "hash": "a2173d2484e91b76",
+  "moves": 75,
   "won": true
  },
  "20/11/modou": {
-  "hash": "541fbbe8f8dc3da7",
-  "moves": 101,
+  "hash": "cdce41fc2e3ce2c7",
+  "moves": 60,
   "won": true
  },
  "20/11/shizi": {
-  "hash": "872e4ca8e802fcd0",
-  "moves": 47,
+  "hash": "53546e30ff508257",
+  "moves": 50,
   "won": false
  },
  "20/11/lvgui": {
-  "hash": "e314a5e15dcd2887",
-  "moves": 82,
+  "hash": "fafaa19307589576",
+  "moves": 61,
   "won": true
  },
  "20/22/tongque": {
-  "hash": "5570683b71bd07e9",
-  "moves": 92,
+  "hash": "5773b709fe0d55e1",
+  "moves": 172,
   "won": true
  },
  "20/22/baozhu": {
-  "hash": "3a793aca0a379108",
-  "moves": 32,
-  "won": true
- },
- "20/22/modou": {
-  "hash": "20ad904082cbfa12",
-  "moves": 41,
-  "won": true
- },
- "20/22/shizi": {
-  "hash": "13991b3174d37fc3",
-  "moves": 44,
-  "won": false
- },
- "20/22/lvgui": {
-  "hash": "ed906fba1d64ffd2",
-  "moves": 70,
-  "won": true
- },
- "20/33/tongque": {
-  "hash": "ceb4f1d29c8c1061",
-  "moves": 93,
-  "won": true
- },
- "20/33/baozhu": {
-  "hash": "5e024a019c428813",
+  "hash": "a435980f651c1348",
   "moves": 64,
   "won": true
  },
+ "20/22/modou": {
+  "hash": "8dca8c2d0b6bb4a1",
+  "moves": 64,
+  "won": true
+ },
+ "20/22/shizi": {
+  "hash": "e96b71aefe10e91e",
+  "moves": 41,
+  "won": false
+ },
+ "20/22/lvgui": {
+  "hash": "1f676bbe99b8e79a",
+  "moves": 58,
+  "won": true
+ },
+ "20/33/tongque": {
+  "hash": "9d3118eaaec49e45",
+  "moves": 122,
+  "won": false
+ },
+ "20/33/baozhu": {
+  "hash": "0bddc5239e74c5b6",
+  "moves": 61,
+  "won": true
+ },
  "20/33/modou": {
-  "hash": "815421fff1584c65",
-  "moves": 63,
+  "hash": "9c4d25d16bb22e35",
+  "moves": 55,
   "won": true
  },
  "20/33/shizi": {
-  "hash": "1017900bce3f4957",
+  "hash": "cd6258de09f3575b",
   "moves": 26,
   "won": false
  },
  "20/33/lvgui": {
-  "hash": "772cda5be44b6d41",
-  "moves": 48,
+  "hash": "72c9bf6b88152462",
+  "moves": 61,
   "won": true
  }
 }

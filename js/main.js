@@ -2740,6 +2740,7 @@ function juicePets(ev, colorsBefore) {
     timeline.push({ t: clock + 0.1, fn: () => P.sound('combo2', 0.5) });
   }
   if (ev.bossJump) { flash = 0.2; shake = Math.max(shake, 9); P.sound('dong', 0.75); haptic('heavy'); } // 头目跳 = 低音大钟
+  if (ev.bossJump && ev.bossJump.crushed) { const t0 = ev.bossJump.to; ev.bossJump.crushed.forEach((k) => { const d = Math.abs(Math.floor(k / 9) - Math.floor(t0 / 9)) + Math.abs((k % 9) - (t0 % 9)); clearing.push({ k, t: clock + 0.05 + d * 0.04 }); }); } // 11-28：落脚处和周围一圈被踩碎的块，从落点往外一圈圈碎（正式画法段 4）
   if (ev.bigHits.length) {
     petFx.bossHit = clock; shake = Math.max(shake, 6); P.sound('thump', 0.75); haptic('medium'); // 头目挨打「嘭」
     // 碎掉的那颗红心飞出去

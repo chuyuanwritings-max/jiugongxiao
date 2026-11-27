@@ -679,12 +679,15 @@ function createPetGame(opts) {
     const bs = g.boss;
     if (!bs || g.bigHp <= 0) return;
     bs.count++;
-    // 跳：上一手亮过红的地方，这一手跳过去，落下时把那 4 格里的块压碎
+    // 跳：上一手亮过的地方，这一手跳过去，落下时把落脚 4 格和周围一圈的块踩碎（11-28 Cc 定）
     if (bs.jumpTo !== null && !(bs.planMove !== undefined && g.moves <= bs.planMove)) { // 红框至少亮一手再跳
       const tl = bs.jumpTo, cells = [tl, tl + 1, tl + 9, tl + 10];
       const old = g.bigCells.slice();
       old.forEach((k) => (b[k] = 0));
-      const crushed = cells.filter((k) => CLEARABLE(b[k]));
+      // 11-28 Cc 定 B「周围一圈也踩」：落脚的 4 格 + 外面一圈（最多 16 格）。落脚那 4 格照旧什么能清的都压掉；外面那一圈只踩碎方块（墨怪、金属、土堆不动，免得头目替你开障碍、抓怪）
+      const r0 = Math.floor(tl / 9), c0 = tl % 9, ring = [];
+      for (let r = r0 - 1; r <= r0 + 2; r++) for (let c = c0 - 1; c <= c0 + 2; c++) { if (r < 0 || r > 8 || c < 0 || c > 8) continue; const k = r * 9 + c; if (!cells.includes(k) && b[k] === CELL.BLOCK) ring.push(k); }
+      const crushed = cells.filter((k) => CLEARABLE(b[k])).concat(ring);
       clearCells(b, crushed, ev, false);
       cells.forEach((k) => { b[k] = 4; g.color[k] = 0; });
       g.bigCells = cells;

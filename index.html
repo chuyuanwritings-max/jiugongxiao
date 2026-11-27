@@ -2250,7 +2250,29 @@ function draw(data, makeCanvas, info) {
   }
   return c;
 }
-module.exports = { draw, capacity, crc32, COLS, CELL };
+// ---------- 0.9.19 截屏页（微信不放行发图、复制时的后路，Cc：「截图也行，必须得想办法让我能把游戏报告发出来」）----------
+// 记录分成几页，每页铺满一屏，朋友截屏、点下一页再截，把截图发给 Cc。每页自己带头，几张截图顺序乱了也拼得回来：
+//   'JGXP' + 第几页(1 字节) + 一共几页(1) + 整份长度(4) + 整份 CRC32(4) + 这页装了几个字节(2) + 这页的字节
+const PCOLS = 96;
+function pageCapacity(rows) { return Math.floor((rows * PCOLS) / 8) - 16; }
+function splitPages(data, rows) {
+  const per = pageCapacity(rows), n = Math.max(1, Math.ceil(data.length / per)), crc = crc32(data), out = [];
+  for (let i = 0; i < n; i++) {
+    const chunk = Array.from(data.slice(i * per, (i + 1) * per));
+    out.push([74, 71, 88, 80, i, n].concat(u32(data.length), u32(crc), [(chunk.length >> 8) & 255, chunk.length & 255], chunk));
+  }
+  return out;
+}
+// 在 (x0, y0) 起画一页：cell = 每格几个像素（画布真像素）；先画一圈黑框、空一格白，再画数据
+function drawPage(ctx, bytes, x0, y0, cell, rows) {
+  const bits = bytes.length * 8, w = (PCOLS + 4) * cell, h = (rows + 4) * cell;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(x0 - cell, y0 - cell, w + 2 * cell, h + 2 * cell);
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(x0, y0, w, cell); ctx.fillRect(x0, y0 + h - cell, w, cell); ctx.fillRect(x0, y0, cell, h); ctx.fillRect(x0 + w - cell, y0, cell, h);
+  const dx = x0 + 2 * cell, dy = y0 + 2 * cell;
+  for (let i = 0; i < bits; i++) if ((bytes[i >> 3] >> (7 - (i & 7))) & 1) ctx.fillRect(dx + (i % PCOLS) * cell, dy + Math.floor(i / PCOLS) * cell, cell, cell);
+}
+module.exports = { draw, capacity, crc32, COLS, CELL, PCOLS, pageCapacity, splitPages, drawPage };
 
 });
 __def("js/main.js", function (module, exports, require) {
@@ -3842,7 +3864,7 @@ function snapNow() {
   P.askText('记一下', '哪里不对或想说什么？（可以不写）', (note) => { if (note === null) return; st.note = note; T.rec('S', st); snapCount++; T.flush(); });
 }
 function drawSnapButton() {
-  if (mode === 'cut' || mode === 'ad') return;
+  if (mode === 'cut' || mode === 'ad' || mode === 'logpages') return;
   const x = 8, y = H - 50, w = 44, h = 44;
   const a = clock - snapFlash;
   ctx.fillStyle = 'rgba(20,24,48,0.75)'; rr(x, y, w, h, 12); ctx.fill();
@@ -4777,18 +4799,36 @@ function copyPlayLog() {
 // 0.9.17（Cc 11-27：「一定要让我朋友可以把测试结果转发给我，不然的话我们就白测了」）：试玩记录画成一张黑白方格图，
 // 点一下弹出微信的「发送给朋友」，选 Cc 发过去。Cc 存图 → tools/decode_log_image.py 解开。复制那个按钮留着当后路
 const LI = require('./logimg.js');
+// 0.9.19：微信不放行发图、复制（后台隐私指引没声明，见全量设计第 139 条），改成「截屏页」：记录铺满一屏黑白格子，截屏 → 下一页，截图发给 Cc。
+// 只带新版第一章以后的记录（一般 1–2 页）。Cc 存图后 tools/decode_log_image.py 图1 图2 … 解开
+let logPages = null; // { pages, i, cell, rows, from }
 function sendPlayLog() {
-  const n = (save.playLog || []).length;
-  const pack = T.exportBytes({ ver: VERSION, log: save.playLog || [] }, LI.capacity());
-  if (!pack) { copyMsg = { text: '画不出图，改用下面的复制', t: clock, dur: 6 }; logErr('shareimg', 'pack'); return; }
-  const d = new Date(), pad = (x) => (x < 10 ? '0' : '') + x;
-  const when = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-  const cv = LI.draw(pack.bytes, P.makeCanvas, { title: '九宫消 试玩记录 · ' + VERSION, lines: [when + ' · ' + n + ' 局 · ' + pack.kept + (pack.kept < pack.total ? ' / ' + pack.total + ' 条（只装得下最近的）' : ' 条'), '原样发给 Cc（发图片，别截图）'] });
-  T.rec('b', 'shareLogImg');
-  P.shareImage(cv, (ok, why) => {
-    copyMsg = { text: ok ? '选 Cc → 发送；发不出去就点下面的复制' : '发图失败：' + String(why || '').slice(0, 20) + '，改用复制', t: clock, dur: 8 };
-    if (!ok) logErr('shareimg', String(why || ''));
-  });
+  const topH = 64, botH = 96;
+  const cell = Math.max(4, Math.floor((W * dpr - 24 * dpr) / (LI.PCOLS + 4)));
+  const rows = Math.max(20, Math.floor(((H - topH - botH) * dpr) / cell) - 4);
+  const pack = T.exportBytes({ ver: VERSION, log: (save.playLog || []).filter((r) => r && r.ver && r.ver >= '0.9.17') }, LI.pageCapacity(rows) * 40);
+  if (!pack) { copyMsg = { text: '记录打不了包，改用复制文字', t: clock, dur: 6 }; logErr('logpages', 'pack'); return; }
+  logPages = { pages: LI.splitPages(pack.bytes, rows), i: 0, cell, rows, from: mode, topH, kept: pack.kept };
+  T.rec('b', 'logPages_' + logPages.pages.length);
+  mode = 'logpages';
+}
+function drawLogPages() {
+  const lp = logPages;
+  if (!lp) { mode = 'settings'; return; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W * dpr, H * dpr);
+  const pw = (LI.PCOLS + 4) * lp.cell, x0 = Math.round((W * dpr - pw) / 2), y0 = Math.round(lp.topH * dpr);
+  LI.drawPage(ctx, lp.pages[lp.i], x0, y0, lp.cell, lp.rows);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const n = lp.pages.length;
+  text('试玩记录 第 ' + (lp.i + 1) + ' / ' + n + ' 页', W / 2, 22, 17, '#000000');
+  text(n > 1 ? '截一张屏，再点「下一页」；几张截图一起发给 Cc' : '截一张屏，把截图发给 Cc', W / 2, 46, 13, '#333333', 'center', 'normal');
+  const by = H - 80, bw = (W - 48) / 3;
+  // 按钮画成浅灰（不能是深色宽条：解码工具靠「整行几乎全黑」找格子的黑框）
+  const lb = (id, x, label, fn) => { ctx.fillStyle = downBtn === id ? '#d0d0d0' : '#e8e8e8'; rr(x, by, bw, 50, 12); ctx.fill(); text(label, x + bw / 2, by + 26, 16, '#111111'); buttons.push({ id, x, y: by, w: bw, h: 50, fn, label }); };
+  if (lp.i > 0) lb('lpPrev', 16, '上一页', () => { lp.i--; });
+  if (lp.i < n - 1) lb('lpNext', 24 + bw, '下一页', () => { lp.i++; });
+  lb('lpClose', 32 + bw * 2, '好了', () => { mode = lp.from || 'settings'; logPages = null; });
 }
 let settingsAsk = 0; // 「重新开始」要点两下：第一下变成「真的清空？」，3 秒内再点才清
 P.setMuted(!!save.muted);
@@ -4814,7 +4854,8 @@ function drawSettings() {
   // 试玩记录：复制出来贴给 Kira（难度表的「真人」那一列）
   const nLog = (save.playLog || []).length;
   button('setSendLog', bx, H - 226, bw, 50, copyMsg && clock - copyMsg.t < (copyMsg.dur || 2.5) ? copyMsg.text : '把试玩记录发给 Cc（' + nLog + ' 局）', { size: 16, hot: true, fn: sendPlayLog });
-  button('setCopyLog', bx, H - 168, bw, 44, '发不出去？复制文字', { kind: 'sub', size: 13, fn: copyPlayLog });
+  button('setCopyLog', bx, H - 168, bw * 0.62 - 4, 44, '复制文字', { kind: 'sub', size: 13, fn: copyPlayLog });
+  button('setPrivacy', bx + bw * 0.62 + 4, H - 168, bw * 0.38 - 4, 44, '隐私指引', { kind: 'sub', size: 12, fn: () => P.openPrivacy() }); // 微信要求：用了隐私接口就要能打开隐私指引
   button('setBack', bx, H - (PLAYTEST ? 114 : 100), bw, 60, settingsFrom === 'map' ? '回地图' : '回主菜单', { size: 24, fn: () => { mode = settingsFrom; } });
 }
 
@@ -6287,6 +6328,8 @@ function frameBody() {
     drawHome();
   } else if (mode === 'settings') {
     drawSettings();
+  } else if (mode === 'logpages') {
+    drawLogPages();
   } else if (mode === 'camp') {
     drawCamp();
   } else if (mode === 'map') {
@@ -9333,6 +9376,7 @@ function modalChunks(str, title, done) {
 function copyText(str, ok, title) {
   const cb = (v, why) => ok && ok(v, why);
   try {
+    if (isWx && !(ok && ok._p)) { const ok2 = (v, why) => cb(v, why); ok2._p = true; return withPrivacy(() => copyText(str, ok2, title), () => copyText(str, ok2, title)); }
     if (isWx) {
       // 0.9.15：微信 2023-09 起剪贴板是「隐私接口」，后台没在《用户隐私保护指引》里声明「剪贴板」就会失败（errno 112）。
       // 失败了不只说「失败」：把原因带回去；再把记录分段放进微信自己的输入弹窗，长按「全选 → 拷贝」照样拿得走（系统输入框的复制不走这个接口）
@@ -9350,10 +9394,19 @@ function copyText(str, ok, title) {
 // 把一张画好的图「发送给朋友」（0.9.17：试玩记录画成方格图发给 Cc，见 js/logimg.js）
 // 微信：画布 → 临时 png → wx.showShareImageMenu（弹出「发送给朋友 / 收藏 / 保存」）。cb(true) 弹出来了，cb(false, 原因) 没弹出来
 // 网页：盖一层，上面是这张图，长按图片就能发送 / 保存
+// 0.9.19：微信的隐私接口（剪贴板、相册）先走一遍官方的「同意隐私」弹窗；后台《用户隐私保护指引》里声明了才放行（没声明会报 no privacy api permission）
+function withPrivacy(fn, fail) {
+  try {
+    if (isWx && typeof wx.requirePrivacyAuthorize === 'function') { wx.requirePrivacyAuthorize({ success: () => fn(), fail: (e) => fail && fail((e && e.errMsg) || '没同意隐私') }); return; }
+  } catch (e) { /* 老版本微信没有这个接口：直接用 */ }
+  fn();
+}
+function openPrivacy() { try { if (isWx && wx.openPrivacyContract) wx.openPrivacyContract({}); } catch (e) { /* */ } }
 function shareImage(canvas, cb) {
   const done = (v, why) => cb && cb(v, why);
   try {
     if (isWx) {
+      if (!cb || !cb._p) { const cb2 = (v, why) => done(v, why); cb2._p = true; return withPrivacy(() => shareImage(canvas, cb2), (why) => done(false, why)); }
       if (typeof wx.showShareImageMenu !== 'function') return done(false, '微信版本太老，没有发图功能');
       canvas.toTempFilePath({
         x: 0, y: 0, width: canvas.width, height: canvas.height, destWidth: canvas.width, destHeight: canvas.height, fileType: 'png',
@@ -9418,7 +9471,7 @@ function onVisibility(cb) {
     }
   } catch (e) { /* 拿不到就不记 */ }
 }
-module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm };
+module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm, openPrivacy };
 
 });
 __def("js/sfx.js", function (module, exports, require) {
@@ -10102,7 +10155,18 @@ function packBytes(raw) {
   for (let i = 0; i < u.length; i++) if (back[i] !== u[i]) return null;
   return z;
 }
+// 0.9.19：只带新版第一章以后的记录（换版本清进度那一刻记的 b migrate_ch1new；没有就带最近 3 天）。老记录太长，Cc 粘了 24 页
+function recentStart() {
+  for (let k = ev.length - 1; k >= 0; k--) if (ev[k][1] === 'b' && ev[k][2] === 'migrate_ch1new') return k;
+  let back = 0;
+  for (let k = ev.length - 1; k >= 0; k--) { back += (ev[k][0] || 0) * 100; if (back > 3 * 86400000) return k + 1; }
+  return 0;
+}
 function exportBytes(extra, maxBytes) {
+  const all = ev;
+  try { ev = ev.slice(recentStart()); return exportBytesInner(extra, maxBytes); } catch (e) { return null; } finally { ev = all; }
+}
+function exportBytesInner(extra, maxBytes) {
   try {
     const total = ev.length;
     const tryN = (n) => packBytes(JSON.stringify(Object.assign({ game: '九宫消', fmt: 1 }, extra, { ev: ev.slice(total - n), cut: total - n })));

@@ -325,6 +325,7 @@ function modalChunks(str, title, done) {
 function copyText(str, ok, title) {
   const cb = (v, why) => ok && ok(v, why);
   try {
+    if (isWx && !(ok && ok._p)) { const ok2 = (v, why) => cb(v, why); ok2._p = true; return withPrivacy(() => copyText(str, ok2, title), () => copyText(str, ok2, title)); }
     if (isWx) {
       // 0.9.15：微信 2023-09 起剪贴板是「隐私接口」，后台没在《用户隐私保护指引》里声明「剪贴板」就会失败（errno 112）。
       // 失败了不只说「失败」：把原因带回去；再把记录分段放进微信自己的输入弹窗，长按「全选 → 拷贝」照样拿得走（系统输入框的复制不走这个接口）
@@ -342,10 +343,19 @@ function copyText(str, ok, title) {
 // 把一张画好的图「发送给朋友」（0.9.17：试玩记录画成方格图发给 Cc，见 js/logimg.js）
 // 微信：画布 → 临时 png → wx.showShareImageMenu（弹出「发送给朋友 / 收藏 / 保存」）。cb(true) 弹出来了，cb(false, 原因) 没弹出来
 // 网页：盖一层，上面是这张图，长按图片就能发送 / 保存
+// 0.9.19：微信的隐私接口（剪贴板、相册）先走一遍官方的「同意隐私」弹窗；后台《用户隐私保护指引》里声明了才放行（没声明会报 no privacy api permission）
+function withPrivacy(fn, fail) {
+  try {
+    if (isWx && typeof wx.requirePrivacyAuthorize === 'function') { wx.requirePrivacyAuthorize({ success: () => fn(), fail: (e) => fail && fail((e && e.errMsg) || '没同意隐私') }); return; }
+  } catch (e) { /* 老版本微信没有这个接口：直接用 */ }
+  fn();
+}
+function openPrivacy() { try { if (isWx && wx.openPrivacyContract) wx.openPrivacyContract({}); } catch (e) { /* */ } }
 function shareImage(canvas, cb) {
   const done = (v, why) => cb && cb(v, why);
   try {
     if (isWx) {
+      if (!cb || !cb._p) { const cb2 = (v, why) => done(v, why); cb2._p = true; return withPrivacy(() => shareImage(canvas, cb2), (why) => done(false, why)); }
       if (typeof wx.showShareImageMenu !== 'function') return done(false, '微信版本太老，没有发图功能');
       canvas.toTempFilePath({
         x: 0, y: 0, width: canvas.width, height: canvas.height, destWidth: canvas.width, destHeight: canvas.height, fileType: 'png',
@@ -410,4 +420,4 @@ function onVisibility(cb) {
     }
   } catch (e) { /* 拿不到就不记 */ }
 }
-module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm };
+module.exports = { onError, askText, onVisibility, copyText, shareImage, isWx, setup, makeCanvas, loadImage, now, nextFrame, vibrate, showRewardedAd, load, save, exposeForTest, sound, unlockAudio, setMuted, warmSounds, bgm, openPrivacy };

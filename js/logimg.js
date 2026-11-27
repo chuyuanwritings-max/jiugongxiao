@@ -66,4 +66,26 @@ function draw(data, makeCanvas, info) {
   }
   return c;
 }
-module.exports = { draw, capacity, crc32, COLS, CELL };
+// ---------- 0.9.19 截屏页（微信不放行发图、复制时的后路，Cc：「截图也行，必须得想办法让我能把游戏报告发出来」）----------
+// 记录分成几页，每页铺满一屏，朋友截屏、点下一页再截，把截图发给 Cc。每页自己带头，几张截图顺序乱了也拼得回来：
+//   'JGXP' + 第几页(1 字节) + 一共几页(1) + 整份长度(4) + 整份 CRC32(4) + 这页装了几个字节(2) + 这页的字节
+const PCOLS = 96;
+function pageCapacity(rows) { return Math.floor((rows * PCOLS) / 8) - 16; }
+function splitPages(data, rows) {
+  const per = pageCapacity(rows), n = Math.max(1, Math.ceil(data.length / per)), crc = crc32(data), out = [];
+  for (let i = 0; i < n; i++) {
+    const chunk = Array.from(data.slice(i * per, (i + 1) * per));
+    out.push([74, 71, 88, 80, i, n].concat(u32(data.length), u32(crc), [(chunk.length >> 8) & 255, chunk.length & 255], chunk));
+  }
+  return out;
+}
+// 在 (x0, y0) 起画一页：cell = 每格几个像素（画布真像素）；先画一圈黑框、空一格白，再画数据
+function drawPage(ctx, bytes, x0, y0, cell, rows) {
+  const bits = bytes.length * 8, w = (PCOLS + 4) * cell, h = (rows + 4) * cell;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(x0 - cell, y0 - cell, w + 2 * cell, h + 2 * cell);
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(x0, y0, w, cell); ctx.fillRect(x0, y0 + h - cell, w, cell); ctx.fillRect(x0, y0, cell, h); ctx.fillRect(x0 + w - cell, y0, cell, h);
+  const dx = x0 + 2 * cell, dy = y0 + 2 * cell;
+  for (let i = 0; i < bits; i++) if ((bytes[i >> 3] >> (7 - (i & 7))) & 1) ctx.fillRect(dx + (i % PCOLS) * cell, dy + Math.floor(i / PCOLS) * cell, cell, cell);
+}
+module.exports = { draw, capacity, crc32, COLS, CELL, PCOLS, pageCapacity, splitPages, drawPage };

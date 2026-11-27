@@ -32,7 +32,7 @@ for (const cs of cases) {
     const jpg = path.join(tmp, cs.name + '_' + q + '.jpg');
     cp.execFileSync(PY, ['-c', `from PIL import Image; im=Image.open(${JSON.stringify(pgm)}); im=im.resize((int(im.width*${sc}),int(im.height*${sc})), Image.BILINEAR); im.convert('RGB').save(${JSON.stringify(jpg)}, quality=${q})`]);
     let out = '';
-    try { out = cp.execFileSync(PY, ['-c', `import sys; sys.path.insert(0, ${JSON.stringify(path.join(__dirname, '..', 'tools'))}); import decode_log_image as d; print(d.decode(${JSON.stringify(jpg)})[0])`]).toString().trim(); } catch (e) { out = 'ERR ' + (e.stdout || '') + (e.stderr || ''); }
+    try { out = cp.execFileSync(PY, ['-c', `import sys; sys.path.insert(0, ${JSON.stringify(path.join(__dirname, '..', 'tools'))}); import decode_log_image as d; print(d.decode(${JSON.stringify(jpg)}))`]).toString().trim(); } catch (e) { out = 'ERR ' + (e.stdout || '') + (e.stderr || ''); }
     let ok = false;
     try { ok = zlib.inflateRawSync(Buffer.from(out.slice(5), 'base64')).toString('utf8') === raw; } catch (e) { ok = false; }
     console.log((ok ? '✓' : '✗') + ' ' + cs.name + '（' + z.length + ' 字节，图 ' + cv.width + '×' + cv.height + '）JPEG ' + q + ' 缩到 ' + Math.round(sc * 100) + '%');

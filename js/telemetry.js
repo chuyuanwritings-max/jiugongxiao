@@ -84,7 +84,18 @@ function packBytes(raw) {
   for (let i = 0; i < u.length; i++) if (back[i] !== u[i]) return null;
   return z;
 }
+// 0.9.19：只带新版第一章以后的记录（换版本清进度那一刻记的 b migrate_ch1new；没有就带最近 3 天）。老记录太长，Cc 粘了 24 页
+function recentStart() {
+  for (let k = ev.length - 1; k >= 0; k--) if (ev[k][1] === 'b' && ev[k][2] === 'migrate_ch1new') return k;
+  let back = 0;
+  for (let k = ev.length - 1; k >= 0; k--) { back += (ev[k][0] || 0) * 100; if (back > 3 * 86400000) return k + 1; }
+  return 0;
+}
 function exportBytes(extra, maxBytes) {
+  const all = ev;
+  try { ev = ev.slice(recentStart()); return exportBytesInner(extra, maxBytes); } catch (e) { return null; } finally { ev = all; }
+}
+function exportBytesInner(extra, maxBytes) {
   try {
     const total = ev.length;
     const tryN = (n) => packBytes(JSON.stringify(Object.assign({ game: '九宫消', fmt: 1 }, extra, { ev: ev.slice(total - n), cut: total - n })));

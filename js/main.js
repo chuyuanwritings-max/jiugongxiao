@@ -1586,7 +1586,7 @@ function snapNow() {
   P.askText('记一下', '哪里不对或想说什么？（可以不写）', (note) => { if (note === null) return; st.note = note; T.rec('S', st); snapCount++; T.flush(); });
 }
 function drawSnapButton() {
-  if (mode === 'cut' || mode === 'ad') return;
+  if (mode === 'cut' || mode === 'ad' || mode === 'logpages') return;
   const x = 8, y = H - 50, w = 44, h = 44;
   const a = clock - snapFlash;
   ctx.fillStyle = 'rgba(20,24,48,0.75)'; rr(x, y, w, h, 12); ctx.fill();
@@ -2521,18 +2521,36 @@ function copyPlayLog() {
 // 0.9.17（Cc 11-27：「一定要让我朋友可以把测试结果转发给我，不然的话我们就白测了」）：试玩记录画成一张黑白方格图，
 // 点一下弹出微信的「发送给朋友」，选 Cc 发过去。Cc 存图 → tools/decode_log_image.py 解开。复制那个按钮留着当后路
 const LI = require('./logimg.js');
+// 0.9.19：微信不放行发图、复制（后台隐私指引没声明，见全量设计第 139 条），改成「截屏页」：记录铺满一屏黑白格子，截屏 → 下一页，截图发给 Cc。
+// 只带新版第一章以后的记录（一般 1–2 页）。Cc 存图后 tools/decode_log_image.py 图1 图2 … 解开
+let logPages = null; // { pages, i, cell, rows, from }
 function sendPlayLog() {
-  const n = (save.playLog || []).length;
-  const pack = T.exportBytes({ ver: VERSION, log: save.playLog || [] }, LI.capacity());
-  if (!pack) { copyMsg = { text: '画不出图，改用下面的复制', t: clock, dur: 6 }; logErr('shareimg', 'pack'); return; }
-  const d = new Date(), pad = (x) => (x < 10 ? '0' : '') + x;
-  const when = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-  const cv = LI.draw(pack.bytes, P.makeCanvas, { title: '九宫消 试玩记录 · ' + VERSION, lines: [when + ' · ' + n + ' 局 · ' + pack.kept + (pack.kept < pack.total ? ' / ' + pack.total + ' 条（只装得下最近的）' : ' 条'), '原样发给 Cc（发图片，别截图）'] });
-  T.rec('b', 'shareLogImg');
-  P.shareImage(cv, (ok, why) => {
-    copyMsg = { text: ok ? '选 Cc → 发送；发不出去就点下面的复制' : '发图失败：' + String(why || '').slice(0, 20) + '，改用复制', t: clock, dur: 8 };
-    if (!ok) logErr('shareimg', String(why || ''));
-  });
+  const topH = 64, botH = 96;
+  const cell = Math.max(4, Math.floor((W * dpr - 24 * dpr) / (LI.PCOLS + 4)));
+  const rows = Math.max(20, Math.floor(((H - topH - botH) * dpr) / cell) - 4);
+  const pack = T.exportBytes({ ver: VERSION, log: (save.playLog || []).filter((r) => r && r.ver && r.ver >= '0.9.17') }, LI.pageCapacity(rows) * 40);
+  if (!pack) { copyMsg = { text: '记录打不了包，改用复制文字', t: clock, dur: 6 }; logErr('logpages', 'pack'); return; }
+  logPages = { pages: LI.splitPages(pack.bytes, rows), i: 0, cell, rows, from: mode, topH, kept: pack.kept };
+  T.rec('b', 'logPages_' + logPages.pages.length);
+  mode = 'logpages';
+}
+function drawLogPages() {
+  const lp = logPages;
+  if (!lp) { mode = 'settings'; return; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W * dpr, H * dpr);
+  const pw = (LI.PCOLS + 4) * lp.cell, x0 = Math.round((W * dpr - pw) / 2), y0 = Math.round(lp.topH * dpr);
+  LI.drawPage(ctx, lp.pages[lp.i], x0, y0, lp.cell, lp.rows);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const n = lp.pages.length;
+  text('试玩记录 第 ' + (lp.i + 1) + ' / ' + n + ' 页', W / 2, 22, 17, '#000000');
+  text(n > 1 ? '截一张屏，再点「下一页」；几张截图一起发给 Cc' : '截一张屏，把截图发给 Cc', W / 2, 46, 13, '#333333', 'center', 'normal');
+  const by = H - 80, bw = (W - 48) / 3;
+  // 按钮画成浅灰（不能是深色宽条：解码工具靠「整行几乎全黑」找格子的黑框）
+  const lb = (id, x, label, fn) => { ctx.fillStyle = downBtn === id ? '#d0d0d0' : '#e8e8e8'; rr(x, by, bw, 50, 12); ctx.fill(); text(label, x + bw / 2, by + 26, 16, '#111111'); buttons.push({ id, x, y: by, w: bw, h: 50, fn, label }); };
+  if (lp.i > 0) lb('lpPrev', 16, '上一页', () => { lp.i--; });
+  if (lp.i < n - 1) lb('lpNext', 24 + bw, '下一页', () => { lp.i++; });
+  lb('lpClose', 32 + bw * 2, '好了', () => { mode = lp.from || 'settings'; logPages = null; });
 }
 let settingsAsk = 0; // 「重新开始」要点两下：第一下变成「真的清空？」，3 秒内再点才清
 P.setMuted(!!save.muted);
@@ -2558,7 +2576,8 @@ function drawSettings() {
   // 试玩记录：复制出来贴给 Kira（难度表的「真人」那一列）
   const nLog = (save.playLog || []).length;
   button('setSendLog', bx, H - 226, bw, 50, copyMsg && clock - copyMsg.t < (copyMsg.dur || 2.5) ? copyMsg.text : '把试玩记录发给 Cc（' + nLog + ' 局）', { size: 16, hot: true, fn: sendPlayLog });
-  button('setCopyLog', bx, H - 168, bw, 44, '发不出去？复制文字', { kind: 'sub', size: 13, fn: copyPlayLog });
+  button('setCopyLog', bx, H - 168, bw * 0.62 - 4, 44, '复制文字', { kind: 'sub', size: 13, fn: copyPlayLog });
+  button('setPrivacy', bx + bw * 0.62 + 4, H - 168, bw * 0.38 - 4, 44, '隐私指引', { kind: 'sub', size: 12, fn: () => P.openPrivacy() }); // 微信要求：用了隐私接口就要能打开隐私指引
   button('setBack', bx, H - (PLAYTEST ? 114 : 100), bw, 60, settingsFrom === 'map' ? '回地图' : '回主菜单', { size: 24, fn: () => { mode = settingsFrom; } });
 }
 
@@ -4031,6 +4050,8 @@ function frameBody() {
     drawHome();
   } else if (mode === 'settings') {
     drawSettings();
+  } else if (mode === 'logpages') {
+    drawLogPages();
   } else if (mode === 'camp') {
     drawCamp();
   } else if (mode === 'map') {

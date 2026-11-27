@@ -236,7 +236,7 @@ module.exports = [
     waves: [[E, E, E, '...m.....', E, E, E, E, '......m..']],
   },
   { // 7 爽：冲锋关。开局约六成满，块块有家，炸满 8 处过关；一根香两道刻痕，越快星越多（星给丹 2 / 3 / 4）
-    goal: { lines: 24 }, d: 0, colors: [0, 3, 2, 1], rush: { t3: 50, t2: 80 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 24,
+    goal: { lines: 24 }, d: 0, colors: [0, 3, 2, 1], rush: { t3: 36, t2: 48, lose: 60 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 24,
     board: [E, E, E, E, E, E, E, E, E],
   },
   { // 8 教：墨苔怪爬过的地方留一块墨。墨块碍事就用铜雀啄
@@ -288,7 +288,7 @@ module.exports = [
     waves: [[E, '......m..', E, E, '.N.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, '.......m.', E, E]],
   },
   { // 16 爽：冲锋关（第二章比第一章长一点：27 块）
-    goal: { lines: 27 }, d: 0, colors: [1, 0, 3, 2], rush: { t3: 55, t2: 85 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 27,
+    goal: { lines: 27 }, d: 0, colors: [1, 0, 3, 2], rush: { t3: 40, t2: 54, lose: 68 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 27,
     board: [E, E, E, E, E, E, E, E, E],
   },
   { // 17 普通：盘上被留墨、手上被加泥，两头一起来
@@ -2345,7 +2345,7 @@ const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const LY = require('./layout.js');
 const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
-const VERSION = '0.9.23'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
+const VERSION = '0.9.24'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
 
 const COL = C.color;
 const KEY = 'luoshu_save_v1';
@@ -2553,6 +2553,7 @@ const HAS_WORDS = /[\u3400-\u9fff\uf900-\ufaff\u3000-\u303f\uff01-\uff5e]/;
 let allowWords = false;
 const TOOL_IDS = new Set(['setTester', 'setSendLog', 'setCopyLog', 'setPrivacy', 'overSendLog', 'overCopyLog', 'lpPrev', 'lpNext', 'lpClose']);
 const wordsOff = () => !allowWords && mode !== 'logpages';
+function textW(...a) { const was = allowWords; allowWords = true; text(...a); allowWords = was; } // 不管「不用字」开关都要写出来的字：游戏名、版本号
 function text(s, x, y, size, col, align, weight, stroke) {
   if (wordsOff() && HAS_WORDS.test(String(s))) return;
   const big = size >= 30, edge = stroke === undefined ? big : stroke;
@@ -3387,6 +3388,12 @@ function update(dt) {
   if (mode === 'play' && g && g.pets && g.over) { if (g._overSeen === undefined) g._overSeen = clock; else if (clock - g._overSeen > 3.5) { logErr('watchdog', 'over 但 3.5 秒没出结算页'); timeline = []; g._ended = false; if (!result) g._settled = false; try { endGame(); } catch (e) { logErr('watchdog-end', e); } g._overSeen = clock; } } else if (g) g._overSeen = undefined;
   // 判了输赢、排队的动画也空了，人还在关里：马上出结算页，不等看门狗（0.9.14 debug；比如说明卡盖着的时候过了关）
   if (mode === 'play' && g && g.pets && g.over && !g._ended && !timeline.length) { try { endGame(); } catch (e) { logErr('end-now', e); } }
+  // 0.9.24 冲锋关不够快就输（Cc 11-27：「爽关唯一难度就是在速度上……必须得速度要求高一点，不够快就输了」）：香烧完还没塞够，就输；最后 5 秒每秒响一下
+  if (mode === 'play' && g && g.rush && !g.over && g.rushT0 && g.stage.rush.lose) {
+    const left = g.stage.rush.lose - rushSec();
+    if (left <= 0) { g.over = true; g.won = false; g.reason = 'time'; g.rushSec = g.stage.rush.lose; T.rec('b', 'rushTimeUp'); }
+    else if (left <= 5 && Math.ceil(left) !== g._tickSec) { g._tickSec = Math.ceil(left); P.sound('tap', 0.5); haptic('light'); }
+  }
   if (mode === 'play' && g && g.rush && g.rushFixStart && !g._fixStarted) { g._fixStarted = true; playRushFix(g.rushFixStart, Math.max(clock, enterAt + 0.6) + 0.3); }
   if (mode === 'play' && g && g.rush && !g.over && !drag && g.rushStuck && g.rushStuck()) { g.rushRepair(); for (let k = 0; k < 81; k++) if (g.board[k] && !cellIn[k]) cellIn[k] = clock + ((k % 9) + Math.floor(k / 9)) * 0.01; T.rec('b', 'rushRepair'); } // 0.9.21 冲锋关万一卡住：整盘重铺（保险）
   if (mode === 'play' && g && !g.over && P.now() >= stopUntil) {
@@ -3448,6 +3455,7 @@ function drawStageHud() {
   const y = L.top;
   button('map', 10, y + 4, 62, 38, '‹ 地图', { size: 15, bg: COL.wood, fn: () => { if (g.over && !g._ended) endGame(); else if (!g.over && g.moves > 0) logPlay(true); timeline = []; if (g.won && g.pets) { CUT.clear(); openCamp(); } else mode = 'map'; } }); // 赢的那一下马上点回去：先把这关记上账；过了关一律回营地
   text(g.pets ? petLevelName() : '第 ' + (stageIdx + 1) + ' 关', W / 2, y + 10, 15, COL.dim, 'center', 'normal');
+  if (g.pets && g.rush) { chipPos = {}; drawRushHud(y); return; } // 0.9.24 冲锋关顶上只放两样：还剩几块 + 一根大倒计时条
   const left = g.goalLeft();
   const keys = Object.keys(g.stage.goal);
   chipPos = {};
@@ -3475,7 +3483,7 @@ function drawStageHud() {
     else rods(cx + 14, cy, left[key], 18); // 0.9.20 还差几个：算筹
     buttons.push({ id: 'goal_' + key, x: cx - 43, y: cy - 19, w: 86, h: 38, fn: () => showInfo({ goal: key }) }); // 点目标图标：说明它是什么
   });
-  if (g.pets) drawScoreStars(y);
+  if (g.pets && !g.rush) drawScoreStars(y);
   // 一共几波、现在第几波（0.9.14，Cc：「某一关里面一共要抓几波怪，你得写清楚啊！」）：打完的实心，正在打的闪
   if (g.pets && g.waveTotal > 1) {
     const n = g.waveTotal, cur = g.waveNo || 1, gap = 18, wx0 = W / 2 - ((n - 1) * gap) / 2, wy = y + 72;
@@ -3499,12 +3507,35 @@ function liveStars() {
   const n = g.moves <= Math.floor(st.par * 0.8) ? 3 : g.moves <= st.par ? 2 : 1;
   return g.revivesUsed ? Math.min(2, n) : n; // 0.9.20 用过救命：最多 2 星
 }
+// 0.9.24 冲锋关的顶栏（Cc 11-27：「时间的倒计时条必须得显示出来」「必须得更明显更明显才行」「上面一堆东西叠在一起……你这还能更丑一点吗」）：
+// 原来分数、三颗星、24 根算筹、细细一根香叠在一起。现在只有两样：中间「方块 + 还剩几块」，盘面正上方一根整宽的粗倒计时条（星就刻在条上）
+function drawRushHud(y) {
+  const st = g.stage, left = g.goalLeft().lines || 0, t = rushSec(), lose = st.rush.lose || st.rush.t2 * 1.35;
+  const rp = rushPlayPulse();
+  // 还剩几块
+  const cy = Math.min(y + 30, L.by - 62);
+  goalIcon('lines', W / 2 - 34, cy, 26 * (1 + (chipPop.lines ? Math.max(0, 0.25 - (clock - chipPop.lines)) * 2 : 0)));
+  chipPos.lines = { x: W / 2 - 34, y: cy };
+  text(String(left), W / 2 + 14, cy + 1, 34, COL.text);
+  buttons.push({ id: 'goal_lines', x: W / 2 - 60, y: cy - 22, w: 120, h: 44, fn: () => showInfo({ goal: 'lines' }) });
+  // 倒计时条：满的时候整根亮，越烧越短；剩四成变橙、剩一成多变红并一闪一闪
+  const bx = 18, bw = W - 36, bh = 18 + rp * 3, by = L.by - 24 - bh / 2;
+  const frac = Math.max(0, Math.min(1, 1 - t / lose)), low = frac < 0.17, mid = frac < 0.4;
+  const col = low ? (Math.sin(clock * 18) > 0 ? '#ff4a3a' : '#ffb03a') : mid ? '#ff9a3a' : '#f3d27a';
+  ctx.fillStyle = '#120d0a'; rr(bx - 3, by - 3, bw + 6, bh + 6, (bh + 6) / 2); ctx.fill();
+  ctx.fillStyle = '#3a2a22'; rr(bx, by, bw, bh, bh / 2); ctx.fill();
+  if (frac > 0) { ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = low ? 22 : 10 + rp * 10; ctx.fillStyle = col; rr(bx, by, Math.max(bh, bw * frac), bh, bh / 2); ctx.fill(); ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; rr(bx + 4, by + 3, Math.max(bh - 8, bw * frac - 8), bh * 0.3, bh * 0.15); ctx.fill();
+    const ex = bx + bw * frac; ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(ex, by + bh / 2, bh * 0.45 + Math.sin(clock * 20) * 2, 0, Math.PI * 2); ctx.fill(); } // 烧着的那头一颗火星
+  // 星刻在条上：过了这个时间那颗星就灭
+  [[st.rush.t3, 3], [st.rush.t2, 2]].forEach(([tt, n]) => { const nx = bx + bw * Math.max(0, 1 - tt / lose); ctx.fillStyle = '#120d0a'; ctx.fillRect(nx - 2, by - 5, 4, bh + 10); for (let k = 0; k < n; k++) starShape(nx - (n - 1) * 7 + k * 14, by - 14, 6, t <= tt ? COL.brassLight : '#3a3550'); });
+}
 function drawScoreStars(y) {
   const st = g.stage, n = liveStars();
   text(String(Math.round(displayScore)), 16, y + 62, 20, COL.text, 'left');
   for (let k = 0; k < 3; k++) starShape(20 + k * 20, y + 86, 7, k < n ? COL.brassLight : '#3a3550');
   if (!st.rush) return;
-  const t = rushSec(), total = st.rush.t2 * 1.35, bw = Math.min(230, W - 170), bx = (W - bw) / 2, by = y + 74;
+  const t = rushSec(), total = st.rush.lose || st.rush.t2 * 1.35, bw = Math.min(230, W - 170), bx = (W - bw) / 2, by = y + 74;
   const burn = Math.min(1, t / total), bx1 = bx + bw * burn;
   ctx.fillStyle = COL.ink; rr(bx - 2, by - 5, bw + 4, 10, 5); ctx.fill();
   ctx.fillStyle = '#8a5a34'; rr(bx1, by - 3, bx + bw - bx1, 6, 3); ctx.fill(); // 还没烧的那截
@@ -4983,7 +5014,7 @@ function drawHome() {
     }
     ctx.drawImage(homeArtCache, 0, 0, W, H);
     const rTi = LY.rect('home.title'), kt = LY.k('home.title', rTi);
-    text('九宫消', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.35, Math.round(44 * kt), COL.brassLight);
+    textW('九宫消', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.35, Math.round(44 * kt), COL.brassLight); // 0.9.24 游戏名字一定留着（Cc：「主页上面得有游戏名字啊，大哥，那个文字你不能删啊」）
     text('汐娘的机关工坊', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.82, Math.round(13 * kt), COL.dim, 'center', 'normal');
     drawHomeButtons(cy);
     return;
@@ -5002,7 +5033,7 @@ function drawHome() {
     const a = clock * 0.6 + (n / arr.length) * Math.PI * 2;
     petIcon(id, W / 2 + Math.cos(a) * 110, cy + Math.sin(a) * 70, 40, 0, 0);
   });
-  text('九宫消', W / 2, cy + 116, 44, COL.brassLight);
+  textW('九宫消', W / 2, cy + 116, 44, COL.brassLight);
   text('汐娘的机关工坊', W / 2, cy + 156, 16, COL.dim, 'center', 'normal');
   drawHomeButtons(cy);
 }
@@ -5015,7 +5046,7 @@ function drawHomeButtons(cy) {
     // 营地、画册、经典拼画三个入口去掉了（0.9.7，Cc 11-25：「像是自己给自己搞复杂的乱七八糟的东西」）
     { id: 'homeSettings', label: '设置', icon: ICON.settings, fn: () => { settingsAsk = 0; settingsFrom = 'home'; mode = 'settings'; } },
   ], rBr.y, rBr);
-  text('试玩版 ' + VERSION, W / 2, H - 18, 11, TH.faint, 'center', 'normal');
+  textW('试玩版 ' + VERSION, W / 2, H - 22, 13, COL.dim, 'center', 'normal'); // 0.9.24 主页一定看得到版本号（Cc：「主页没有版本号，这不行啊」）
 }
 
 // ---------- 设置：声音、振动、重新开始（Cc 11-24：「没有设置页，没法让我重新开始……退不回主菜单」） ----------
@@ -5196,6 +5227,8 @@ function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好�
     return newEvolution(id, i);
   }
   petIdx = i; stageIdx = -1;
+  // 0.9.24 测试员跳到后面的关：前面关送的宠物先给上（Cc：「爽关里还是没有宠物啊」——跳关玩，第 2 关送的铜雀没拿到，冲锋关里就一只宠物都没有）
+  if (save.tester) { for (let k = 0; k < i; k++) { const gf = PLV[k].gift; if (gf && !ownedOf(gf)) { save.pets[gf] = { lv: 3, exp: 0 }; save.petOrder.push(gf); if (!save.activePet) save.activePet = gf; } } persist(); }
   // 专属关：点名的那只自动换上，只管这一关（营地里选的出战宠物不改）；第 4 关的「充得特别快」只有第一次
   const team = levelTeam(st0, i, lendLv, lendId);
   const st1 = Object.assign({}, st0, { fastCharge: !!st0.fastCharge && save.petStage <= i });
@@ -5895,7 +5928,8 @@ function drawPetOver() {
     const rank = !g.onlyPet && lost2 && g.team[0] ? PG.bestPetFor(g.stage) : [];
     const top = rank.find((x) => ownedOf(x.id)), mine = rank.find((x) => baseOf(x.id) === baseOf(g.team[0].id)); // 自己有的里面最对口的那只，比带着的这只更对口才请
     const bestId = top && mine && top.n > mine.n ? ownedOf(top.id) : null;
-    if (bestId) {
+    if (g.rush) lossSideBtn(bx, by + 70, bw, 44); // 0.9.24 冲锋关慢了输：只有「再试一次」，不给救命
+    else if (bestId) {
       text('这关的怪不怕' + PG.PETS[g.team[0].id].name + '。', W / 2, by - 14, 14, COL.dim, 'center', 'normal');
       button('lend', bx, by + 70, bw * 0.6 - 6, 44, '请' + PG.PETS[bestId].name + '来帮忙', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, 3, bestId) });
       lossSideBtn(bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44);

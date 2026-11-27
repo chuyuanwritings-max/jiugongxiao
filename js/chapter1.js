@@ -34,7 +34,7 @@ module.exports = [
     waves: [[E, E, E, '...m.....', E, E, E, E, '......m..']],
   },
   { // 7 爽：冲锋关。开局约六成满，块块有家，炸满 8 处过关；一根香两道刻痕，越快星越多（星给丹 2 / 3 / 4）
-    goal: { lines: 24 }, d: 0, colors: [0, 3, 2, 1], rush: { t3: 50, t2: 80 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 24,
+    goal: { lines: 24 }, d: 0, colors: [0, 3, 2, 1], rush: { t3: 36, t2: 48, lose: 60 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 24,
     board: [E, E, E, E, E, E, E, E, E],
   },
   { // 8 教：墨苔怪爬过的地方留一块墨。墨块碍事就用铜雀啄

@@ -29,7 +29,7 @@ module.exports = [
     waves: [[E, '......m..', E, E, '.N.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, '.......m.', E, E]],
   },
   { // 16 爽：冲锋关（第二章比第一章长一点：27 块）
-    goal: { lines: 27 }, d: 0, colors: [1, 0, 3, 2], rush: { t3: 55, t2: 85 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 27,
+    goal: { lines: 27 }, d: 0, colors: [1, 0, 3, 2], rush: { t3: 40, t2: 54, lose: 68 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 27,
     board: [E, E, E, E, E, E, E, E, E],
   },
   { // 17 普通：盘上被留墨、手上被加泥，两头一起来

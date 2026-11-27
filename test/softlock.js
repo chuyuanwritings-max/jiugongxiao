@@ -154,7 +154,7 @@ winCase('普通块消掉最后一只墨怪', 11, (E, g) => { setBoard(g, { 4: 'm
 winCase('救命的技能块啄开路、普通块抓到最后一只', 12, (E, g) => {
   setBoard(g, { 0: '#.#.#.#.#', 1: '.#.#.#.#.', 2: '#.#.#.#.#', 3: '.#.#.#.#.', 4: 'm.#######', 5: '.#.#.#.#.', 6: '#.#.#.#.#', 7: '.#.#.#.#.', 8: '#.#.#.#..' });
   const n = E.G.PG.skillN(g.team[0].id, g.team[0].lv); // 铜雀啄几格：啄完第 4 排空出 n + 1 格，正好放一根 (n+1) 横条
-  lastMon(g); g.team[0].energy = 2; g.hand = [E.G.core.PIECES['2h'], E.G.core.PIECES[(n + 1) + 'h'], null, null];
+  lastMon(g); g.team[0].energy = Math.ceil(E.G.PG.energyMax(g, g.team[0]) / 2); g.hand = [E.G.core.PIECES['2h'], E.G.core.PIECES[(n + 1) + 'h'], null, null]; // 段 1 规则 9：救命要表盘过半（原来亮 2 格就救）
 }, (E, g) => {
   dragTo(E, 0, 8, 7); E.run(40); // 放完这块，剩下那根横条哪都放不下 → 宠物提前把技能块给你
   if (!g.hand[3]) throw new Error('宠物没来救（手上没有技能块）'); if (g.over) throw new Error('有救命块却判了输');

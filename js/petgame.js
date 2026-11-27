@@ -24,28 +24,33 @@ const BOSS_MUD_CD = 3; // 段 1 规则 5：泥沼怪每 3 手吐一次
 const near8 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const a = r + dr, b = c + dc; if (a >= 0 && a < 9 && b >= 0 && b < 9) out.push(a * 9 + b); } return out; };
 const CLEARABLE = (v) => v === CELL.BLOCK || IS_MON(v); // 消得掉的：方块、墨怪
 
-// 宠物的本事：peck 啄（盘上，横着一排里最近的 N 样东西）｜gnaw 啃（手上的块，N 口，每口 1 格）｜silk 吐丝（补上这一排里最近的 N 个空格）
+// 宠物的本事：peck 啄（铜雀）｜gnaw 啃（爆竹鼠）｜silk 吐丝（墨斗蚕）｜fire 火珠（小狮子）｜turn 转块（绿龟）
 const at = (arr, lv) => arr[Math.min(arr.length, Math.max(1, lv)) - 1];
+// 段 1 第二节：每只宠物 1–10 级。n = 打几格 / 几口 / 补几格 / 火苗 / 转几块；ring = 表盘几格（攒满要消几排）
+// 每升一级只变一样（打得多 / 攒得快 / 5 级长大 / 10 级绝招）；没有「开局带能量」（Cc 11-27「B 轮流两样」）
+// 绿龟只涨表盘、一颗水珠永远转 1 块，5 级学翻面、10 级学变形（Cc 段 1 定，替换细设计里龟那一行）
 const SKILL = {
-  // 每只宠物每一级（1–9 级；5 级 = 进化）：n 打几格（啃 = 几口）｜energy 攒满要几格｜start 开局带几格能量
-  n: { tongque: [2, 3, 3, 3, 4, 4, 5, 5, 6], baozhu: [1, 1, 1, 1, 2, 2, 2, 3, 3], modou: [1, 1, 1, 1, 2, 2, 2, 3, 3], qilin: [1, 1, 1, 1, 2, 2, 2, 2, 3] },
-  energy: { tongque: [6, 6, 6, 5, 4, 4, 4, 3, 3], baozhu: [7, 7, 6, 6, 5, 5, 4, 4, 3], modou: [7, 7, 6, 6, 5, 5, 4, 4, 3], qilin: [6, 6, 6, 5, 4, 4, 4, 3, 3] },
-  start: { tongque: [0, 0, 2, 2, 2, 3, 3, 3, 3], baozhu: [0, 2, 2, 3, 3, 4, 4, 4, 4], modou: [0, 2, 2, 3, 3, 4, 4, 4, 4], qilin: [0, 2, 2, 2, 2, 3, 3, 3, 3] },
-  kind: { tongque: 'peck', baozhu: 'gnaw', modou: 'silk', qilin: 'fire' },
-  intro: 1, // 登场关（fastCharge）：开局的能量只差几格就满（第一次消就出技能块，教完就照平常攒）
+  n: { tongque: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], baozhu: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], modou: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], shizi: [1, 1, 1, 1, 1, 2, 2, 3, 3, 3], lvgui: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
+  ring: { tongque: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], baozhu: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], modou: [9, 8, 7, 7, 7, 6, 6, 5, 4, 4], shizi: [10, 9, 8, 7, 7, 7, 6, 6, 5, 5], lvgui: [10, 9, 8, 7, 7, 6, 5, 4, 3, 3] },
+  kind: { tongque: 'peck', baozhu: 'gnaw', modou: 'silk', shizi: 'fire', lvgui: 'turn' },
+  intro: 1, // 登场关 / 升级后第一关（fastCharge）：开局只差几格就满
 };
-const baseId = (id) => (id === 'jinchique' ? 'tongque' : id === 'baozhuwang' ? 'baozhu' : id);
+const EVO_LV = 5, ULT_LV = 10; // 5 级长大、10 级学绝招
+// 长大版映回小时候版
+const BASE_OF = { jinchique: 'tongque', baozhuwang: 'baozhu', hudie: 'modou', qilin: 'shizi', dagui: 'lvgui' };
+const baseId = (id) => BASE_OF[id] || id;
 const skillKind = (id) => SKILL.kind[baseId(id)];
 const skillN = (id, lv) => at(SKILL.n[baseId(id)], lv);
-const startOf = (id, lv) => at(SKILL.start[baseId(id)], lv);
+const ringOf = (id, lv) => at(SKILL.ring[baseId(id)], lv);
+// 五只宠物，每只「小时候」「长大」两个样子（编号不动，只改名字；规则 10）
 const PETS = {
-  tongque: { name: '铜雀', color: 0, energy: (lv) => at(SKILL.energy.tongque, lv), evo: 'jinchique', evoLv: 5 },
-  jinchique: { name: '金翅雀', color: 0, energy: (lv) => at(SKILL.energy.tongque, lv) },
-  baozhu: { name: '爆竹鼠', color: 1, energy: (lv) => at(SKILL.energy.baozhu, lv), evo: 'baozhuwang', evoLv: 5 },
-  baozhuwang: { name: '爆竹鼠王', color: 1, energy: (lv) => at(SKILL.energy.baozhu, lv) }, // 0.9.20 5 级进化：会转（把托盘里一块转四分之一圈）
-  modou: { name: '墨斗蚕', color: 2, energy: (lv) => at(SKILL.energy.modou, lv), evoLv: 5 },
-  qilin: { name: '火麒麟', color: 5, energy: (lv) => at(SKILL.energy.qilin, lv), evoLv: 5 },
+  tongque: { name: '铜雀', color: 0, evo: 'jinchique', evoLv: EVO_LV }, jinchique: { name: '金凤凰', color: 0 },
+  baozhu: { name: '爆竹鼠', color: 1, evo: 'baozhuwang', evoLv: EVO_LV }, baozhuwang: { name: '鼠王', color: 1 },
+  modou: { name: '墨斗蚕', color: 2, evo: 'hudie', evoLv: EVO_LV }, hudie: { name: '蝴蝶', color: 2 },
+  shizi: { name: '小狮子', color: 5, evo: 'qilin', evoLv: EVO_LV }, qilin: { name: '麒麟', color: 5 },
+  lvgui: { name: '绿龟', color: 6, evo: 'dagui', evoLv: EVO_LV }, dagui: { name: '大龟', color: 6 },
 };
+Object.keys(PETS).forEach((id) => { PETS[id].energy = (lv) => ringOf(id, lv); }); // 旧接口：main.js 还在读
 // 每只宠物这一级的本事（一行字；0.9.12 照 Fable 技能重做第七节第 15 条的底稿，等和 Cc 逐字定）
 function petDesc(id, lv) {
   lv = lv || 1;
@@ -56,22 +61,15 @@ function petDesc(id, lv) {
   if (k === 'fire') return '火珠 · 消 ' + e + ' 排出一颗';
   return '';
 }
-// 升一级多了什么（一句话；升级那一下、营地卡片上写）：「啄 2 格 → 3 格」「消 6 排 → 5 排出一块」「开局带 2 格能量」
+// 升一级多了什么（一句话；升级那一下、营地卡片上写）
 function petGain(id, lv) {
   const k = skillKind(id), out = [];
-  const n0 = skillN(id, lv), n1 = skillN(id, lv + 1), e0 = PETS[id].energy(lv), e1 = PETS[id].energy(lv + 1), s0 = startOf(id, lv), s1 = startOf(id, lv + 1);
-  const verb = { peck: '啄', gnaw: '啃', silk: '补', fire: '火星烧' }[k] || '';
+  const n0 = skillN(id, lv), n1 = skillN(id, lv + 1), e0 = ringOf(id, lv), e1 = ringOf(id, lv + 1);
+  const verb = { peck: '啄', gnaw: '啃', silk: '补', fire: '火苗', turn: '转' }[k] || '';
   if (n1 > n0) out.push(verb + ' ' + n0 + ' 格 → ' + n1 + ' 格');
   if (e1 < e0) out.push('消 ' + e0 + ' 排 → ' + e1 + ' 排出一块');
-  if (s1 > s0) out.push('开局带 ' + s1 + ' 格能量');
   return out.join('，');
 }
-// 救命门槛、开局能量（段 1 第 6 步改成「过半」「不带开局能量」时一起删）
-const RULES = {
-  rescue: 'any',     // 救命：三块都放不下、宠物格空着时，宠物提前把技能块给你、能量清空。'any' = 能量条里有一格就救；'half' = 攒到一半以上才救
-  startEnergy: null,
-  rescueMin: 1, // 救命：能量条里至少有几格，宠物才提前给技能块
-};
 // 这一关带谁最顺（段 1 附录 D 丁）：数盘上的金属 → 铜雀，数土堆 → 爆竹鼠，都没有 → 空
 function bestPetFor(st) {
   let metal = 0, dirt = 0;
@@ -107,7 +105,7 @@ const near4 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; if (r >
 const PECKABLE = (v) => v === CELL.BLOCK || v === CELL.METAL;
 const petDef = (p) => PETS[p.id];
 function energyMax(g, p) {
-  return petDef(p).energy(p.lv);
+  return ringOf(p.id, p.lv);
 }
 // 这一关一共几波：开局盘上那一波 + 后面一波一波冒出来的（关卡卡片、宠物园、关里顶上的圆点都用这一个数）
 const waveTotalOf = (st) => 1 + ((st && st.waves) || []).length;
@@ -121,7 +119,7 @@ function createPetGame(opts) {
     pets: true,
     color: new Array(81).fill(0),
     handColor: [0, 0, 0, 0],
-    team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: RULES.startEnergy ? RULES.startEnergy(p.lv || 1) : st.fastCharge ? Math.max(startOf(p.id, p.lv || 1), PETS[p.id].energy(p.lv || 1) - SKILL.intro) : startOf(p.id, p.lv || 1) })),
+    team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: st.fastCharge ? ringOf(p.id, p.lv || 1) - SKILL.intro : 0 })), // 段 1 规则 9：不带开局能量，只有登场关 / 升级后第一关差 1 格
     bigHp: 0, bigCells: [], boss: null, skillUses: 0,
     mon: new Array(81).fill(null), // 墨怪的种类和状态
     monStats: { moss: 0 }, // 这一关墨怪干了几回（测试和以后的统计用）
@@ -331,6 +329,13 @@ function createPetGame(opts) {
     syncAll();
     if (g.stuck()) { g.over = true; g.reason = 'stuck'; }
   };
+  // 段 1 规则 9：放块（含墨怪爬进去凑满）消一处亮一格。宠物格空着先加再吐；宠物格里有块时表盘最多亮满，不再往上涨（不让囤）
+  function charge(n, ev) {
+    if (st.rush || !n) return;
+    for (const pt of g.team) { pt.energy += n; if (ev) ev.energy[pt.id] = n; }
+    giveSkill(ev);
+    for (const pt of g.team) if (g.hand[3]) pt.energy = Math.min(pt.energy, energyMax(g, pt));
+  }
   // 能量满了、宠物格空着：吐一块技能块（能量多出来的留着）。宠物格占着就先憋着。
   function giveSkill(ev) {
     if (st.rush) return;
@@ -404,13 +409,14 @@ function createPetGame(opts) {
     }
     if (opts2.length) { g.boss.jumpTo = opts2[Math.floor(g.rand() * opts2.length)]; g.boss.planMove = g.moves; ev.bossJumpPlan = g.boss.jumpTo; }
   }
-  // 救命（并在宠物身上，没有另外的计数）：三块都放不下、宠物格空着的时候，能量条里只要有东西，宠物就提前把技能块给你，能量清空。
+  // 救命（并在宠物身上）：三块都放不下、宠物格空着、表盘亮了一半以上（单数往上取：8 格亮 4、7 格亮 4、3 格亮 2）→ 宠物提前把技能块给你，表盘清零
+  // 段 1 规则 9（Cc 同意的收紧第 4 条）：原来亮一格就给，改成过半。给了也不保证救得活
   function rescue(ev) {
     if (!g.stuck() || g.hand[3] || !g.team.length) return;
-    const ok = (x) => (RULES.rescue === 'half' ? x.energy * 2 >= energyMax(g, x) : x.energy >= RULES.rescueMin);
+    const ok = (x) => x.energy >= Math.ceil(energyMax(g, x) / 2);
     const pt = g.team.filter(ok).sort((x, y) => y.energy / energyMax(g, y) - x.energy / energyMax(g, x))[0];
-    if (pt) pt.energy = 0;
     if (!pt) return;
+    pt.energy = 0;
     g.hand[3] = skillPiece(pt); g.handColor[3] = petDef(pt).color; ev.rescue = pt.id; g.rescues = (g.rescues || 0) + 1;
     ev.petActs.push({ id: pt.id, kind: 'gift', lines: [], boxes: [], cells: [], rescue: true });
   }
@@ -513,8 +519,7 @@ function createPetGame(opts) {
     const cells = was.filter((x) => b[x] === CELL.EMPTY);
     (ev.crawlClear = ev.crawlClear || []).push({ units, cells, collected: ev.collected.slice(c0) });
     if ('lines' in g.got) g.got.lines += units.length;
-    for (const pt of st.rush ? [] : g.team) pt.energy = Math.min(energyMax(g, pt) * 2 - 1, pt.energy + units.length);
-    giveSkill(ev);
+    charge(units.length, ev);
   }
   function crawlTurn(b, ev) {
     if (!st.crawl) return;
@@ -643,12 +648,10 @@ function createPetGame(opts) {
     // 2. 积蓄能量：每消一排 / 一个大格 +1。宠物格里已经有技能块时，最多攒到满。
     for (const pt of st.rush ? [] : g.team) {
       const mine = clearedCells.filter((k) => colorsBefore[k] === petDef(pt).color);
-      const gain = units.length;
-      if (gain) { pt.energy = Math.min(energyMax(g, pt) * 2 - 1, pt.energy + gain); ev.energy[pt.id] = gain; }
       if (mine.length) ev.sparks.push({ id: pt.id, cells: mine });
     }
     // 3. 能量满了：吐技能块到宠物格
-    giveSkill(ev);
+    charge(units.length, ev);
     if (!g.playStats.firstGoal && (ev.collected.length || ev.bigHits.length)) g.playStats.firstGoal = Math.max(1, g.moves);
     nextWave(b, ev); // 这一波抓光了：下一波掉下来（刚掉下来的这一手不动）
     // 4. 墨怪的回合（过关就不动了）
@@ -822,4 +825,4 @@ function useSkillIfGood(g) {
   if (s.v >= 100 || !fits) return !!g.useSkill(s);
   return false;
 }
-module.exports = { skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, startOf, SKILL, skillKind, skillN, gnawPiece, pickPiece, RULES, bestPetFor, skillBest, useSkillIfGood, petDesc, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, petDesc, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };

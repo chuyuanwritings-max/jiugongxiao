@@ -10,6 +10,8 @@ console.log('✓ 包是新的（指纹 ' + want + '）');
 const TESTS = [
   // 不开画面的
   ['rush_flow', 'node'], ['ch1_measure', 'node', ['20']],
+  // 段 1 规则测试（规则细设计第三节）
+  ['rules_obstacle', 'node'],
   // 开画面的（Playwright，测的是 preview.html）
   ['wx-play', 'pw'], ['newplayer', 'pw'], ['revive', 'pw'], ['chapter_pick', 'pw'], ['gnaw_cancel', 'pw'], ['rush_sound', 'pw'], ['rush_speed', 'pw'], ['logpages_real', 'pw'], ['logimg', 'node'], ['wx-smoke', 'pw'], ['wx-copy', 'node'], ['wx-full', 'node'], ['softlock', 'node'],
 ];

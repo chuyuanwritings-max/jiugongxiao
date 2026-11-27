@@ -221,7 +221,7 @@ function createPetGame(opts) {
   function placeBricks(prefer) {
     const b = g.board;
     for (let t = 0; t < 30; t++) {
-      const open = UNITS.map((u, ui) => ui).filter((ui) => UNITS[ui].every((k) => b[k]) && !UNITS[ui].some((k) => b[k] === CELL.BRICK));
+      const open = UNITS.map((u, ui) => ui).filter((ui) => core.unitFull(b, ui) && !UNITS[ui].some((k) => b[k] === CELL.BRICK));
       if (!open.length) return;
       const openSet = new Set(open);
       let best = -1, bs = -1;
@@ -263,7 +263,7 @@ function createPetGame(opts) {
   }
   // 0.9.21 修第 16 关卡死（Cc 11-27：「整个地图都是满的，手里还有一块塞不进去、没地方放了，但它也不消」）：
   // 原来剩下的块重挖不出空就不管了。现在保证手上每块都有自己的空：先只重挖坏掉的，不行就剩下的全部重挖，再不行换小一点的块
-  g.rushOK = (i, r, c) => { const p = g.hand[i]; if (!p || !core.canPlace(g.board, p, r, c)) return false; const b2 = g.board.slice(), placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc); placed.forEach((k) => { b2[k] = 1; }); return placed.some((k) => UNITS.some((u) => u.includes(k) && u.every((x) => b2[x]))); };
+  g.rushOK = (i, r, c) => { const p = g.hand[i]; if (!p || !core.canPlace(g.board, p, r, c)) return false; const b2 = g.board.slice(), placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc); placed.forEach((k) => { b2[k] = 1; }); return placed.some((k) => UNITS.some((u, ui) => u.includes(k) && core.unitFull(b2, ui))); };
   // 万一哪条路把手上的块换了（看广告换一批之类）：重挖到每块都有一放就消的空
   g.rushStuck = () => st.rush && !g.over && [0, 1, 2].some((i) => g.hand[i] && !core.placements(g.board, g.hand[i]).some(([r, c]) => g.rushOK(i, r, c)));
   g.rushRepair = () => { for (let k = 0; k < 81; k++) if (g.board[k] === CELL.EMPTY) { g.board[k] = 1; g.color[k] = g.pickColor(); } g.rushGap = [null, null, null]; ensureGaps([0, 1, 2]); };
@@ -440,7 +440,7 @@ function createPetGame(opts) {
       g.skillStats.cells += ev.cells.length + plan.fill.length;
       if (plan.fill.length) {
         // 丝补满了一排 / 一个大格：照你自己消的规矩消掉（不给它攒能量，不然它能自己养自己）
-        const units = []; for (let u = 0; u < 27; u++) if (UNITS[u].every((k) => b[k])) units.push(u);
+        const units = []; for (let u = 0; u < 27; u++) if (core.unitFull(b, u)) units.push(u);
         if (units.length) {
           const set = new Set(); units.forEach((u) => { unitTouches(b, UNITS[u], ev); UNITS[u].forEach((k) => set.add(k)); });
           const was = [...set].filter((k) => CLEARABLE(b[k]));
@@ -479,7 +479,7 @@ function createPetGame(opts) {
   // 墨怪爬进去（墨苔怪留下墨）正好凑满一排 / 一竖 / 一大格，当场消掉，算你抓的
   function crawlClear(b, keys, ev) {
     const units = [];
-    for (let u = 0; u < 27; u++) if (!units.includes(u) && UNITS[u].some((x) => keys.includes(x)) && UNITS[u].every((x) => b[x])) units.push(u);
+    for (let u = 0; u < 27; u++) if (!units.includes(u) && UNITS[u].some((x) => keys.includes(x)) && core.unitFull(b, u)) units.push(u);
     if (!units.length) return;
     const set = new Set(); units.forEach((u) => { unitTouches(b, UNITS[u], ev); UNITS[u].forEach((x) => set.add(x)); });
     const was = [...set].filter((x) => CLEARABLE(b[x]));
@@ -594,7 +594,9 @@ function createPetGame(opts) {
     // 1. 照常消
     const units = [];
     const placedSet = new Set(placed);
-    for (let u = 0; u < 27; u++) if (UNITS[u].every((k) => b[k]) && (!st.rush || UNITS[u].some((k) => placedSet.has(k)))) units.push(u); // 冲锋关：只消你这一块塞进去的那几排 / 列 / 大格
+    for (let u = 0; u < 27; u++) if (core.unitFull(b, u) && (!st.rush || UNITS[u].some((k) => placedSet.has(k)))) units.push(u); // 冲锋关：只消你这一块塞进去的那几排 / 列 / 大格
+    // 规则 1：这一手摆满了、但被障碍堵着没消的排（给段 4、6 演「满了不炸」）
+    for (let u = 0; u < 27; u++) { if (!UNITS[u].some((k) => placedSet.has(k))) continue; const at = core.unitBlockedBy(b, u); if (at) (ev.blockedFull = ev.blockedFull || []).push({ u, at }); }
     const colorsBefore = g.color.slice();
     let clearedCells = [];
     if (units.length) {
@@ -749,7 +751,7 @@ function skillBest(g) {
       if (!pl) continue;
       const nb = b.slice(); let v = scoreHit(pl.cells, nb);
       pl.fill.forEach((x) => (nb[x] = 1));
-      const units = []; for (let u = 0; u < 27; u++) if (UNITS[u].every((x) => nb[x])) units.push(u);
+      const units = []; for (let u = 0; u < 27; u++) if (core.unitFull(nb, u)) units.push(u);
       const set = new Set(); units.forEach((u) => UNITS[u].forEach((x) => set.add(x)));
       for (const x of set) {
         if (nb[x] === CELL.MON && g.mon[x]) { v += wantMon ? 100 : 10; nb[x] = 0; }
@@ -786,4 +788,4 @@ function useSkillIfGood(g) {
   if (s.v >= 100 || !fits) return !!g.useSkill(s);
   return false;
 }
-module.exports = { waveTotalOf, petGain, startOf, SKILL, skillKind, skillN, gnawPiece, pickPiece, RULES, bestPetFor, skillBest, useSkillIfGood, petDesc, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, startOf, SKILL, skillKind, skillN, gnawPiece, pickPiece, RULES, bestPetFor, skillBest, useSkillIfGood, petDesc, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };

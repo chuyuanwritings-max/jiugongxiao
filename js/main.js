@@ -716,7 +716,7 @@ function previewClear(p, r, c) {
   const b = g.board.slice();
   for (const [dr, dc] of p.cells) b[(r + dr) * 9 + c + dc] = 1;
   const set = new Set();
-  for (let u = 0; u < 27; u++) if (core.UNITS[u].every((k) => b[k])) core.UNITS[u].forEach((k) => set.add(k));
+  for (let u = 0; u < 27; u++) if (core.unitFull(b, u)) core.UNITS[u].forEach((k) => set.add(k)); // 段 1 规则 1：被障碍堵着的排拖块时不发亮
   return set;
 }
 
@@ -2678,7 +2678,7 @@ function drawBossHints() {
       // 这一下凑满的那一排 / 那个大格，本身含不含大墨怪的格子（原来按「格子落在它那几排上」算，会误报）
       const b2 = g.board.slice();
       for (const [dr, dc] of p.cells) b2[(sn.r + dr) * 9 + sn.c + dc] = 1;
-      petFx.bossScared = core.UNITS.some((u) => u.every((k) => b2[k]) && u.some((k) => g.bigCells.includes(k)));
+      petFx.bossScared = core.UNITS.some((u, ui) => core.unitFull(b2, ui) && u.some((k) => g.bigCells.includes(k))); // 段 1：堵着的排打不到头目
     }
   }
   // 开局演示（前 4 秒，还没放块时）：第一排红光从左到右扫过去，扫到它，它一抖

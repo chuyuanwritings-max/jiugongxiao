@@ -72,9 +72,15 @@ function anyPlacement(board, p) {
   for (let r = 0; r + p.h <= 9; r++) for (let c = 0; c + p.w <= 9; c++) if (canPlace(board, p, r, c)) return true;
   return false;
 }
+// 段 1 规则 1（Cc 11-27「那格子放在那儿不消也不影响我过关，我为什么非要消它呢」）：金属、土堆堵路
+const BLOCKS_CLEAR = (v) => v === CELL.METAL || v === CELL.DIRT;
+// 全游戏唯一的判满（附录 B）：9 格都有东西，而且里面没有金属、土堆
+function unitFull(board, u) { const cs = UNITS[u]; for (let i = 0; i < 9; i++) { const v = board[cs[i]]; if (!v || BLOCKS_CLEAR(v)) return false; } return true; }
+// 9 格都有东西、但被障碍堵着：返回堵着的那几格（给 ev.blockedFull）；没摆满或没堵返回 null
+function unitBlockedBy(board, u) { const cs = UNITS[u], at = []; for (let i = 0; i < 9; i++) { const v = board[cs[i]]; if (!v) return null; if (BLOCKS_CLEAR(v)) at.push(cs[i]); } return at.length ? at : null; }
 function fullUnits(board) {
   const out = [];
-  for (let u = 0; u < 27; u++) if (UNITS[u].every((i) => board[i])) out.push(u);
+  for (let u = 0; u < 27; u++) if (unitFull(board, u)) out.push(u);
   return out;
 }
 // 放下并消除，返回新棋盘和消掉的单位（不改原棋盘）
@@ -84,8 +90,8 @@ function placeAndClear(board, p, r, c) {
   const units = fullUnits(b);
   const cells = new Set();
   units.forEach((u) => UNITS[u].forEach((i) => cells.add(i)));
-  // 头目、金属、土堆：占地方、算满，但消不掉；小墨怪：算满，消掉就抓到
-  const stays = (v) => v === CELL.BOSS || v === CELL.METAL || v === CELL.DIRT;
+  // 头目：占地方、算满，但消不掉；小墨怪：算满，消掉就抓到（金属、土堆所在的排根本不满，见 unitFull）
+  const stays = (v) => v === CELL.BOSS;
   cells.forEach((i) => !stays(b[i]) && (b[i] = 0));
   return { board: b, units, cells: [...cells].filter((i) => !stays(b[i])) };
 }
@@ -233,4 +239,4 @@ function evalBoard(board) {
 // 0.9.25 收拾：盘面上每一格是什么，用名字不用数字（Fable 代码体检第 6 步）
 // 段 1：机关匣（2）、铁石（5）拆了，编号空着不重排（留底、试玩记录里存的是数字；规则细设计附录 D 丙）
 const CELL = { EMPTY: 0, BLOCK: 1, MON: 3, BOSS: 4, METAL: 6, DIRT: 7, BRICK: 8 }; // 空 / 方块 / 小墨怪 / 头目 / 金属 / 土堆 / 冲锋关铜砖
-module.exports = { CELL, goalLeft, rng, PIECES, IDS, UNITS, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, evalBoard };
+module.exports = { CELL, BLOCKS_CLEAR, unitFull, unitBlockedBy, goalLeft, rng, PIECES, IDS, UNITS, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, evalBoard };

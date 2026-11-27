@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '2e38916098b9';</script>
+<script>window.__BUILD = 'd14425ff36b3';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -491,9 +491,15 @@ function anyPlacement(board, p) {
   for (let r = 0; r + p.h <= 9; r++) for (let c = 0; c + p.w <= 9; c++) if (canPlace(board, p, r, c)) return true;
   return false;
 }
+// 段 1 规则 1（Cc 11-27「那格子放在那儿不消也不影响我过关，我为什么非要消它呢」）：金属、土堆堵路
+const BLOCKS_CLEAR = (v) => v === CELL.METAL || v === CELL.DIRT;
+// 全游戏唯一的判满（附录 B）：9 格都有东西，而且里面没有金属、土堆
+function unitFull(board, u) { const cs = UNITS[u]; for (let i = 0; i < 9; i++) { const v = board[cs[i]]; if (!v || BLOCKS_CLEAR(v)) return false; } return true; }
+// 9 格都有东西、但被障碍堵着：返回堵着的那几格（给 ev.blockedFull）；没摆满或没堵返回 null
+function unitBlockedBy(board, u) { const cs = UNITS[u], at = []; for (let i = 0; i < 9; i++) { const v = board[cs[i]]; if (!v) return null; if (BLOCKS_CLEAR(v)) at.push(cs[i]); } return at.length ? at : null; }
 function fullUnits(board) {
   const out = [];
-  for (let u = 0; u < 27; u++) if (UNITS[u].every((i) => board[i])) out.push(u);
+  for (let u = 0; u < 27; u++) if (unitFull(board, u)) out.push(u);
   return out;
 }
 // 放下并消除，返回新棋盘和消掉的单位（不改原棋盘）
@@ -503,8 +509,8 @@ function placeAndClear(board, p, r, c) {
   const units = fullUnits(b);
   const cells = new Set();
   units.forEach((u) => UNITS[u].forEach((i) => cells.add(i)));
-  // 头目、金属、土堆：占地方、算满，但消不掉；小墨怪：算满，消掉就抓到
-  const stays = (v) => v === CELL.BOSS || v === CELL.METAL || v === CELL.DIRT;
+  // 头目：占地方、算满，但消不掉；小墨怪：算满，消掉就抓到（金属、土堆所在的排根本不满，见 unitFull）
+  const stays = (v) => v === CELL.BOSS;
   cells.forEach((i) => !stays(b[i]) && (b[i] = 0));
   return { board: b, units, cells: [...cells].filter((i) => !stays(b[i])) };
 }
@@ -652,7 +658,7 @@ function evalBoard(board) {
 // 0.9.25 收拾：盘面上每一格是什么，用名字不用数字（Fable 代码体检第 6 步）
 // 段 1：机关匣（2）、铁石（5）拆了，编号空着不重排（留底、试玩记录里存的是数字；规则细设计附录 D 丙）
 const CELL = { EMPTY: 0, BLOCK: 1, MON: 3, BOSS: 4, METAL: 6, DIRT: 7, BRICK: 8 }; // 空 / 方块 / 小墨怪 / 头目 / 金属 / 土堆 / 冲锋关铜砖
-module.exports = { CELL, goalLeft, rng, PIECES, IDS, UNITS, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, evalBoard };
+module.exports = { CELL, BLOCKS_CLEAR, unitFull, unitBlockedBy, goalLeft, rng, PIECES, IDS, UNITS, boxOf, canPlace, placements, anyPlacement, placeAndClear, solvable, dealHand, createGame, evalBoard };
 
 });
 __def("js/cuts.js", function (module, exports, require) {
@@ -2561,7 +2567,7 @@ function previewClear(p, r, c) {
   const b = g.board.slice();
   for (const [dr, dc] of p.cells) b[(r + dr) * 9 + c + dc] = 1;
   const set = new Set();
-  for (let u = 0; u < 27; u++) if (core.UNITS[u].every((k) => b[k])) core.UNITS[u].forEach((k) => set.add(k));
+  for (let u = 0; u < 27; u++) if (core.unitFull(b, u)) core.UNITS[u].forEach((k) => set.add(k)); // 段 1 规则 1：被障碍堵着的排拖块时不发亮
   return set;
 }
 
@@ -4523,7 +4529,7 @@ function drawBossHints() {
       // 这一下凑满的那一排 / 那个大格，本身含不含大墨怪的格子（原来按「格子落在它那几排上」算，会误报）
       const b2 = g.board.slice();
       for (const [dr, dc] of p.cells) b2[(sn.r + dr) * 9 + sn.c + dc] = 1;
-      petFx.bossScared = core.UNITS.some((u) => u.every((k) => b2[k]) && u.some((k) => g.bigCells.includes(k)));
+      petFx.bossScared = core.UNITS.some((u, ui) => core.unitFull(b2, ui) && u.some((k) => g.bigCells.includes(k))); // 段 1：堵着的排打不到头目
     }
   }
   // 开局演示（前 4 秒，还没放块时）：第一排红光从左到右扫过去，扫到它，它一抖
@@ -5953,7 +5959,7 @@ function createPetGame(opts) {
   function placeBricks(prefer) {
     const b = g.board;
     for (let t = 0; t < 30; t++) {
-      const open = UNITS.map((u, ui) => ui).filter((ui) => UNITS[ui].every((k) => b[k]) && !UNITS[ui].some((k) => b[k] === CELL.BRICK));
+      const open = UNITS.map((u, ui) => ui).filter((ui) => core.unitFull(b, ui) && !UNITS[ui].some((k) => b[k] === CELL.BRICK));
       if (!open.length) return;
       const openSet = new Set(open);
       let best = -1, bs = -1;
@@ -5995,7 +6001,7 @@ function createPetGame(opts) {
   }
   // 0.9.21 修第 16 关卡死（Cc 11-27：「整个地图都是满的，手里还有一块塞不进去、没地方放了，但它也不消」）：
   // 原来剩下的块重挖不出空就不管了。现在保证手上每块都有自己的空：先只重挖坏掉的，不行就剩下的全部重挖，再不行换小一点的块
-  g.rushOK = (i, r, c) => { const p = g.hand[i]; if (!p || !core.canPlace(g.board, p, r, c)) return false; const b2 = g.board.slice(), placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc); placed.forEach((k) => { b2[k] = 1; }); return placed.some((k) => UNITS.some((u) => u.includes(k) && u.every((x) => b2[x]))); };
+  g.rushOK = (i, r, c) => { const p = g.hand[i]; if (!p || !core.canPlace(g.board, p, r, c)) return false; const b2 = g.board.slice(), placed = p.cells.map(([dr, dc]) => (r + dr) * 9 + c + dc); placed.forEach((k) => { b2[k] = 1; }); return placed.some((k) => UNITS.some((u, ui) => u.includes(k) && core.unitFull(b2, ui))); };
   // 万一哪条路把手上的块换了（看广告换一批之类）：重挖到每块都有一放就消的空
   g.rushStuck = () => st.rush && !g.over && [0, 1, 2].some((i) => g.hand[i] && !core.placements(g.board, g.hand[i]).some(([r, c]) => g.rushOK(i, r, c)));
   g.rushRepair = () => { for (let k = 0; k < 81; k++) if (g.board[k] === CELL.EMPTY) { g.board[k] = 1; g.color[k] = g.pickColor(); } g.rushGap = [null, null, null]; ensureGaps([0, 1, 2]); };
@@ -6172,7 +6178,7 @@ function createPetGame(opts) {
       g.skillStats.cells += ev.cells.length + plan.fill.length;
       if (plan.fill.length) {
         // 丝补满了一排 / 一个大格：照你自己消的规矩消掉（不给它攒能量，不然它能自己养自己）
-        const units = []; for (let u = 0; u < 27; u++) if (UNITS[u].every((k) => b[k])) units.push(u);
+        const units = []; for (let u = 0; u < 27; u++) if (core.unitFull(b, u)) units.push(u);
         if (units.length) {
           const set = new Set(); units.forEach((u) => { unitTouches(b, UNITS[u], ev); UNITS[u].forEach((k) => set.add(k)); });
           const was = [...set].filter((k) => CLEARABLE(b[k]));
@@ -6211,7 +6217,7 @@ function createPetGame(opts) {
   // 墨怪爬进去（墨苔怪留下墨）正好凑满一排 / 一竖 / 一大格，当场消掉，算你抓的
   function crawlClear(b, keys, ev) {
     const units = [];
-    for (let u = 0; u < 27; u++) if (!units.includes(u) && UNITS[u].some((x) => keys.includes(x)) && UNITS[u].every((x) => b[x])) units.push(u);
+    for (let u = 0; u < 27; u++) if (!units.includes(u) && UNITS[u].some((x) => keys.includes(x)) && core.unitFull(b, u)) units.push(u);
     if (!units.length) return;
     const set = new Set(); units.forEach((u) => { unitTouches(b, UNITS[u], ev); UNITS[u].forEach((x) => set.add(x)); });
     const was = [...set].filter((x) => CLEARABLE(b[x]));
@@ -6326,7 +6332,9 @@ function createPetGame(opts) {
     // 1. 照常消
     const units = [];
     const placedSet = new Set(placed);
-    for (let u = 0; u < 27; u++) if (UNITS[u].every((k) => b[k]) && (!st.rush || UNITS[u].some((k) => placedSet.has(k)))) units.push(u); // 冲锋关：只消你这一块塞进去的那几排 / 列 / 大格
+    for (let u = 0; u < 27; u++) if (core.unitFull(b, u) && (!st.rush || UNITS[u].some((k) => placedSet.has(k)))) units.push(u); // 冲锋关：只消你这一块塞进去的那几排 / 列 / 大格
+    // 规则 1：这一手摆满了、但被障碍堵着没消的排（给段 4、6 演「满了不炸」）
+    for (let u = 0; u < 27; u++) { if (!UNITS[u].some((k) => placedSet.has(k))) continue; const at = core.unitBlockedBy(b, u); if (at) (ev.blockedFull = ev.blockedFull || []).push({ u, at }); }
     const colorsBefore = g.color.slice();
     let clearedCells = [];
     if (units.length) {
@@ -6481,7 +6489,7 @@ function skillBest(g) {
       if (!pl) continue;
       const nb = b.slice(); let v = scoreHit(pl.cells, nb);
       pl.fill.forEach((x) => (nb[x] = 1));
-      const units = []; for (let u = 0; u < 27; u++) if (UNITS[u].every((x) => nb[x])) units.push(u);
+      const units = []; for (let u = 0; u < 27; u++) if (core.unitFull(nb, u)) units.push(u);
       const set = new Set(); units.forEach((u) => UNITS[u].forEach((x) => set.add(x)));
       for (const x of set) {
         if (nb[x] === CELL.MON && g.mon[x]) { v += wantMon ? 100 : 10; nb[x] = 0; }
@@ -6518,7 +6526,7 @@ function useSkillIfGood(g) {
   if (s.v >= 100 || !fits) return !!g.useSkill(s);
   return false;
 }
-module.exports = { waveTotalOf, petGain, startOf, SKILL, skillKind, skillN, gnawPiece, pickPiece, RULES, bestPetFor, skillBest, useSkillIfGood, petDesc, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, startOf, SKILL, skillKind, skillN, gnawPiece, pickPiece, RULES, bestPetFor, skillBest, useSkillIfGood, petDesc, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
 
 });
 __def("js/petlevels.js", function (module, exports, require) {

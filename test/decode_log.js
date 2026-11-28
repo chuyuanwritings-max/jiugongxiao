@@ -11,6 +11,7 @@ const zlib = require('zlib');
 const NAMES = {
   o: '开游戏', h: '切到后台', s: '回到前台', i: '停手', m: '换页面', b: '点按钮', L: '开一关', E: '一关打完', q: '中途退出',
   p: '拿起', d: '放下', x: '没放成', k: '用技能块', r: '宠物救命', n: '被偷能量', w: '下一波', S: '记一下', X: '出错',
+  A: '开局先演', R: '接着打（中途退出后恢复）', // 段 3
 };
 const MODES = { home: '主菜单', map: '章页', camp: '营地', play: '关里', over: '结算', settings: '设置', intro: '说明卡', cut: '过场', start: '进关卡片', ad: '广告', album: '画册', share: '分享' };
 
@@ -73,6 +74,9 @@ function summarize(d) {
     const by = {}; danRows.forEach((r) => { (by[r.lv] = by[r.lv] || []).push(r); });
     Object.keys(by).sort((a, b) => a - b).forEach((k) => { const rs = by[k].filter((r) => r.won); out.push(`| ${k} | ${rs.length} | ${rs.map((r) => r.slots).join('、') || '—'} | ${rs.reduce((a, r) => a + (r.dan || 0), 0)} | ${rs.filter((r) => r.lent).length} |`); });
   }
+  // 段 3：中途退出又接着打的局记着 resumed（恢复过几次）
+  const resumed = (d.log || []).filter((r) => r && r.resumed);
+  if (resumed.length) { out.push(''); out.push('接着打过的局（中途退出后恢复）：' + resumed.map((r) => '第 ' + r.lv + ' 关 ' + (r.won ? '赢' : '输') + '（恢复 ' + r.resumed + ' 次）').join('，')); }
   // 最后停在哪（流失点）
   const tail = ev.slice(-8).map((e) => (NAMES[e.code] || e.code) + (e.code === 'm' ? '→' + (MODES[e.data[0]] || e.data[0]) : e.data.length ? '(' + e.data.join(',') + ')' : ''));
   out.push('');

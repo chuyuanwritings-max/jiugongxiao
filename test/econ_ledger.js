@@ -1,5 +1,6 @@
 // 段 2 算账（丹细设计第二节、第四节 T241–T246）：三种玩家纯算一遍现在的 20 关，再让手熟、手生两档机器人真打 20 关、照真规矩结算
-// 用法：node test/econ_ledger.js [每关几局，默认 40] [--write]（--write 把 T246 的报告存到 test/econ_report_seg2.txt，交给段 3）
+// 用法：node test/econ_ledger.js [每关几局，默认 40] [--write]（--write 把 T246 / T341 的报告存到 test/econ_report_seg3.txt；段 2 那份 econ_report_seg2.txt 留着对照）
+// 段 3（T340–T342）：在新关卡表上原样跑；机器人带谁改成「专心一直带第一只 / 平摊每关带对口的」；人的手数 = 机器人 × 0.7（Cc 11-28）
 // 黄灯：「普通人」「手生的」是估的，机器人没拿真人校准过；只有「全拿满」是定数
 const fs = require('fs'), path = require('path');
 const E = require('../js/economy.js'), PG = require('../js/petgame.js'), PLV = require('../js/petlevels.js');
@@ -45,11 +46,12 @@ t('T245', () => {
 });
 
 // ---- T246 机器人算账（R-054）：只出报告，不设线 ----
-// 一个「玩家」从第 1 关打到第 20 关：每关打到赢为止（最多 8 次），机器人手数 × 0.55 当人的手数（冲锋关看秒数：每块手熟 1.2 秒、手生 2 秒），照真规矩结算；
-// 带谁：点名关带点名的，别的关带第一只；喂法：专心（全喂第一只）/ 平摊（每次给最低的升）。等级是这个玩家自己攒的丹真喂出来的
+// 一个「玩家」从第 1 关打到第 20 关：每关打到赢为止（最多 8 次），机器人手数 × 0.7 当人的手数（段 3：Cc 11-28 定的折算，原来 0.55）（冲锋关看秒数：每块手熟 1.2 秒、手生 2 秒），照真规矩结算；
+// 带谁（段 3 T341，不点名了）：专心一直带第一只；平摊每关带对口的（盘上有金属带小铜雀、有土堆带小穿山甲，没有就带第一只）；喂法：专心（全喂第一只）/ 平摊（每次给最低的升）。等级是这个玩家自己攒的丹真喂出来的
 const BOTS = [{ key: 'skilled', name: '手熟', skill: 1, sec: 1.2 }, { key: 'weak', name: '手生', skill: 0.6, sec: 2.0 }];
 function playOne(st, team, seed, skill) {
   const g = PG.createPetGame({ stage: st, team, seed });
+  g.openingAct();
   let guard = 0;
   while (!g.over && guard++ < 400) {
     if (PG.useSkillIfGood(g)) continue;
@@ -62,11 +64,12 @@ function playOne(st, team, seed, skill) {
 function campaign(bot, mode, p) {
   const save = { dan: 0, slots: {}, danDay: {}, pets: {}, petOrder: [], petStage: 0 }, rows = [];
   PLV.forEach((st, li) => {
-    const own = st.only ? (save.petOrder.find((id) => PG.baseId(id) === PG.baseId(st.only)) || null) : save.petOrder[0];
+    const best = mode === 'wide' ? PG.bestPetFor(st).find((x) => x.n > 0 && save.petOrder.some((id) => PG.baseId(id) === x.id)) : null;
+    const own = best ? save.petOrder.find((id) => PG.baseId(id) === best.id) : save.petOrder[0];
     const team = own ? [{ id: own, lv: save.pets[own].lv }] : [];
     let res = null, tries = 0;
     for (; tries < 8; tries++) { res = playOne(st, team, 70000 + p * 7919 + li * 131 + tries * 17 + (bot.key === 'weak' ? 3 : 0), bot.skill); if (res.won) break; }
-    const human = Math.max(1, Math.round(res.moves * 0.55));
+    const human = Math.max(1, Math.round(res.moves * 0.7));
     const r = E.settle(save, li, st, { won: res.won, moves: human, sec: res.moves * bot.sec, revives: 0, lent: false }, 1);
     if (res.won) save.petStage = li + 1;
     if (res.won && st.gift && !save.pets[st.gift]) { save.pets[st.gift] = E.newPet(); save.petOrder.push(st.gift); }
@@ -82,7 +85,7 @@ function campaign(bot, mode, p) {
 }
 t('T246', () => {
   const lines = [], out = (s) => { lines.push(s); console.log('   ' + s); };
-  out('T246 机器人算账（段 2，黄灯：机器人没拿真人校准过；手数 × 0.55 当人；每关打到赢为止最多 8 次）。每档 ' + N + ' 个玩家 × 20 关');
+  out('T246 / T341 机器人算账（段 3 新关卡表，黄灯：机器人没拿真人校准过；手数 × 0.7 当人；每关打到赢为止最多 8 次；专心一直带第一只、平摊每关带对口的）。每档 ' + N + ' 个玩家 × 20 关');
   const prof = { weak: E.ledger(PLV, P.weak).perLevel, avg: E.ledger(PLV, P.avg).perLevel, full: E.ledger(PLV, P.full).perLevel };
   const summary = {};
   for (const bot of BOTS) for (const mode of ['focus', 'wide']) {
@@ -101,8 +104,23 @@ t('T246', () => {
     out('前两章合计：平均 ' + cum.toFixed(1) + ' 颗，中位 ' + tot[Math.floor(N / 2)] + '，最少 ' + tot[0] + '，最多 ' + tot[N - 1] + '（对照：手生的 55 / 普通人 67 / 全拿满 104）');
   }
   out('\n交给段 3：普通关普通人拿 3 槽的局数要在 40%–60%、难关 20%–40%、头目关 30%–50%（第二节第 8 条第 1 项），对不上就重量标准手数');
-  if (process.argv.includes('--write')) fs.writeFileSync(path.join(__dirname, 'econ_report_seg2.txt'), lines.join('\n') + '\n');
-  ok(Object.values(summary).every((s) => s.mean > 0), 'T246 机器人报告出来了：' + Object.entries(summary).map(([k, s]) => k + ' 平均 ' + s.mean.toFixed(1)).join('，') + (process.argv.includes('--write') ? '（存到 test/econ_report_seg2.txt）' : ''));
+  if (process.argv.includes('--write')) fs.writeFileSync(path.join(__dirname, 'econ_report_seg3.txt'), lines.join('\n') + '\n');
+  ok(Object.values(summary).every((s) => s.mean > 0), 'T246 机器人报告出来了：' + Object.entries(summary).map(([k, s]) => k + ' 平均 ' + s.mean.toFixed(1)).join('，') + (process.argv.includes('--write') ? '（存到 test/econ_report_seg3.txt）' : ''));
+});
+
+// ---- T342：平摊着养的普通人，每只新宠物来后 2 关之内够它升到 2 级（照出场顺序，每次给最低的那只升）----
+t('T342', () => {
+  const save = { dan: 0, slots: {}, danDay: {}, pets: {}, petOrder: [] }, occ = {}, got = {}, at = {};
+  PLV.forEach((st, i) => {
+    let n = P.avg[E.kindOf(st)]; if (Array.isArray(n)) { occ[E.kindOf(st)] = (occ[E.kindOf(st)] || 0) + 1; n = n[(occ[E.kindOf(st)] - 1) % n.length]; }
+    const run = { won: true, moves: 1, sec: 0, revives: 0, lent: false }; if (st.rush) run.sec = n === 3 ? st.rush.t3 : n === 2 ? st.rush.t2 : st.rush.t2 + 1; else if (!st.teach) run.moves = n === 3 ? st.par : n === 2 ? E.cut2(st.par) : E.cut2(st.par) + 1;
+    E.settle(save, i, st, run, 1);
+    if (st.gift) { save.pets[st.gift] = E.newPet(); save.petOrder.push(st.gift); at[st.gift] = i; got[st.gift] = save.dan; }
+    for (;;) { const low = save.petOrder.slice().sort((a, b) => save.pets[a].lv - save.pets[b].lv)[0]; if (!low || !E.levelUp(save, low).ok) break; }
+    Object.keys(at).forEach((id) => { if (i <= at[id] + 2 && save.pets[id].lv >= 2 && got[id + '_ok'] === undefined) got[id + '_ok'] = i - at[id]; });
+  });
+  const ids = Object.keys(at), late = ids.filter((id) => got[id + '_ok'] === undefined);
+  ok(ids.length === 5 && !late.length, 'T342 平摊着养的普通人：五只新宠物来了以后几关到 2 级——' + ids.map((id) => PG.PETS[id].name + ' ' + (got[id + '_ok'] === undefined ? '没到' : got[id + '_ok'] === 0 ? '当场' : got[id + '_ok'] + ' 关后') + '（来时丹袋 ' + got[id] + '）').join('，'));
 });
 
 console.log(pass + ' 项通过，' + fail + ' 项没过');

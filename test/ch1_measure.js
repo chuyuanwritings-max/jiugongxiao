@@ -5,7 +5,7 @@ const med = (a) => { const s = a.slice().sort((x, y) => x - y); return s.length 
 L.forEach((st, i) => {
   const wins = [], all = []; let crawls = 0, metal = 0, jumps = 0, hearts = 0;
   for (let n = 0; n < N; n++) {
-    const team = i >= 10 ? [{ id: (st.only || "baozhu"), lv: LV }] : i >= 2 ? [{ id: "tongque", lv: LV }] : [];
+    const own = L.slice(0, i).map((x) => x.gift).filter(Boolean), team = own.length ? [{ id: own[n % own.length], lv: LV }] : []; // 段 3：不点名，轮流带打到这关已有的每只（原来写死第 11 关起带爆竹鼠）
     const g = PG.simulate({ stage: st, team, seed: 1000 + n * 7919, skill: 1 });
     all.push(g.moves); if (g.won) wins.push(g.moves);
     crawls += g.monStats.crawls || 0; metal += g.monStats.metal || 0;

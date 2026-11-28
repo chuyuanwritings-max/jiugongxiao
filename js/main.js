@@ -1039,7 +1039,7 @@ function update(dt) {
     else if (left <= 5 && Math.ceil(left) !== g._tickSec) { g._tickSec = Math.ceil(left); P.sound('tap', 0.5); haptic('light'); }
   }
   // 段 3 规则 4：说明卡关掉、盘面进场以后（第一次到关里），新东西先把本事放一次；画面先借现成的爬、留墨、吐泥、头目跳（正式的演法段 4、6）
-  if (mode === 'play' && g && g.pets && !g._openTried && !g.over && !g.moves) { g._openTried = true; const oev = g.openingAct(); if (oev) { T.rec('o', oev.opening); for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK) colorAt[k] = g.color[k]; juiceOpening(oev); } }
+  if (mode === 'play' && g && g.pets && !g._openTried && !g.over && !g.moves) { g._openTried = true; const oev = g.openingAct(); if (oev) { T.rec('A', oev.opening); for (let k = 0; k < 81; k++) if (g.board[k] === CELL.BLOCK) colorAt[k] = g.color[k]; juiceOpening(oev); } }
   if (mode === 'play' && g && g.rush && g.rushFixStart && !g._fixStarted) { g._fixStarted = true; playRushFix(g.rushFixStart, Math.max(clock, enterAt + 0.6) + 0.3); }
   if (mode === 'play' && g && g.rush && !g.over && !drag && g.rushStuck && g.rushStuck()) { g.rushRepair(); for (let k = 0; k < 81; k++) if (g.board[k] && !cellIn[k]) cellIn[k] = clock + ((k % 9) + Math.floor(k / 9)) * 0.01; T.rec('b', 'rushRepair'); } // 0.9.21 冲锋关万一卡住：整盘重铺（保险）
   if (mode === 'play' && g && !g.over && P.now() >= stopUntil) {

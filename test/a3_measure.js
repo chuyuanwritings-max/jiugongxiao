@@ -30,10 +30,12 @@ for (const pet of PETS5) {
   out('\n== 带 ' + PG.PETS[pet].name + ' ==');
   out('关  级  过关率  赢局手数中位  技能块/局  打开障碍/局  开不了的障碍 被堵排列大格 死格');
   PLV.forEach((st, li) => {
+    if (!PLV.slice(0, li).some((x) => x.gift === pet)) return; // 段 3：只量打到这关时已经有的宠物（附录 D 第 ① 条）
     const lv = LV_AT[li], id = evoId(pet, lv);
     let wins = 0, soft = 0, long = 0, skills = 0, opened = 0; const wm = [];
     for (let n = 0; n < N; n++) {
       const g = PG.createPetGame({ stage: st, team: [{ id, lv }], seed: 9000 + li * 977 + n * 31 + PETS5.indexOf(pet) * 7 });
+      g.openingAct();
       let guard = 0, stuckFree = true;
       while (!g.over && guard++ < 401) {
         if (PG.useSkillIfGood(g)) continue;

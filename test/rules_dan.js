@@ -142,7 +142,27 @@ t('B3', () => {
   ok(!reqs.length && !/\bDate\b|P\.now|persist\(|wx\.|window\.|ctx\.|\bsave\s*=(?!=)/.test(src), 'B3 economy.js 不引用画面、平台文件，不读时钟，不碰全局存档');
 });
 
-// 关卡表那几条（T201–T203、T231、T252）段 2 第 3 步加在这里
+// ---- 关卡表（段 2 第 3 步）----
+const PLV = require('../js/petlevels.js');
+t('T201', () => {
+  const by = { boss: [], hard: [], rush: [], teach: [], normal: [] };
+  PLV.forEach((st, i) => by[E.kindOf(st)].push(i + 1));
+  ok(eq(by, { boss: [10, 20], hard: [5, 9, 15, 19], rush: [7, 16], teach: [1, 2, 3, 4, 6, 8, 11, 12, 14], normal: [13, 17, 18] }), 'T201 现在的 20 关：头目 10、20；难 5、9、15、19；冲锋 7、16；教 1、2、3、4、6、8、11、12、14；普通 13、17、18');
+});
+t('T202', () => ok(PLV.every((st) => !(st.teach && (st.goal.boss || st.hard || st.rush)) && !(st.rush && st.hard)), 'T202 没有哪一关同时是头目 / 难 / 冲锋又标了「教」；冲锋关不标「难」'));
+t('T203', () => {
+  const k = (st) => E.kindOf(st);
+  ok(PLV.every((st) => k(st) === 'teach' || k(st) === 'rush' || (Number.isInteger(st.par) && st.par > 0)), 'T203 除教学关、冲锋关外，每关标准手数都是正整数');
+  ok(PLV.filter((st) => st.rush).every((st) => st.rush.t3 < st.rush.t2 && st.rush.t2 < st.rush.lose), 'T203 冲锋关三条秒数线从小到大');
+});
+t('T231', () => {
+  const s = fresh(); E.settle(s, 0, PLV[0], win(3), D1); E.settle(s, 1, PLV[1], win(30), D1);
+  ok(s.dan === 8 && !Object.keys(s.pets).length, 'T231 没有宠物时过第 1、2 关：丹进丹袋，共 8 颗');
+});
+t('T252', () => {
+  const src = ['chapter1.js', 'chapter2.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8').replace(/\/\/.*$/gm, '')).join('\n');
+  ok(!/\bdan\s*:|danStars/.test(src) && PLV.filter((st) => st.teach).length === 9, 'T252 关卡表里没有手写的丹数；9 关教学关有「教」的记号');
+});
 
 console.log(pass + ' 项通过，' + fail + ' 项没过');
 process.exit(fail ? 1 : 0);

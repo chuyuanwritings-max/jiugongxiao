@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '5f13ff53b6a2';</script>
+<script>window.__BUILD = '427b83978d11';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -204,54 +204,55 @@ __def("js/chapter1.js", function (module, exports, require) {
 // 0.9.17 新版第一章（照 Fable `../九宫消_新版整体设计_Fable_20261126.md` 第三节第一章 + Cc 11-27 逐条定的改动，见全量设计第 99–127 条；
 // 第 5、9 关的怪照理论审查减了：第 5 关 10 → 8 只，第 9 关 12 → 9 只、墨苔怪 3 → 2、金属 4 → 2，「头 10 关九成以上一次过」）。
 // 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  Z 金属（只有铜雀啄得开，段 1 起堵路）  K 头目（2×2）
-// crawl = 墨怪每几手爬一格（爬之前一手冒脚印）；rush = 冲锋关；bossEvery = 头目每挨几下跳一次；dan = 第一次过这关给几颗丹
-// par = 「标准手数」（现在的代码：过关 1 星、手数 ≤ par 2 星、≤ par 的八成 3 星；R-050 要改成三槽，段 1 堵路以后 par 段 3 重量）= 机器人赢局手数中位 × 0.55（对过真人记录：怪关真人约是机器人的 0.55 倍），见 test/ch1_measure.js
+// crawl = 墨怪每几手爬一格（爬之前一手冒脚印）；rush = 冲锋关；bossEvery = 头目每挨几下跳一次
+// teach = 教学关（段 2：过了就 3 个丹槽，不看手数）。丹不再手写在这里：给几颗只看这关是哪一类（头目 / 难 / 冲锋 / 教 / 普通），算法在 js/economy.js
+// par = 「标准手数」（段 2：手数 ≤ par 3 个丹槽、≤ par × 1.5 2 个、过关 1 个；段 1 堵路以后 par 段 3 重量）= 机器人赢局手数中位 × 0.55（对过真人记录：怪关真人约是机器人的 0.55 倍），见 test/ch1_measure.js
 const E = '.........';
 module.exports = [
   { // 1 教：拖块、凑满就消。三处缺口正好一横、一竖、一大格（Cc 11-27「教学顺序横 → 竖 → 宫」）；第一手只认那一横
-    goal: { lines: 3 }, d: 0, colors: [3, 2, 1], tutHand: ['3h', '3v', 'sq2'], tutFirst: { piece: 0, r: 1, c: 3 }, dan: 2, par: 3,
+    goal: { lines: 3 }, teach: 1, d: 0, colors: [3, 2, 1], tutHand: ['3h', '3v', 'sq2'], tutFirst: { piece: 0, r: 1, c: 3 }, par: 3,
     board: ['.......#.', '###...###', '.......#.', '.......#.', E, E, '###......', '..#....#.', '..#....#.'],
   },
   { // 2 教：凑满墨怪那一排 = 抓走。怪先不爬。过关后铜雀出场
-    goal: { monster: 4 }, d: 0, colors: [0, 3, 2], gift: 'tongque', dan: 2, par: 7, intro: 'catch',
+    goal: { monster: 4 }, teach: 1, d: 0, colors: [0, 3, 2], gift: 'tongque', par: 7, intro: 'catch',
     board: [E, '###m###..', E, '#.####m##', E, '##m##.###', E, '.####m##.', E],
   },
   { // 3 教：消除攒能量 → 铜雀吐技能块 → 拖到盘上啄掉一格。开局能量只差一格
-    goal: { monster: 5 }, d: 0, colors: [0, 3, 2], only: 'tongque', fastCharge: true, intro: 'pet', dan: 2, par: 19,
+    goal: { monster: 5 }, teach: 1, d: 0, colors: [0, 3, 2], only: 'tongque', fastCharge: true, intro: 'pet', par: 19,
     board: [E, '.##m##.##', '##.......', E, '##.###m#.', E, '...###...', '#m###.##.', E],
     waves: [[E, E, '..m......', E, E, E, '......m..', E, E]],
   },
   { // 4 教：墨怪会爬（每 3 手一格），爬之前一手冒脚印。可以去那排等它，也可以把块放在脚印上堵它
-    goal: { monster: 5 }, d: 0.04, crawl: 3, colors: [0, 3, 2], intro: 'crawl', dan: 2, par: 17,
+    goal: { monster: 5 }, teach: 1, d: 0.04, crawl: 3, colors: [0, 3, 2], intro: 'crawl', par: 17,
     board: [E, '##m###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E],
     waves: [[E, E, E, '.....m...', E, E, E, E, '..m......']],
   },
   { // 5 难：不教新的，第一次觉得「要想一想」
-    goal: { monster: 7 }, d: 0.12, dSeg: [0.08, 0.12, 0.3], crawl: 3, hard: 1, colors: [0, 3, 2], dan: 4, par: 35,
+    goal: { monster: 7 }, d: 0.12, dSeg: [0.08, 0.12, 0.3], crawl: 3, hard: 1, colors: [0, 3, 2], par: 35,
     board: [E, '#m##.###.', E, '...m.....', E, '.###.#m##', E, E, E],
     waves: [[E, '......m..', E, E, '.m.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
   { // 6 教：金属所在的排、列、大格凑满了也不消；铜雀的羽毛啄开它，变一格金色块，满了当场炸（段 1 规则 1、2；金属、铜雀、技能块三样一起闪金色）
-    goal: { monster: 5 }, d: 0.1, crawl: 3, colors: [0, 3, 2], fastCharge: true, intro: 'metal', dan: 2, par: 16,
+    goal: { monster: 5 }, teach: 1, d: 0.1, crawl: 3, colors: [0, 3, 2], fastCharge: true, intro: 'metal', par: 16,
     board: [E, '##Z#m###.', E, '.##..##..', '.##m#Z##.', E, E, '#m###.Z##', E],
     waves: [[E, E, E, '...m.....', E, E, E, E, '......m..']],
   },
-  { // 7 爽：冲锋关。开局约六成满，块块有家，炸满 8 处过关；一根香两道刻痕，越快星越多（星给丹 2 / 3 / 4）
-    goal: { lines: 24 }, d: 0, colors: [0, 3, 2, 1], rush: { t3: 36, t2: 48, lose: 60 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 24,
+  { // 7 爽：冲锋关。开局约六成满，块块有家，炸满 8 处过关；一根香两道刻痕，越快亮的丹槽越多（36 / 48 秒两道线；每槽 1 颗）
+    goal: { lines: 24 }, d: 0, colors: [0, 3, 2, 1], rush: { t3: 36, t2: 48, lose: 60 }, intro: 'rush', par: 24,
     board: [E, E, E, E, E, E, E, E, E],
   },
   { // 8 教：墨苔怪爬过的地方留一块墨。墨块碍事就用铜雀啄
-    goal: { monster: 5 }, d: 0.12, crawl: 3, colors: [0, 3, 2], intro: 'moss', dan: 2, par: 21,
+    goal: { monster: 5 }, teach: 1, d: 0.12, crawl: 3, colors: [0, 3, 2], intro: 'moss', par: 21,
     board: [E, '##G###.##', E, '.##..###.', '.##m###..', E, E, '#.###G##.', E],
     waves: [[E, E, E, '....m....', E, E, E, E, '..m......']],
   },
   { // 9 难：前面学的全上
-    goal: { monster: 8 }, d: 0.2, dSeg: [0.1, 0.2, 0.4], crawl: 3, hard: 2, colors: [0, 3, 2], dan: 4, par: 42,
+    goal: { monster: 8 }, d: 0.2, dSeg: [0.1, 0.2, 0.4], crawl: 3, hard: 2, colors: [0, 3, 2], par: 42,
     board: [E, '#G##.#Z#.', E, '...m.....', E, '.Z#m.##.#', E, E, E],
     waves: [[E, '......m..', E, E, '.G.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, '.......m.', E, E]],
   },
   { // 10 头目：大墨怪占 2×2、9 颗心。凑满穿过它的一排掉一颗心；每挨 3 下它跳到别处，跳之前落脚的地方先亮红框一手
-    goal: { boss: 1 }, d: 0.1, bigHp: 9, bossKind: 'spit', gift: 'baozhu', bossEvery: 3, bossNoSpit: true, colors: [0, 3, 2], intro: 'boss', dan: 8, par: 30,
+    goal: { boss: 1 }, d: 0.1, bigHp: 9, bossKind: 'spit', gift: 'baozhu', bossEvery: 3, bossNoSpit: true, colors: [0, 3, 2], intro: 'boss', par: 30,
     board: [E, '..#...#..', '.Z.......', E, '...KK....', '...KK....', '.......Z.', '..#...#..', E],
   },
 ];
@@ -260,55 +261,55 @@ module.exports = [
 __def("js/chapter2.js", function (module, exports, require) {
 // 0.9.20 新版第二章 · 土 · 梯田（照 Fable 新版第三节第二章；第 15、19 关的怪照第一章的审查一样减了，头 20 关都要大多数人一次过得去）
 // 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  N 粘墨怪（往托盘里的块上吐泥）  Z 金属  D 一堆土（只有爆竹鼠啃过的块带的小爆竹炸得开，段 1 起堵路）  K 头目
-// par = 机器人赢局手数中位 × 0.55（test/ch1_measure.js 量的）
+// teach = 教学关（过了就 3 个丹槽）；丹看关卡类型自动算（js/economy.js），这里不写。par = 机器人赢局手数中位 × 0.55（test/ch1_measure.js 量的）
 const E = '.........';
 module.exports = [
   { // 11 教：鼠的技能块拖到托盘里的一块上，啃掉一格。开局故意发几块放不太下的大块；能量差一格
-    goal: { monster: 5 }, d: 0.05, crawl: 3, colors: [1, 0, 3], only: 'baozhu', fastCharge: true, intro: 'baozhu', startHand: ['5h', 'L5a', 'r23'], dan: 2, par: 16,
+    goal: { monster: 5 }, teach: 1, d: 0.05, crawl: 3, colors: [1, 0, 3], only: 'baozhu', fastCharge: true, intro: 'baozhu', startHand: ['5h', 'L5a', 'r23'], par: 16,
     board: [E, '##m###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E],
     waves: [[E, E, E, '.....m...', E, E, E, E, '..m......']],
   },
   { // 12 教：啃过的块上留一个小爆竹，把它放在土堆旁边，土堆打开变一格土色块（段 1 规则 2）
-    goal: { monster: 5 }, d: 0.05, crawl: 3, colors: [1, 0, 3], only: 'baozhu', fastCharge: true, intro: 'dirt', dan: 2, par: 17,
+    goal: { monster: 5 }, teach: 1, d: 0.05, crawl: 3, colors: [1, 0, 3], only: 'baozhu', fastCharge: true, intro: 'dirt', par: 17,
     board: [E, '##m#D#.##', E, '.##...##.', '.##D#m##.', E, E, '##.##Dm##', E],
     waves: [[E, E, E, '....m....', E, E, E, E, '..m......']],
   },
   { // 13 普通：练。老怪混进来
-    goal: { monster: 6 }, d: 0.12, crawl: 3, colors: [1, 0, 3], dan: 2, par: 27,
+    goal: { monster: 6 }, d: 0.12, crawl: 3, colors: [1, 0, 3], par: 27,
     board: [E, '#G##D#.##', E, '.D#..##..', '.##m#D##.', E, E, '##.D##G#.', E],
     waves: [[E, E, E, '....m....', E, E, '.m.......', E, '......m..']],
   },
   { // 14 教：粘墨怪每 4 手往托盘里一块上吐一团泥，那块多出一格（段 1 起不瞪、不预告吐哪块，只看得出什么时候吐）。几条路：快吐了留小块在手上、抓掉它、硬放、啃掉泥
-    goal: { monster: 5 }, d: 0.08, crawl: 3, colors: [1, 0, 3], intro: 'sticky', dan: 2, par: 16,
+    goal: { monster: 5 }, teach: 1, d: 0.08, crawl: 3, colors: [1, 0, 3], intro: 'sticky', par: 16,
     board: [E, '##N###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E],
     waves: [[E, E, E, '....m....', E, E, E, E, '..m......']],
   },
   { // 15 难：不教新的
-    goal: { monster: 8 }, d: 0.15, dSeg: [0.1, 0.15, 0.32], crawl: 3, hard: 1, colors: [1, 0, 3], dan: 4, par: 37,
+    goal: { monster: 8 }, d: 0.15, dSeg: [0.1, 0.15, 0.32], crawl: 3, hard: 1, colors: [1, 0, 3], par: 37,
     board: [E, '#N##.#D#.', E, '...m.....', E, '.D#.#m##D', E, E, E],
     waves: [[E, '......m..', E, E, '.N.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, '.......m.', E, E]],
   },
   { // 16 爽：冲锋关（第二章比第一章长一点：27 块）
-    goal: { lines: 27 }, d: 0, colors: [1, 0, 3, 2], rush: { t3: 40, t2: 54, lose: 68 }, intro: 'rush', dan: 2, danStars: [2, 3, 4], par: 27,
+    goal: { lines: 27 }, d: 0, colors: [1, 0, 3, 2], rush: { t3: 40, t2: 54, lose: 68 }, intro: 'rush', par: 27,
     board: [E, E, E, E, E, E, E, E, E],
   },
   { // 17 普通：盘上被留墨、手上被加泥，两头一起来
-    goal: { monster: 7 }, d: 0.15, crawl: 3, colors: [1, 0, 3], dan: 2, par: 17,
+    goal: { monster: 7 }, d: 0.15, crawl: 3, colors: [1, 0, 3], par: 17,
     board: [E, '##N###.##', E, '.##..G##.', '.###m###.', E, E, '##.N##G##', E],
     waves: [[E, E, E, '....m....', E, E, E, E, '..m......']],
   },
   { // 18 普通：第一次「带谁」：金属（铜雀啄）和土堆（鼠的爆竹炸）各一半，只能带一只
-    goal: { monster: 8 }, d: 0.15, crawl: 3, colors: [1, 0, 3], dan: 2, par: 31,
+    goal: { monster: 8 }, d: 0.15, crawl: 3, colors: [1, 0, 3], par: 31,
     board: [E, '#Z#m#D#.#', E, '.D#..Z#..', '.##m#D##.', E, E, '#Z.##m#D.', '..Z......'],
     waves: [[E, E, E, '....m....', E, E, '.m.......', E, '......m.m'], [E, E, '..m......', E, E, E, E, E, E]],
   },
   { // 19 难：全上
-    goal: { monster: 10 }, d: 0.22, dSeg: [0.12, 0.22, 0.4], crawl: 3, hard: 2, colors: [1, 0, 3], dan: 4, par: 36,
+    goal: { monster: 10 }, d: 0.22, dSeg: [0.12, 0.22, 0.4], crawl: 3, hard: 2, colors: [1, 0, 3], par: 36,
     board: [E, '#N##D#Z#.', E, '...m.....', E, '.Z#G#m##D', E, '..D......', E],
     waves: [[E, '......m..', E, E, '.N.......', E, E, '.....G...', E], [E, E, '..m......', E, E, E, '.......m.', E, '...m.....']],
   },
   { // 20 头目：泥沼怪 10 颗心，每 3 手往托盘里一块上吐泥（段 1 起不瞪）；每挨 3 下跳一次
-    goal: { boss: 1 }, d: 0.12, bigHp: 10, bossKind: 'mud', bossEvery: 3, bossNoSpit: true, bossMud: true, colors: [1, 0, 3], intro: 'boss2', dan: 8, par: 27,
+    goal: { boss: 1 }, d: 0.12, bigHp: 10, bossKind: 'mud', bossEvery: 3, bossNoSpit: true, bossMud: true, colors: [1, 0, 3], intro: 'boss2', par: 27,
     board: [E, '..#...#..', '.D.......', E, '...KK....', '...KK....', '.......D.', '..#..D#..', E],
   },
 ];

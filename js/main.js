@@ -1785,7 +1785,7 @@ function chapterCell(i, x, y, w, h, ctxInfo) {
     const bst = (save.slots && save.slots[i] && save.slots[i].s) || 0;
     if (bst) for (let n = 0; n < 3; n++) danSlot(x + w / 2 + (n - 1) * 14, y + h - 12, 5, 1, n < bst);
     else text('✓', x + w - 14, y + 14, 16, TH.jade);
-    if (EC.replayOpen(save, i, today())) danOrb(x + w - 12, y + 13, 6 + Math.sin(clock * 3 + i) * 0.6);
+    if (EC.replayOpen(save, i, today(), PLV[i])) danOrb(x + w - 12, y + 13, 6 + Math.sin(clock * 3 + i) * 0.6);
   } else {
     const future = i > cur;
     ctx.save(); if (future) ctx.globalAlpha = 0.7;

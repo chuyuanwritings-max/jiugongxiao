@@ -174,5 +174,17 @@ t('T252', () => {
   ok(!/\bdan\s*:|danStars/.test(src) && PLV.filter((st) => st.teach).length === 9, 'T252 关卡表里没有手写的丹数；9 关教学关有「教」的记号');
 });
 
+// ---- 段 3 T343（Cc 11-28 定）：第 1、2 关重打不给每天那一份 ----
+t('T343', () => {
+  const s = fresh(); E.settle(s, 0, PLV[0], win(3), D1); E.settle(s, 1, PLV[1], win(7), D1);
+  const a = E.settle(s, 0, PLV[0], win(3), D2), b = E.settle(s, 1, PLV[1], win(7), D2), c = E.settle(s, 2, PLV[2], win(9), D1), d = E.settle(s, 2, PLV[2], win(9), D2);
+  ok(PLV[0].noReplay && PLV[1].noReplay && a.total === 0 && b.total === 0 && a.replayPay === 0 && !s.danDay[0] && !s.danDay[1] && !E.replayOpen(s, 0, D3, PLV[0]), 'T343 第 1、2 关第二天重打：不给每天那一份（0 颗），也不记重打的日期；章页那颗小丹不亮');
+  ok(c.total === 4 && d.replayPay === 1, 'T343 第 3 关照旧：第二天重打给 1 颗');
+  const NR = { goal: { monster: 5 }, teach: 1, par: 7, noReplay: 1 }, s2 = fresh(); E.settle(s2, 0, NR, win(20), D1); E.settle(s2, 0, { goal: { monster: 5 }, teach: 1, par: 7, noReplay: 1 }, win(3), D1);
+  ok(E.settle(s2, 0, NR, win(1), D2).total === 0 && s2.slots[0].s === 3, 'T343 标了 noReplay 的关：槽照样记（教学关过了就满），只是不给每天那一份');
+  const day = PLV.reduce((a2, st) => a2 + E.replayDanOf(st), 0);
+  ok(day === 26, 'T343 20 关一天重打最多 ' + day + ' 颗（28 → 26）');
+});
+
 console.log(pass + ' 项通过，' + fail + ' 项没过');
 process.exit(fail ? 1 : 0);

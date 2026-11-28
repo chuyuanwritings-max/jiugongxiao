@@ -69,8 +69,11 @@ const levelMax = (stage) => owed(stage, 3); // 4 / 7 / 10
 // ---- 结算 ----
 const dayKey = (y, m, d) => y * 10000 + m * 100 + d;
 const recOf = (save, idx) => { const r = save.slots && save.slots[idx]; return r && r.s > 0 ? r : { s: 0, got: 0 }; };
-// 这关过了、今天还没拿过重打那一份（上次的日期比今天晚 = 钟往回调过：不给）
-function replayOpen(save, idx, today) {
+// 段 3（Cc 11-28 定）：第 1、2 关三五手就打完，重打不给每天那一份（关卡表 noReplay；没亮的槽照补，但教学关过了就满槽）
+const replayDanOf = (stage) => (stage && stage.noReplay ? 0 : REPLAY_DAN[kindOf(stage)]);
+// 这关过了、今天还没拿过重打那一份（上次的日期比今天晚 = 钟往回调过：不给）。stage 给了、又是 noReplay 的关：永远不开
+function replayOpen(save, idx, today, stage) {
+  if (stage && !replayDanOf(stage)) return false;
   if (!(recOf(save, idx).s > 0)) return false;
   const d = save.danDay && save.danDay[idx];
   return !d || d < today;
@@ -89,7 +92,7 @@ function settle(save, idx, stage, run, today, opt) {
   r.lit = [1, 2, 3].map((n) => (n <= slots ? (n <= rec.s ? 'had' : 'new') : 'off')); // 这一局亮的槽：以前就亮过（不再给）/ 新亮的；没亮
   r.slotPay = Math.max(0, owed(stage, r.best) - rec.got);
   r.fullFirst = r.best === 3 && rec.s < 3;
-  if (!r.first && replayOpen(save, idx, today)) { r.replayPay = REPLAY_DAN[kind]; save.danDay = save.danDay || {}; save.danDay[idx] = today; }
+  if (!r.first && replayOpen(save, idx, today, stage)) { r.replayPay = replayDanOf(stage); save.danDay = save.danDay || {}; save.danDay[idx] = today; }
   r.total = r.slotPay + r.replayPay;
   save.slots = save.slots || {};
   save.slots[idx] = { s: r.best, got: Math.max(rec.got, owed(stage, r.best)) };
@@ -191,7 +194,7 @@ function ledger(levels, profile, opt) {
   perLevel.forEach((x) => { const c = Math.floor(x.i / 10); byChapter[c] = (byChapter[c] || 0) + x.dan; });
   let replay = 0;
   if (opt && opt.replay) {
-    const norm = perLevel.filter((x) => x.kind === 'teach' || x.kind === 'normal' || x.kind === 'rush'), hard = perLevel.filter((x) => x.kind === 'hard');
+    const norm = perLevel.filter((x) => (x.kind === 'teach' || x.kind === 'normal' || x.kind === 'rush') && replayDanOf(levels[x.i])), hard = perLevel.filter((x) => x.kind === 'hard');
     const up2 = norm.filter((x) => x.slots === 2 && x.kind !== 'teach').slice(0, 2).map((x) => x.i), upH = hard.filter((x) => x.slots === 1).slice(0, 1).map((x) => x.i);
     const pick = up2.concat(norm.filter((x) => !up2.includes(x.i)).map((x) => x.i)).slice(0, 6).concat(upH.concat(hard.filter((x) => !upH.includes(x.i)).map((x) => x.i)).slice(0, 2));
     pick.forEach((i) => { const x = perLevel[i], n = up2.includes(i) ? 3 : upH.includes(i) ? 2 : x.slots; replay += settle(save, i, levels[i], runFor(levels[i], n), 2).total; });
@@ -242,7 +245,7 @@ function project6(levels, profile, later, opt) {
 module.exports = {
   EXP_NEED, LV_CAP, EVO_LV, PET_FULL, EVO_TOTAL, SLOT_DAN, REPLAY_DAN, FULL_BONUS, HELP_CAP, NEW_PET_EXP, ECON_VER,
   kindOf, cut2, slotsOf, live, slotEvents, owed, levelMax,
-  dayKey, replayOpen, settle,
+  dayKey, replayOpen, replayDanOf, settle,
   newPet, cost, canLevel, canLevelAny, levelUp, normalizePet,
   OLD_0924, needsMigrate, migrate,
   PROFILES, ledger, focusPath, widePath, lvAt, project6,

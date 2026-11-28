@@ -50,7 +50,7 @@ try {
       }
       let from, to;
       let sk = g.hand[3] && G.PG.skillBest(g);
-      const reach = (t) => { if (t.hand !== undefined) return true; const f = G.fingerFor(g.hand[3], t.r, t.c), got = G.skillTarget({ x: f.x, y: f.y }); return !!got && got.r === t.r && got.c === t.c; }; const fitsAny = [0, 1, 2].some((i) => g.hand[i] && G.core.anyPlacement(g.board, g.hand[i])); if (sk && !reach(sk)) { sk = null; if (!fitsAny) for (let k = 0; k < 81 && !sk; k++) { const t2 = { r: Math.floor(k / 9), c: k % 9 }; if (g.skillPlan(t2) && reach(t2)) sk = Object.assign(t2, { v: 1 }); } } /* 段 3：第 8 关右下角的金属在 390、430 宽的屏上手指够不着（R-007，段 4 修），真人也点不到：换一格点得到的，和 wx-env 的 playStep 一样 */
+      const reach = (t) => { if (t.hand !== undefined) return true; const f = G.fingerFor(g.hand[3], t.r, t.c), got = G.skillTarget({ x: f.x, y: f.y }); return !!got && got.r === t.r && got.c === t.c; }; const fitsAny = [0, 1, 2].some((i) => g.hand[i] && G.core.anyPlacement(g.board, g.hand[i])); if (sk && !reach(sk)) { sk = null; if (!fitsAny) for (let k = 0; k < 81 && !sk; k++) { const t2 = { r: Math.floor(k / 9), c: k % 9 }; if (g.skillPlan(t2) && reach(t2)) sk = Object.assign(t2, { v: 1 }); } } /* 段 3：真人手指够不着的格子换一格点（和 wx-env 的 playStep 一样；原来 390、430 宽屏右下角两格够不着，段 3 已把取消线往下挪半格，这里留着防万一） */
       if (sk && (sk.v >= 100 || ![0, 1, 2].some((i) => g.hand[i] && G.core.anyPlacement(g.board, g.hand[i])))) {
         if (sk.hand !== undefined) { const f = G.fingerForHand(sk.hand, sk.cell || 0); /* 段 3：小龟的转块没有「第几格」 */ from = G.slotCenter(3); touch('down', from.x, from.y); run(2); touch('move', f.enter.x, f.enter.y); run(2); touch('move', f.x, f.y); run(2); touch('up', f.x, f.y); run(30); continue; }
         from = G.slotCenter(3); to = G.fingerFor(g.hand[3], sk.r, sk.c);

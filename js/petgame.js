@@ -315,8 +315,13 @@ function createPetGame(opts) {
     if (!slots.length) return null;
     const j = slots[Math.floor(g.rand() * slots.length)];
     if (kind === 'gnaw') { const q = addMud(g.hand[j], true); if (q) return { kind: 'gnaw', pet: pt.id, slot: j, piece: q, orig: g.hand[j] }; }
+    // 段 3 规则 9：五只各报自己的修法（画法段 4、6）。小龟：手上那块先画成转歪的（rot 1–3），龟把它转正
+    if (kind === 'turn') { const p = g.hand[j], rot = 1 + Math.floor(g.rand() * 3); if (shapeKey(turnPiece(p, rot, false).cells) !== shapeKey(p.cells)) return { kind: 'turn', pet: pt.id, slot: j, rot }; }
     const cells = gapCells(g.hand[j], g.rushGap[j]);
-    return { kind: 'peck', pet: pt.id, k: cells[Math.floor(g.rand() * cells.length)] };
+    // 蚕宝宝：这块的空旁边「少画的一格」（空的邻格里挑一个现在是块的，画面先当它是空的，丝补上）
+    if (kind === 'silk') { const nb = [...new Set(cells.flatMap(near4))].filter((x) => !cells.includes(x) && g.board[x] === CELL.BLOCK); if (nb.length) return { kind: 'silk', pet: pt.id, k: nb[Math.floor(g.rand() * nb.length)] }; }
+    // 小铜雀啄掉、一尾狐烧掉「多画的那一格」（空里的一格，画面先画成有块）
+    return { kind: kind === 'fire' ? 'fire' : 'peck', pet: pt.id, k: cells[Math.floor(g.rand() * cells.length)] };
   }
   // 塞完一块以后：补满（留着剩下几块的空）；剩下哪块的空被弄坏了就重挖；三块都塞完就整盘换新
   function rushAfter(ev, placedSlot) {

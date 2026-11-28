@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '137872421588';</script>
+<script>window.__BUILD = 'cb727d5eddf7';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -6582,6 +6582,19 @@ function createPetGame(opts) {
     const bs = g.boss;
     if (bs && g.bigHp > 0 && st.bossMud && bs.mudCd <= 0) { spitMud(g.bigCells[0], ev); bs.mudCd = BOSS_MUD_CD; }
   }
+  // 头目落到 tl（2×2 的左上角）：落脚的 4 格 + 外面一圈（最多 16 格）。11-28 Cc 定 B「周围一圈也踩」：落脚那 4 格照旧什么能清的都压掉；
+  // 外面那一圈只踩碎方块（墨怪、金属、土堆不动，免得头目替你开障碍、抓怪）。平时的跳和段 3「开局先演」的那一跳共用这一个
+  function bossLand(b, tl, ev) {
+    const cells = [tl, tl + 1, tl + 9, tl + 10], old = g.bigCells.slice();
+    old.forEach((k) => (b[k] = 0));
+    const r0 = Math.floor(tl / 9), c0 = tl % 9, ring = [];
+    for (let r = r0 - 1; r <= r0 + 2; r++) for (let c = c0 - 1; c <= c0 + 2; c++) { if (r < 0 || r > 8 || c < 0 || c > 8) continue; const k = r * 9 + c; if (!cells.includes(k) && b[k] === CELL.BLOCK) ring.push(k); }
+    const crushed = cells.filter((k) => CLEARABLE(b[k])).concat(ring);
+    clearCells(b, crushed, ev, false);
+    cells.forEach((k) => { b[k] = 4; g.color[k] = 0; });
+    g.bigCells = cells;
+    ev.bossJump = { from: old[0], to: tl, crushed };
+  }
   function monsterTurn(b, ev) {
     // 被蝴蝶的丝缠住的：这一手不爬、不吐泥、不留墨，一手掉一圈丝
     g.mon.forEach((m) => { if (m && m.tied > 0) { m.tied--; m.held = g.moves; } });
@@ -6593,17 +6606,7 @@ function createPetGame(opts) {
     bs.count++;
     // 跳：上一手亮过的地方，这一手跳过去，落下时把落脚 4 格和周围一圈的块踩碎（11-28 Cc 定）
     if (bs.jumpTo !== null && !(bs.planMove !== undefined && g.moves <= bs.planMove)) { // 红框至少亮一手再跳
-      const tl = bs.jumpTo, cells = [tl, tl + 1, tl + 9, tl + 10];
-      const old = g.bigCells.slice();
-      old.forEach((k) => (b[k] = 0));
-      // 11-28 Cc 定 B「周围一圈也踩」：落脚的 4 格 + 外面一圈（最多 16 格）。落脚那 4 格照旧什么能清的都压掉；外面那一圈只踩碎方块（墨怪、金属、土堆不动，免得头目替你开障碍、抓怪）
-      const r0 = Math.floor(tl / 9), c0 = tl % 9, ring = [];
-      for (let r = r0 - 1; r <= r0 + 2; r++) for (let c = c0 - 1; c <= c0 + 2; c++) { if (r < 0 || r > 8 || c < 0 || c > 8) continue; const k = r * 9 + c; if (!cells.includes(k) && b[k] === CELL.BLOCK) ring.push(k); }
-      const crushed = cells.filter((k) => CLEARABLE(b[k])).concat(ring);
-      clearCells(b, crushed, ev, false);
-      cells.forEach((k) => { b[k] = 4; g.color[k] = 0; });
-      g.bigCells = cells;
-      ev.bossJump = { from: old[0], to: tl, crushed };
+      bossLand(b, bs.jumpTo, ev);
       bs.jumpTo = null;
       if (bs.fire > 0) { bs.fire = 0; (ev.bossFire = ev.bossFire || []).push({ left: 0, out: true }); } // 头目一跳，火就灭
     }
@@ -6709,6 +6712,29 @@ function createPetGame(opts) {
     }
     return need && have / need >= 0.8;
   })();
+  // ---- 段 3 规则 4（全量设计 181）：新东西第一次出场的那一关，开局先把本事放一次。st.firstAct：
+  //   { kind: 'crawl', from: [r, c], to: [r, c] }（小墨怪、墨苔怪；墨苔怪原地留墨）｜{ kind: 'mud', at: [r, c] }（粘墨怪吐泥）｜{ kind: 'bossMud' }（泥沼怪吐泥）
+  //   ｜{ kind: 'jump', to: [r, c] }（头目跳，落脚 2×2 的左上角）｜{ kind: 'blocked' }（只报出「摆满被堵」的地方）。行列从 0 数。
+  // 只能在第 0 手调一次（调过记 g._opened，存盘里带着）。不算一手、不攒能量、不救命；不算进 monStats（假挑战只数它「自己」放的）
+  // 返回的事件和 g.place 的同名（ev.crawl、ev.moss、ev.mudSpit、ev.bossJump、ev.blockedFull），另加 ev.opening = kind；没有 firstAct 返回 null
+  g.openingAct = () => {
+    const fa = st.firstAct; if (!fa || g._opened || g.moves || g.over) return null; g._opened = true;
+    const b = g.board, ev = { opening: fa.kind, units: [], cells: [], collected: [], bigHits: [], petActs: [], energy: {}, sparks: [] };
+    if (fa.kind === 'crawl') {
+      const k = fa.from[0] * 9 + fa.from[1], t = fa.to[0] * 9 + fa.to[1], m = g.mon[k];
+      if (m && b[t] === CELL.EMPTY) { moveMon(b, k, t); if (m.t === 'moss') { inkAt(b, k); (ev.moss = []).push({ from: t, k }); } ev.crawl = [{ from: k, to: t, t: m.t }]; m.walk = st.crawl; }
+    } else if (fa.kind === 'mud') {
+      const k = fa.at[0] * 9 + fa.at[1], m = g.mon[k];
+      if (m && m.t === 'sticky') { spitMud(k, ev); m.cd = MON.sticky.cd; }
+    } else if (fa.kind === 'bossMud') { if (g.boss) { spitMud(g.bigCells[0], ev); g.boss.mudCd = BOSS_MUD_CD; } }
+    else if (fa.kind === 'jump') { if (g.boss) bossLand(b, fa.to[0] * 9 + fa.to[1], ev); }
+    else if (fa.kind === 'blocked') { ev.blockedFull = []; for (let u = 0; u < 27; u++) { const at2 = core.unitBlockedBy(b, u); if (at2) ev.blockedFull.push({ u, at: at2 }); } }
+    if (g.monStats.mud) g.monStats.mud--; // spitMud 记了一次：开局这一下不算
+    // 演完以后手上三块要还放得下（不然重发；写死开局三块的关不动）
+    if (!st.startHand && !core.solvable(g.board, g.hand.slice(0, 3).filter(Boolean))) g.deal();
+    syncAll();
+    return ev;
+  };
   g.goalLeft = () => core.goalLeft(g);
   return g;
 }
@@ -6775,6 +6801,7 @@ function simulate(opts) {
   const o = Object.assign({ skill: 1, secPerMove: () => 3 }, opts);
   const g = createPetGame(o);
   if (o.openMode) g.openMode = o.openMode; // 'asap' 见了就开（默认）/ 'fill' 先补满再开（段 3 量两种打法差几手）
+  g.openingAct(); // 段 3 规则 4：开局先演一次（没写 firstAct 的关什么都不做）
   let guard = 0;
   while (!g.over && guard++ < 400) {
     if (useSkillIfGood(g)) continue;

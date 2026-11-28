@@ -14,6 +14,7 @@ function runOne(li, seed, pet) {
   const lv = LV_AT[li], id = pet && lv >= PG.EVO_LV ? PG.PETS[pet].evo : pet;
   const team = pet ? [{ id, lv }] : [];
   const g = PG.createPetGame({ stage: PLV[li], team, seed });
+  g.openingAct(); // 段 3 规则 4：开局先演一次（和 simulate 一样；没写 firstAct 的关什么都不做）
   const h = crypto.createHash('sha1');
   const snap = () => h.update(JSON.stringify([g.board, g.hand.map((p) => (p ? p.id + (p.mud !== undefined ? 'm' + p.mud : '') : '-')), core.goalLeft(g), g.over, g.won]));
   snap();

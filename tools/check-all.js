@@ -12,6 +12,8 @@ const TESTS = [
   ['rush_flow', 'node'], ['rules_boss_stomp', 'node'], ['ch1_measure', 'node', ['20']],
   // 段 1 规则测试（规则细设计第三节）
   ['rules_obstacle', 'node'], ['rules_mud', 'node'], ['rules_energy', 'node'], ['rules_tongque', 'node'], ['rules_baozhu', 'node'], ['rules_pets', 'node'], ['rules_levels', 'node'], ['a3_measure', 'node', ['40']],
+  // 段 3 关卡（段 3 细设计第五节）
+  ['rules_stage3', 'node'],
   // 段 2 丹（丹细设计第四节）
   ['rules_dan', 'node'], ['rules_dan_save', 'node'], ['econ_ledger', 'node', ['40']], ['a3_measure', 'node', ['40', '--wide']],
   // 开画面的（Playwright，测的是 preview.html）

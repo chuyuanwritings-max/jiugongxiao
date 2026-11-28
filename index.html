@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = 'b000608e1991';</script>
+<script>window.__BUILD = 'e9c0ed2df6d8';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -1797,12 +1797,89 @@ function migrate(save) {
   return res;
 }
 
+// ---- 算账（测试、机器人用，游戏里不调；丹细设计第二节）----
+// 三种玩家：每类关亮几个槽。难关、头目是一串，按它在第几次出现轮着取（普通人：每章两关难关一关 2 槽一关 1 槽；头目一章 2 槽一章 1 槽）（黄灯，只有「全拿满」是定数）
+const PROFILES = {
+  weak: { name: '手生的', teach: 3, normal: 1, rush: 1, hard: [1], boss: [1] },
+  avg: { name: '普通人', teach: 3, normal: 2, rush: 2, hard: [2, 1], boss: [2, 1] },
+  full: { name: '全拿满', teach: 3, normal: 3, rush: 3, hard: [3], boss: [3] },
+};
+// 造一局「正好亮 n 个槽」的赢（走真的 slotsOf，不另算）
+function runFor(stage, n) {
+  const kind = kindOf(stage), run = { won: true, moves: 1, sec: 0, revives: 0, lent: false };
+  if (kind === 'rush') run.sec = n === 3 ? stage.rush.t3 : n === 2 ? stage.rush.t2 : stage.rush.t2 + 1;
+  else if (kind !== 'teach' && stage.par > 0) run.moves = n === 3 ? stage.par : n === 2 ? cut2(stage.par) : cut2(stage.par) + 1;
+  return run;
+}
+function slotsFor(profile, kind, occ) {
+  const v = profile[kind];
+  if (!Array.isArray(v)) return v;
+  occ[kind] = (occ[kind] || 0) + 1;
+  return v[(occ[kind] - 1) % v.length];
+}
+// 第一次一关一关打过去，每关拿多少。opt.replay：再加「一点重打」（第二节第 1 条：6 关普通类 + 2 关难关各重打 1 局，其中两关普通关 2 → 3 槽、一关难关 1 → 2 槽）
+function ledger(levels, profile, opt) {
+  const save = { dan: 0, slots: {}, danDay: {} }, occ = {}, perLevel = [];
+  levels.forEach((st, i) => { const kind = kindOf(st), n = slotsFor(profile, kind, occ), r = settle(save, i, st, runFor(st, n), 1); perLevel.push({ i, kind, slots: n, dan: r.total, bag: save.dan }); });
+  const first = save.dan, byChapter = [];
+  perLevel.forEach((x) => { const c = Math.floor(x.i / 10); byChapter[c] = (byChapter[c] || 0) + x.dan; });
+  let replay = 0;
+  if (opt && opt.replay) {
+    const norm = perLevel.filter((x) => x.kind === 'teach' || x.kind === 'normal' || x.kind === 'rush'), hard = perLevel.filter((x) => x.kind === 'hard');
+    const up2 = norm.filter((x) => x.slots === 2 && x.kind !== 'teach').slice(0, 2).map((x) => x.i), upH = hard.filter((x) => x.slots === 1).slice(0, 1).map((x) => x.i);
+    const pick = up2.concat(norm.filter((x) => !up2.includes(x.i)).map((x) => x.i)).slice(0, 6).concat(upH.concat(hard.filter((x) => !upH.includes(x.i)).map((x) => x.i)).slice(0, 2));
+    pick.forEach((i) => { const x = perLevel[i], n = up2.includes(i) ? 3 : upH.includes(i) ? 2 : x.slots; replay += settle(save, i, levels[i], runFor(levels[i], n), 2).total; });
+  }
+  return { perLevel, first, replay, total: first + replay, byChapter };
+}
+// 专心养一只：丹全喂第一只来的宠物（它自己叼着 1 颗），够就升。→ 每关打完它几级（还没有宠物 = 0）、第几关打完长大
+function focusPath(levels, profile, opt) {
+  const save = { dan: 0, slots: {}, danDay: {}, pets: {}, petOrder: [] }, occ = {}, after = [];
+  let evoAt = 0;
+  levels.forEach((st, i) => {
+    settle(save, i, st, runFor(st, slotsFor(profile, kindOf(st), occ)), 1);
+    if (st.gift && !save.pets[st.gift]) { save.pets[st.gift] = newPet(); save.petOrder.push(st.gift); }
+    const id = save.petOrder[0];
+    if (id) while (levelUp(save, id).ok) { if (!evoAt && save.pets[id].lv >= EVO_LV) evoAt = i + 1; }
+    after.push(id ? save.pets[id].lv : 0);
+  });
+  return { after, evoAt, left: save.dan };
+}
+// 平摊：第一只宠物一来就当五只都在（前两章五只出齐，R-057），每次给最低的那只升。→ 每关打完五只里最低的几级
+function widePath(levels, profile) {
+  const save = { dan: 0, slots: {}, danDay: {}, pets: {}, petOrder: [] }, occ = {}, after = [];
+  levels.forEach((st, i) => {
+    settle(save, i, st, runFor(st, slotsFor(profile, kindOf(st), occ)), 1);
+    if (st.gift && !save.petOrder.length) for (let k = 0; k < 5; k++) { save.pets['p' + k] = newPet(); save.petOrder.push('p' + k); }
+    for (;;) { const low = save.petOrder.slice().sort((a, b) => save.pets[a].lv - save.pets[b].lv)[0]; if (!low || !levelUp(save, low).ok) break; }
+    after.push(save.petOrder.length ? Math.min(...save.petOrder.map((id) => save.pets[id].lv)) : 0);
+  });
+  return { after, left: save.dan };
+}
+// 进每一关时宠物大概几级（给 a3_measure、段 3 用；照「普通人」）。mode = 'focus' | 'wide'
+function lvAt(levels, mode) {
+  const p = mode === 'wide' ? widePath(levels, PROFILES.avg) : focusPath(levels, PROFILES.avg);
+  return levels.map((_, i) => Math.max(1, i ? p.after[i - 1] : 1));
+}
+// 第二节第 5 条的六章推算（黄灯：第 3–6 章还没排）。later = 后四章每章各类几关 + 每章重打大约多拿几颗
+const LATER = { teach: 3, normal: 3, rush: 1, hard: 2, boss: 1, chapters: 4, replay: (35 - 16) / 4 };
+function project6(levels, profile, later, opt) {
+  later = Object.assign({}, LATER, later || {});
+  const one = [];
+  ['teach', 'normal', 'rush', 'hard', 'boss'].forEach((k) => { for (let n = 0; n < later[k]; n++) one.push(k === 'teach' ? { teach: 1, par: 20, goal: {} } : k === 'rush' ? { rush: { t3: 36, t2: 48, lose: 60 }, goal: {} } : k === 'hard' ? { hard: 1, par: 35, goal: {} } : k === 'boss' ? { par: 30, goal: { boss: 1 } } : { par: 20, goal: {} }); });
+  let all = levels.slice(); for (let c = 0; c < later.chapters; c++) all = all.concat(one);
+  const l = ledger(all, profile, { replay: opt && opt.replay }), replay = opt && opt.replay ? l.replay + later.replay * later.chapters : 0;
+  const total = l.first + replay;
+  return { total, first: l.first, replay, pets: total / PET_FULL };
+}
+
 module.exports = {
   EXP_NEED, LV_CAP, EVO_LV, PET_FULL, EVO_TOTAL, SLOT_DAN, REPLAY_DAN, FULL_BONUS, HELP_CAP, NEW_PET_EXP, ECON_VER,
   kindOf, cut2, slotsOf, live, slotEvents, owed, levelMax,
   dayKey, replayOpen, settle,
   newPet, cost, canLevel, canLevelAny, levelUp, normalizePet,
   OLD_0924, needsMigrate, migrate,
+  PROFILES, ledger, focusPath, widePath, lvAt, project6,
 };
 
 });

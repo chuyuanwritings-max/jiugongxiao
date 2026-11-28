@@ -8,10 +8,10 @@ const PG = require('../js/petgame.js'), PLV = require('../js/petlevels.js'), cor
 const CELL = core.CELL, UNITS = core.UNITS;
 const N = +process.argv.find((a) => /^\d+$/.test(a)) || 40;
 const PETS5 = ['tongque', 'baozhu', 'modou', 'huli', 'lvgui'];
-const EXP_NEED = [0, 4, 6, 6, 8, 10, 12, 13, 15, 16]; // 和 main.js 一样：丹价 4/6/6/8/10/12/13/15/16
-const lvOf = (dan) => { let lv = 1; while (lv < 10 && dan >= EXP_NEED[lv]) { dan -= EXP_NEED[lv]; lv++; } return lv; };
-// 「打到这一关大概几级」：第 10 关以前的丹都喂这一只，第 11 关起两只宠物，丹对半分
-const LV_AT = (() => { let d = 0; return PLV.map((st, i) => { const lv = lvOf(d); d += (st.dan || 0) * (i >= 10 ? 0.5 : 1); return lv; }); })();
+// 「打到这一关大概几级」：段 2 起照丹细设计第二节第 8 条第 8 项，用 economy.lvAt 的两套：专心养一只（默认）、平摊（--wide，五只都不超过 3 级）
+// 原来照旧丹价 4/6/6/8… 和关卡表里的 st.dan 现算；段 2 丹价换成 100 颗满级、关卡表的丹数删了
+const MODE = process.argv.includes('--wide') ? 'wide' : 'focus';
+const LV_AT = require('../js/economy.js').lvAt(PLV, MODE);
 const evoId = (id, lv) => (lv >= PG.EVO_LV ? PG.PETS[id].evo : id);
 const med = (a) => { const s = a.slice().sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; };
 // 规则 11 结构线：只带这只宠物时，开不了的障碍、被它们堵住的排列大格、死格
@@ -25,7 +25,7 @@ function structure(st, pet) {
 }
 let hard = 0; const warn = [], lines = [];
 const out = (s) => { lines.push(s); console.log(s); };
-out('A4 报告（段 1，黄灯；手熟机器人 skill 1，每关 ' + N + ' 局；宠物等级 = 打到这一关大概几级）');
+out('A4 报告（段 1，黄灯；手熟机器人 skill 1，每关 ' + N + ' 局；宠物等级 = 打到这一关大概几级，段 2 起照 economy.lvAt「' + (MODE === 'wide' ? '平摊' : '专心') + '」）');
 for (const pet of PETS5) {
   out('\n== 带 ' + PG.PETS[pet].name + ' ==');
   out('关  级  过关率  赢局手数中位  技能块/局  打开障碍/局  开不了的障碍 被堵排列大格 死格');

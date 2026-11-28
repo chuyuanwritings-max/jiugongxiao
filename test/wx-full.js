@@ -84,6 +84,11 @@ RUNS.forEach((R, n) => {
   ok(seen.intro.size >= 6 && seen.skill > 0, tag + '：说明卡看了 ' + seen.intro.size + ' 张，技能块真拖了 ' + seen.skill + ' 次（啃手上的块 ' + seen.gnaw + ' 次），卡片上换宠物 ' + seen.pick + ' 次，进化 ' + seen.evolve + ' 次');
   // 0.9.25：「请 X 来帮忙」只在自己有一只更对口的宠物时才出；前两章的关大多不挑宠物，所以这里不再要求一定出现（只打印次数）。段 3 关卡重排时单独测
   if (R.skill < 0.5) ok(seen.revive > 0 && seen.reroll > 0 && seen.maxLoss >= 3 && seen.soften > 0, tag + '：输了重打都走到了——请宠物帮忙 ' + seen.lend + ' 次、看广告复活 ' + seen.revive + ' 次、换一组 ' + seen.reroll + ' 次、同一关最多连输 ' + seen.maxLoss + ' 次（连输 3 次以上开打 ' + seen.soften + ' 回）');
+  // 段 2：丹账对得上——试玩记录里每局拿到的丹加起来 = 丹袋 + 喂掉的（新宠物自己叼的 1 颗不算）；赢的局亮 1–3 个槽，输的 0 个、0 颗
+  { const rows = (G.save.playLog || []).filter((r) => !r.quit), earned = rows.reduce((a, r) => a + (r.dan || 0), 0);
+    const spent = G.save.petOrder.reduce((a, id) => { const rec = G.save.pets[id]; let c = 0; for (let lv = 1; lv < rec.lv; lv++) c += G.EC.EXP_NEED[lv]; return a + c + rec.exp - G.EC.NEW_PET_EXP; }, 0);
+    const odd = rows.filter((r) => !(r.won ? r.slots >= 1 && r.slots <= 3 : r.slots === 0 && r.dan === 0));
+    ok(rows.length > 0 && !odd.length && earned === G.save.dan + spent, tag + '：丹账对得上——前两章一路拿到 ' + earned + ' 颗 = 丹袋 ' + G.save.dan + ' + 喂掉 ' + spent + '；赢的局亮 1–3 个槽、输的 0 个' + (odd.length ? '（对不上：' + JSON.stringify(odd.slice(0, 2).map((r) => [r.lv, r.won, r.slots, r.dan])) + '）' : '')); }
   console.log('  输过的关（关号: 次数）：' + JSON.stringify(tries) + '；宠物：' + G.save.petOrder.map((id) => id + ' ' + G.save.pets[id].lv + ' 级').join('、') + '；试玩记录 ' + (G.save.playLog || []).length + ' 局、' + G.T.count() + ' 条');
   // 全部打完以后：地图、宠物园、主菜单都还点得动
   if (G.save.petStage >= N && !thrown) {

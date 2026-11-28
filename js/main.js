@@ -2973,7 +2973,7 @@ function settlePet() {
   }
   // 段 2 丹（丹细设计规则 2–6）：亮几个槽、给几颗、重打那一份，全由 economy.settle 算，丹进丹袋（玩家在宠物园挑喂谁）
   if (st.rush && g.won) g.rushSec = rushSec();
-  g._payRun = g._payRun || runOf(g); // 同一局只结算一次
+  if (!g._payRun || !g._payRun.won) g._payRun = runOf(g); // 同一局赢了只结算一次；输了以后看广告救命接着打赢的，重新结算（输的那次没动存档）
   r.pay = EC.settle(save, petIdx, st, g._payRun, today(), { practice });
   // 同一关连输几次（专属关连输两次，结算页给「借一只再来」）
   save.loss = save.loss || {}; if (g.won) delete save.loss[petIdx]; else save.loss[petIdx] = (save.loss[petIdx] || 0) + 1;

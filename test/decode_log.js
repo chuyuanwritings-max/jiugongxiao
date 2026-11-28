@@ -64,6 +64,15 @@ function summarize(d) {
     const L = lv[k];
     out.push(`| ${k} | ${L.tries} | ${L.win} | ${L.lose} | ${L.quit} | ${L.moves.join('、') || '—'} | ${L.skills} | ${L.rescues} | ${L.deny} |`);
   });
+  // 段 2 起每局记了亮几个丹槽（slots）、拿到几颗丹（dan）、是不是借来的宠物（lent）；0.9.24 以前的行是星和分数，不管
+  const danRows = (d.log || []).filter((r) => r && r.slots !== undefined && !r.quit);
+  if (danRows.length) {
+    out.push('');
+    out.push('| 关 | 赢的局 | 每局亮几个丹槽 | 拿到几颗丹 | 借来的宠物 |');
+    out.push('| --- | --- | --- | --- | --- |');
+    const by = {}; danRows.forEach((r) => { (by[r.lv] = by[r.lv] || []).push(r); });
+    Object.keys(by).sort((a, b) => a - b).forEach((k) => { const rs = by[k].filter((r) => r.won); out.push(`| ${k} | ${rs.length} | ${rs.map((r) => r.slots).join('、') || '—'} | ${rs.reduce((a, r) => a + (r.dan || 0), 0)} | ${rs.filter((r) => r.lent).length} |`); });
+  }
   // 最后停在哪（流失点）
   const tail = ev.slice(-8).map((e) => (NAMES[e.code] || e.code) + (e.code === 'm' ? '→' + (MODES[e.data[0]] || e.data[0]) : e.data.length ? '(' + e.data.join(',') + ')' : ''));
   out.push('');

@@ -148,7 +148,7 @@ t('T251', () => {
 t('B3', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'economy.js'), 'utf8').replace(/\/\/.*$/gm, '');
   const reqs = (src.match(/require\(([^)]*)\)/g) || []).filter((x) => !/petlevels/.test(x));
-  ok(!reqs.length && !/\bDate\b|P\.now|persist\(|wx\.|window\.|ctx\.|\bsave\s*=(?!=)/.test(src), 'B3 economy.js 不引用画面、平台文件，不读时钟，不碰全局存档');
+  ok(!reqs.length && !/\bDate\b|P\.now|persist\(|wx\.|window\.|ctx\.|(?<!const |let )\bsave\s*=(?!=)/.test(src), 'B3 economy.js 不引用画面、平台文件，不读时钟，不碰全局存档（算账用的本地 save 不算）');
 });
 
 // ---- 关卡表（段 2 第 3 步）----

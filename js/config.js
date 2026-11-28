@@ -29,11 +29,6 @@ module.exports = {
   adSec: 3,
   reviveTime: 20,
 
-  // 金币
-  coinPerScore: 1 / 60,
-  coinPerBox: 2,
-  coinWin: 30,
-  singleCost: 20, // 局外道具：开局送一个单格小块
 
   // 机关收藏
   sparrowSec: 5, // 铜雀：消中宫 +5 秒
@@ -62,7 +57,6 @@ module.exports = {
   // 旅程：预放的块（旧铁灰青，和自己放的宝石色块分开）、宝石颜色 [主色, 亮面]（1 青金 2 翠玉 3 琥珀 4 粉晶 5 紫晶）
   prefillColor: ['#6a7c82', '#b6c6c8', '#3a474d'], // 预放的旧块：旧铁灰青，一眼和新块（宝石色）分开
   gemColors: [null, ['#3567d6', '#b9d2ff'], ['#2fa36a', '#b6f3d2'], ['#e39a2c', '#ffe1a1'], ['#e0709f', '#ffd1e3'], ['#8d55d4', '#e0c6ff']],
-  coinStageWin: 10, // 旅程过一关给的金币
 
   // 换皮用的颜色。0.4 起照风格库 LDR-S1E08-a 祝有好收获：靛蓝夜色底 + 黄铜（#9C7F42 / 暗 #7F602C / 高光 #EFBE63）+ 一点朱砂；
   // 线是深褐近黑 #1E1A16。对应墨非的衣服：深靛蓝长袍、黄铜滚边。（0.3 以前是深褐木头，离 Woodoku 太近）

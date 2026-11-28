@@ -21,9 +21,10 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) { pass++; console.log('✓
       await page.mouse.up();
     }
     await page.waitForTimeout(1500);
-    const r = await page.evaluate(() => { const G = window.__game, g = G.g; return { won: g.won, sec: g.rushSec, stars: G.result && G.result.stars, lose: g.stage.rush.lose, t3: g.stage.rush.t3, t2: g.stage.rush.t2 }; });
-    console.log('第 ' + (li + 1) + ' 关，每块看 ' + think / 1000 + ' 秒：' + (r.won ? '赢' : '输') + '，用了 ' + (r.sec || 0).toFixed(1) + ' 秒，' + (r.stars || 0) + ' 星（3 星 ≤ ' + r.t3 + ' 秒，2 星 ≤ ' + r.t2 + ' 秒，' + r.lose + ' 秒烧完就输）');
-    if (think === 600) ok(r.won && r.stars === 3, '第 ' + (li + 1) + ' 关手快（每块看 0.6 秒）拿得到 3 星');
+    const r = await page.evaluate(() => { const G = window.__game, g = G.g; return { won: g.won, sec: g.rushSec, stars: G.result && G.result.pay && G.result.pay.slots, lose: g.stage.rush.lose, t3: g.stage.rush.t3, t2: g.stage.rush.t2 }; });
+    console.log('第 ' + (li + 1) + ' 关，每块看 ' + think / 1000 + ' 秒：' + (r.won ? '赢' : '输') + '，用了 ' + (r.sec || 0).toFixed(1) + ' 秒，' + (r.stars || 0) + ' 个丹槽（3 槽 ≤ ' + r.t3 + ' 秒，2 槽 ≤ ' + r.t2 + ' 秒，' + r.lose + ' 秒烧完就输）');
+    // 段 2：星换成丹槽，秒数线没变，查的是结算单里亮了几个槽（B4）
+    if (think === 600) ok(r.won && r.stars === 3, '第 ' + (li + 1) + ' 关手快（每块看 0.6 秒）亮得了 3 个丹槽');
   }
   // 还没烧完：50 秒时还在打
   await start(6);

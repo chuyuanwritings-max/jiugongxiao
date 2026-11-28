@@ -128,7 +128,8 @@ section('画面连着出错', () => {
   const E = boot({ seed: 14, store: { luoshu_save_v1: OLD() } }), { G, run, btn } = E;
   const g = enter(E, 11);
   g.over = true; g.reason = 'stuck'; G.endGame(); run(60);
-  G.result.exp = null; // 结算页画到一半每帧出错（0.9.14 那次真 bug 的样子）：按钮一个都出不来
+  // 结算页画到一半每帧出错（0.9.14 那次真 bug 的样子）：按钮一个都出不来。段 2：结算页不再读 r.exp（经验条删了），改成读结算单 r.pay 时出错
+  Object.defineProperty(G.result, 'pay', { get() { throw new Error('测试故意的'); }, configurable: true });
   run(5); ok(!btn('again'), '（前提）结算页画到一半出错，按钮出不来');
   run(90);
   ok(G.mode === 'map' && !!btn('play'), '半秒以后自动换到地图，按钮点得动（现在在 ' + G.mode + '）');

@@ -135,6 +135,15 @@ t('T250', () => {
   ok(r.replayPay === 1 && s.dan === 5 && s.pets.tongque.exp === 0 && s.pets.tongque.lv === 2, 'T250 带借来的宠物赢：丹进丹袋（不进宠物）；重打那一份照给');
 });
 
+// ---- T251：main.js 里搜不到旧的丹价表、每关给几颗的算式、星、分数显示、金币、葫芦里的怪数 ----
+t('T251', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'main.js'), 'utf8').replace(/\/\/.*$/gm, '');
+  const words = ['EXP_NEED = [', 'liveStars', '.stars', 'st.dan', 'danStars', 'save.gourd', 'save.coins', 'coinsGot', 'save.best', 'star3Dan', 'feedPet', 'lastFed', 'replayDanToday', 'drawScoreStars', 'C.coin'];
+  const hit = words.filter((w) => src.includes(w));
+  ok(!hit.length, 'T251 main.js 里搜不到旧丹价表、星、分数显示、金币、葫芦数、一颗颗喂' + (hit.length ? '（还有：' + hit.join('、') + '）' : ''));
+  ok(/EC\.settle\(/.test(src) && /EC\.levelUp\(/.test(src) && /EC\.live\(/.test(src), 'T251 main.js 结算、升级、关里的槽都调 economy');
+});
+
 // ---- B3：算丹的文件不碰画面、声音、存档读写、时钟 ----
 t('B3', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'economy.js'), 'utf8').replace(/\/\/.*$/gm, '');

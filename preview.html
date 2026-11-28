@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '427b83978d11';</script>
+<script>window.__BUILD = 'e9fa4fd80be0';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -347,11 +347,6 @@ module.exports = {
   adSec: 3,
   reviveTime: 20,
 
-  // 金币
-  coinPerScore: 1 / 60,
-  coinPerBox: 2,
-  coinWin: 30,
-  singleCost: 20, // 局外道具：开局送一个单格小块
 
   // 机关收藏
   sparrowSec: 5, // 铜雀：消中宫 +5 秒
@@ -380,7 +375,6 @@ module.exports = {
   // 旅程：预放的块（旧铁灰青，和自己放的宝石色块分开）、宝石颜色 [主色, 亮面]（1 青金 2 翠玉 3 琥珀 4 粉晶 5 紫晶）
   prefillColor: ['#6a7c82', '#b6c6c8', '#3a474d'], // 预放的旧块：旧铁灰青，一眼和新块（宝石色）分开
   gemColors: [null, ['#3567d6', '#b9d2ff'], ['#2fa36a', '#b6f3d2'], ['#e39a2c', '#ffe1a1'], ['#e0709f', '#ffd1e3'], ['#8d55d4', '#e0c6ff']],
-  coinStageWin: 10, // 旅程过一关给的金币
 
   // 换皮用的颜色。0.4 起照风格库 LDR-S1E08-a 祝有好收获：靛蓝夜色底 + 黄铜（#9C7F42 / 暗 #7F602C / 高光 #EFBE63）+ 一点朱砂；
   // 线是深褐近黑 #1E1A16。对应墨非的衣服：深靛蓝长袍、黄铜滚边。（0.3 以前是深褐木头，离 Woodoku 太近）
@@ -1987,6 +1981,7 @@ const CELL = core.CELL;
 const art = require('./art.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
+const EC = require('./economy.js'); // 段 2：丹的算术全在这里（槽、结算、升级价、老存档换算）
 const LY = require('./layout.js');
 const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
 const VERSION = '0.9.24'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
@@ -2002,17 +1997,20 @@ const ITEMS = [
 function freshSave() {
   return {
     wins: 0, won: [false, false, false], litEver: [0, 1, 2].map(() => new Array(9).fill(false)),
-    coins: 0, best: 0, bestEndless: 0, items: {}, tutorialDone: false, buySingle: false, plays: 0,
+    items: {}, tutorialDone: false, plays: 0, // 段 2：金币、分数、最高分、局外单格删了
     stage: 0, introSeen: {}, // 旅程：已经过了几关、哪些说明卡看过
     siegeDone: false, siegeBest: 0, // 守城：第一局（教学）打过没有、最多守住几波
     daily: null, // 每日一城：{ date, tries, extra, best, bestHit }
-    // 0.5 九宫消 + 宠物：宠物章节过到第几关、有哪些宠物（等级、经验）、出战顺序、葫芦里几只怪、几颗丹
-    petStage: 0, pets: {}, petOrder: [], gourd: 0, dan: 0, petSeen: {}, petTutDone: false,
+    // 0.5 九宫消 + 宠物：宠物章节过到第几关、有哪些宠物（等级、这一级喂了几颗丹）、出战顺序、丹袋里几颗丹
+    // 段 2：slots = 每关最好亮过几个丹槽、从槽里拿走了几颗 { [关]: { s, got } }；econ = 照段 2 换算过（新存档不用换算）
+    petStage: 0, pets: {}, petOrder: [], dan: 0, slots: {}, econ: EC.ECON_VER, petSeen: {}, petTutDone: false,
     cutSeen: {}, // 0.6.1 过场：哪些看过（看过的第二次起播短版；「重新开始」也不清）
     siegeRuns: 0, relicSeen: {}, relicGot: {}, // 守城玩过几局；哪些机关见过发动、拿到过（第一次发动打一句说明、卡上标「新」）
   };
 }
+const loadedSave = P.load(KEY); // 段 2：换算老存档之前原样留一份（见 fixSave）
 let save = Object.assign(freshSave(), P.load(KEY) || {});
+if (loadedSave && !(loadedSave.econ >= EC.ECON_VER)) delete save.econ; // 老存档：不能让 freshSave 的「换算过了」盖上去
 if (!save.introSeen) save.introSeen = {};
 if (!save.relicSeen) save.relicSeen = {};
 if (!save.relicGot) save.relicGot = {};
@@ -2126,7 +2124,6 @@ let lastTick = -1;
 let ad = null; // { until, done }
 let tutorialT = 0;
 let mofei = { jump: 0, say: '', sayT: 0 };
-let coinsGot = 0;
 let stageIdx = -1; // 旅程第几关（0 起）；-1 = 经典拼画
 let flyers = []; // 收走的宝石 / 匣 / 泡泡飞向顶上的计数 { what, x, y, t }
 let chipPos = {}; // 顶上每个计数的位置（每帧画的时候记下）
@@ -2142,7 +2139,7 @@ function startCommon() {
   mode = 'play';
   introKind = null; flyers = []; chipPop = {};
   result = null; drag = null; fx = []; texts = []; clearing = []; popping = []; litAnim = []; bolts = []; rings = [];
-  displayScore = 0; flash = 0; lastTick = -1; tutorialT = 0; coinsGot = 0;
+  displayScore = 0; flash = 0; lastTick = -1; tutorialT = 0;
   mofei = { jump: 0, say: '', sayT: 0 };
   stats.starts.push(P.now());
 }
@@ -3056,7 +3053,7 @@ function drawStageHud() {
     else rods(cx + 14, cy, left[key], 18); // 0.9.20 还差几个：算筹
     buttons.push({ id: 'goal_' + key, x: cx - 43, y: cy - 19, w: 86, h: 38, fn: () => showInfo({ goal: key }) }); // 点目标图标：说明它是什么
   });
-  if (g.pets && !g.rush) drawScoreStars(y);
+  if (g.pets && !g.rush) drawDanSlots(y);
   // 一共几波、现在第几波（0.9.14，Cc：「某一关里面一共要抓几波怪，你得写清楚啊！」）：打完的实心，正在打的闪
   if (g.pets && g.waveTotal > 1) {
     const n = g.waveTotal, cur = g.waveNo || 1, gap = 18, wx0 = W / 2 - ((n - 1) * gap) / 2, wy = y + 72;
@@ -3069,17 +3066,24 @@ function drawStageHud() {
     }
   }
 }
-// 0.9.17 星星和分数（Cc 11-26：「根据多少手之内完成每一关来判定分数高低，要有总分和单关分数，单关要有一星、二星、三星」）
-// 左上：分数（往上滚）+ 三颗小星。普通关：手数过了「标准手数」的八成暗一颗、过了标准手数再暗一颗，最后一颗永远不暗（只评价，不会输）
-// 冲锋关：顶上一根点着的香，两道刻痕；烧过一道暗一颗星。没有滴答声
+// 段 2 丹槽（丹细设计规则 2；取代 0.9.17 的分数和三颗星）：左上 3 个丹槽，难关每槽叠 2 颗、头目叠 3 颗。
+// 普通关：放到第「标准手数」块还没赢暗一个，到 1.5 倍再暗一个，最后一个永远不暗；用过救命、带借来的宠物：第 3 个当场暗。教学关一直全亮
+// 冲锋关：倒计时条上两道刻痕，烧过一道暗一个。亮几个全由 economy.live 算，这里只画（正式画法段 5）
 function rushSec() { if (!g.rushT0) return 0; return g.rushSec !== undefined ? g.rushSec : (P.now() - g.rushT0) / 1000; }
-function liveStars() {
-  const st = g.stage;
-  if (st.rush) { const t = rushSec(); return t <= st.rush.t3 ? 3 : t <= st.rush.t2 ? 2 : 1; } // 冲锋关不会输，没有救命
-  if (!st.par) return 3;
-  const n = g.moves <= Math.floor(st.par * 0.8) ? 3 : g.moves <= st.par ? 2 : 1;
-  return g.revivesUsed ? Math.min(2, n) : n; // 0.9.20 用过救命：最多 2 星
+const runOf = (gg) => ({ won: !!gg.won, moves: gg.moves || 0, sec: gg.rush ? rushSec() : 0, revives: gg.revivesUsed || 0, lent: !!gg.lent });
+const today = () => { const d = new Date(); return EC.dayKey(d.getFullYear(), d.getMonth() + 1, d.getDate()); }; // 重打那一份按手机上的日期
+// 一个丹槽：per 颗丹叠成一摞（难关 2、头目 3）。state：'new' 金 / 'had' 暗金（这关以前就拿过）/ 'off' 灰
+function danSlot(x, y, r, per, state) {
+  const cols = state === 'new' || state === true ? ['#7a5214', '#f2c14e', '#fff4c8'] : state === 'had' ? ['#4a3614', '#a8843a', '#d8c08a'] : ['#1a1830', '#3a3550', '#4a4560'];
+  for (let k = per - 1; k >= 0; k--) {
+    const yy = y - k * r * 0.62;
+    ctx.fillStyle = COL.ink; ctx.beginPath(); ctx.arc(x, yy + r * 0.12, r + 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = cols[0]; ctx.beginPath(); ctx.arc(x, yy + r * 0.12, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = cols[1]; ctx.beginPath(); ctx.arc(x, yy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = cols[2]; ctx.beginPath(); ctx.arc(x - r * 0.35, yy - r * 0.35, r * 0.3, 0, Math.PI * 2); ctx.fill();
+  }
 }
+const slotPer = (st) => EC.SLOT_DAN[EC.kindOf(st)];
 // 0.9.24 冲锋关的顶栏（Cc 11-27：「时间的倒计时条必须得显示出来」「必须得更明显更明显才行」「上面一堆东西叠在一起……你这还能更丑一点吗」）：
 // 原来分数、三颗星、24 根算筹、细细一根香叠在一起。现在只有两样：中间「方块 + 还剩几块」，盘面正上方一根整宽的粗倒计时条（星就刻在条上）
 function drawRushHud(y) {
@@ -3100,13 +3104,12 @@ function drawRushHud(y) {
   if (frac > 0) { ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = low ? 22 : 10 + rp * 10; ctx.fillStyle = col; rr(bx, by, Math.max(bh, bw * frac), bh, bh / 2); ctx.fill(); ctx.restore();
     ctx.fillStyle = 'rgba(255,255,255,0.35)'; rr(bx + 4, by + 3, Math.max(bh - 8, bw * frac - 8), bh * 0.3, bh * 0.15); ctx.fill();
     const ex = bx + bw * frac; ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(ex, by + bh / 2, bh * 0.45 + Math.sin(clock * 20) * 2, 0, Math.PI * 2); ctx.fill(); } // 烧着的那头一颗火星
-  // 星刻在条上：过了这个时间那颗星就灭
-  [[st.rush.t3, 3], [st.rush.t2, 2]].forEach(([tt, n]) => { const nx = bx + bw * Math.max(0, 1 - tt / lose); ctx.fillStyle = '#120d0a'; ctx.fillRect(nx - 2, by - 5, 4, bh + 10); for (let k = 0; k < n; k++) starShape(nx - (n - 1) * 7 + k * 14, by - 14, 6, t <= tt ? COL.brassLight : '#3a3550'); });
+  // 丹槽刻在条上：过了这个时间那个槽就暗（段 2：原来刻的是星）
+  [[st.rush.t3, 3], [st.rush.t2, 2]].forEach(([tt, n]) => { const nx = bx + bw * Math.max(0, 1 - tt / lose); ctx.fillStyle = '#120d0a'; ctx.fillRect(nx - 2, by - 5, 4, bh + 10); for (let k = 0; k < n; k++) danSlot(nx - (n - 1) * 7 + k * 14, by - 14, 5, 1, t <= tt); });
 }
-function drawScoreStars(y) {
-  const st = g.stage, n = liveStars();
-  text(String(Math.round(displayScore)), 16, y + 62, 20, COL.text, 'left');
-  for (let k = 0; k < 3; k++) starShape(20 + k * 20, y + 86, 7, k < n ? COL.brassLight : '#3a3550');
+function drawDanSlots(y) {
+  const st = g.stage, n = EC.live(st, runOf(g)).slots, per = slotPer(st);
+  for (let k = 0; k < 3; k++) danSlot(22 + k * 22, y + 82, 7, per, k < n); // 段 2：不画分数；3 个丹槽（计数器的数段 5 画，R-055）
   if (!st.rush) return;
   const t = rushSec(), total = st.rush.lose || st.rush.t2 * 1.35, bw = Math.min(230, W - 170), bx = (W - bw) / 2, by = y + 74;
   const burn = Math.min(1, t / total), bx1 = bx + bw * burn;
@@ -3759,11 +3762,11 @@ function chapterCell(i, x, y, w, h, ctxInfo) {
     ctx.fillStyle = 'rgba(9,12,32,0.35)'; ctx.fillRect(x, y, w, h);
     ctx.restore();
     text(String(i + 1), x + 10, y + 14, 16, COL.text, 'left');
-    // 0.9.17：✓ 换成这关拿到的星（最好那次）；今天重打还能拿丹，右上角亮一颗小丹
-    const bst = (save.best && save.best[i] && save.best[i].stars) || 0;
-    if (bst) for (let n = 0; n < 3; n++) starShape(x + w / 2 + (n - 1) * 14, y + h - 12, 5, n < bst ? COL.brassLight : '#3a3550');
+    // 段 2：✓ 换成这关最好亮过几个丹槽；今天重打还能拿丹，右上角亮一颗小丹
+    const bst = (save.slots && save.slots[i] && save.slots[i].s) || 0;
+    if (bst) for (let n = 0; n < 3; n++) danSlot(x + w / 2 + (n - 1) * 14, y + h - 12, 5, 1, n < bst);
     else text('✓', x + w - 14, y + 14, 16, TH.jade);
-    if (replayDanToday(i)) danOrb(x + w - 12, y + 13, 6 + Math.sin(clock * 3 + i) * 0.6);
+    if (EC.replayOpen(save, i, today())) danOrb(x + w - 12, y + 13, 6 + Math.sin(clock * 3 + i) * 0.6);
   } else {
     const future = i > cur;
     ctx.save(); if (future) ctx.globalAlpha = 0.7;
@@ -3855,9 +3858,7 @@ function drawChapter() {
     ctx.fillStyle = i < save.petStage ? TH.brass : i === cur && !done ? TH.jade : TH.line;
     ctx.beginPath(); ctx.arc(x, top + 52, r, 0, Math.PI * 2); ctx.fill();
   }
-  // 0.9.17 总分 + 一共几颗星（每关只算打得最好的那次）
-  { const bs = Object.values(save.best || {}), totS = bs.reduce((a, b) => a + (b.stars || 0), 0), totP = bs.reduce((a, b) => a + (b.score || 0), 0);
-    if (bs.length) { gourdIcon(W / 2 - 70, top + 76, 10); starShape(W / 2 - 40, top + 76, 8, COL.brassLight); text(String(totS), W / 2 - 28, top + 77, 15, COL.brassLight, 'left'); text(String(totP), W / 2 + 70, top + 77, 15, COL.text, 'right'); } }
+  // 段 2：顶上的总星、总分删了（丹细设计附录 A）
   // 下半屏（拇指区）从下往上排：底栏、开打、先练谁、头目卡
   const rG = LY.rect('map.grid'), rB = LY.rect('map.boss'), rT = LY.rect('map.train'), rP = LY.rect('map.play'), rBar = LY.rect('map.bar');
   const barY = rBar.y, btnY = rP.y;
@@ -3893,7 +3894,7 @@ function drawChapter() {
   }
   // 先练谁（没话说就不出现）：点它去营地
   if (train) {
-    const tw = rT.w, th = rT.h, tx0 = rT.x, mid = trainY + th / 2, rec = save.pets[train.id], need = EXP_NEED[rec.lv] || 999;
+    const tw = rT.w, th = rT.h, tx0 = rT.x, mid = trainY + th / 2, rec = save.pets[train.id], need = EC.EXP_NEED[rec.lv] || 999;
     ctx.fillStyle = TH.card; rr(tx0, trainY, tw, th, th / 2); ctx.fill();
     ctx.strokeStyle = TH.line; ctx.lineWidth = 1; rr(tx0 + 0.5, trainY + 0.5, tw - 1, th - 1, th / 2); ctx.stroke();
     petIcon(train.id, tx0 + 22, mid, 24, 0, 0);
@@ -3944,7 +3945,7 @@ const INTRO = {
   catch: { title: '抓墨怪', lines: ['凑满它那一排，就抓到它'], row: ['b', 'm', 'b', '.', 'b'], key: 'monster' },
   crawl: { title: '墨怪会爬', lines: ['先冒脚印，下一手走过去', '块放在脚印上，就堵住它'], custom: true },
   metal: { title: '金属', lines: ['凑满了它也不消', '铜雀的技能块啄得碎'], custom: true },
-  rush: { title: '冲锋关', lines: ['每块都有地方放，一放就消', '越快星越多，慢了也不会输'], custom: true },
+  rush: { title: '冲锋关', lines: ['每块都有地方放，一放就消', '越快丹越多，慢了也不会输'], custom: true }, // 段 2：星换成丹（「慢了也不会输」0.9.24 起已经不对，待 Cc 定字时一起改）
   dirt: { title: '一堆土', lines: [''], custom: true },
   sticky: { title: '粘墨怪', lines: [''], custom: true },
   baozhu: { title: '爆竹鼠出战', lines: ['啃掉手上那块的 1 格'], pet: 'baozhu' },
@@ -3986,21 +3987,20 @@ function drawStartCard() {
   panel(px, py, pw, ph);
   text('第 ' + (c.i + 1) + ' 关', W / 2, py + 40, 28, COL.brassLight);
   if (wordsOff()) text(String(c.i + 1), W / 2, py + 40, 32, COL.brassLight); // 0.9.20 无字：只写关号
-  // 0.9.17：第一次过给几颗丹（冲锋关按星 2–4）；过过的关今天还能拿几颗；都写出来（打之前就知道打过会怎样）
-  const danTxt = c.i >= save.petStage ? (st.rush ? '丹 2–4 颗' : '丹 ' + (st.dan || 0) + ' 颗') : replayDanToday(c.i) ? '今天重打：丹 ' + (st.goal.boss ? 3 : st.hard ? 2 : 1) + ' 颗' : '';
-  // 0.9.20 无字：难关画两只红角、头目画头目头像、冲锋关画一根香；右边一颗丹 + 几颗
-  { const iy = py + 72, danN = c.i >= save.petStage ? (st.rush ? '2–4' : String(st.dan || 0)) : replayDanToday(c.i) ? String(st.goal.boss ? 3 : st.hard ? 2 : 1) : '';
-    let ix = W / 2 - (danN ? 30 : 0);
+  // 段 2：关牌不放奖励（全量设计 172）：原来的「丹 2 颗」「丹 2–4 颗」「今天重打：丹 1 颗」删了
+  const danTxt = '';
+  // 0.9.20 无字：难关画两只红角、头目画头目头像、冲锋关画一根香
+  { const iy = py + 72;
+    const ix = W / 2;
     if (st.hard) { ctx.fillStyle = st.hard > 1 ? TH.violet : TH.red; for (const sx of [-1, 1]) { const hx = ix + sx * 7; ctx.beginPath(); ctx.moveTo(hx - 4, iy + 7); ctx.lineTo(hx + sx * 5, iy - 8); ctx.lineTo(hx + 4, iy + 7); ctx.fill(); } }
     else if (st.goal.boss) { inkMonster(ix, iy, 10, true); }
-    else if (st.rush) { ctx.fillStyle = '#8a5a34'; ctx.fillRect(ix - 16, iy - 2, 32, 4); ctx.fillStyle = '#ffcf6a'; ctx.beginPath(); ctx.arc(ix - 16, iy, 4, 0, Math.PI * 2); ctx.fill(); }
-    if (danN) { danOrb(W / 2 + 14, iy, 8); text('×' + danN, W / 2 + 26, iy + 1, 14, COL.brassLight, 'left'); } }
+    else if (st.rush) { ctx.fillStyle = '#8a5a34'; ctx.fillRect(ix - 16, iy - 2, 32, 4); ctx.fillStyle = '#ffcf6a'; ctx.beginPath(); ctx.arc(ix - 16, iy, 4, 0, Math.PI * 2); ctx.fill(); } }
   if (st.hard) text((st.hard > 1 ? '超难关' : '难关') + (danTxt ? ' · ' + danTxt : ''), W / 2, py + 70, 13, st.hard > 1 ? '#c58ae0' : '#f08a70');
   else if (st.goal.boss) text(BOSS_CARD[st.bossKind || 'spit'].name + (danTxt ? ' · ' + danTxt : ''), W / 2, py + 70, 13, '#f08a70');
-  else if (st.rush) text('冲锋关 · 越快星越多' + (danTxt ? ' · ' + danTxt : ''), W / 2, py + 70, 13, COL.jade);
+  else if (st.rush) text('冲锋关 · 越快丹越多' + (danTxt ? ' · ' + danTxt : ''), W / 2, py + 70, 13, COL.jade);
   else if (danTxt) text(danTxt, W / 2, py + 70, 13, COL.dim);
-  const bst0 = (save.best && save.best[c.i]) || null;
-  if (bst0 && bst0.stars) for (let n = 0; n < 3; n++) starShape(W / 2 + (n - 1) * 16, py + 88, 6, n < bst0.stars ? COL.brassLight : '#3a3550');
+  const bst0 = (save.slots && save.slots[c.i] && save.slots[c.i].s) || 0; // 段 2：最好那次亮过几个丹槽
+  if (bst0) for (let n = 0; n < 3; n++) danSlot(W / 2 + (n - 1) * 16, py + 88, 6, 1, n < bst0);
   // 目标
   const keys = Object.keys(st.goal), cw = 76, gx0 = W / 2 - (cw * keys.length) / 2;
   keys.forEach((key, n) => {
@@ -4149,7 +4149,7 @@ function introPic(kind, cx, cy, w) {
     [0.4, 0.75].forEach((q) => { ctx.fillStyle = burn > q ? '#5a4a40' : COL.brassLight; ctx.fillRect(bx + bw * q - 2, by - 10, 4, 20); });
     ctx.fillStyle = '#ffcf6a'; ctx.beginPath(); ctx.arc(bx1, by, 5 + Math.sin(clock * 9), 0, Math.PI * 2); ctx.fill();
     const n = burn <= 0.4 ? 3 : burn <= 0.75 ? 2 : 1;
-    for (let k = 0; k < 3; k++) starShape(cx + (k - 1) * 40, cy + 40, 14, k < n ? COL.brassLight : '#3a3550');
+    for (let k = 0; k < 3; k++) danSlot(cx + (k - 1) * 40, cy + 40, 12, 1, k < n); // 段 2：星换成丹槽
   }
 }
 function drawIntro() {
@@ -4341,13 +4341,13 @@ function drawSettings() {
   const asking = settingsAsk && clock - settingsAsk < 3;
   button('setReset', bx, y, bw, 58, asking ? '真的清空？再点一次' : '重新开始', { size: 22, bg: COL.red, danger: true, fn: () => {
     if (!asking) { settingsAsk = clock; return; }
-    // 清空所有进度（宠物、关卡、葫芦、金币、画册……），从第 1 关重新来
+    // 清空所有进度（宠物、关卡、丹……），从第 1 关重新来
     const keepCuts = save.cutSeen, keepLog = save.playLog; save = freshSave(); save.cutSeen = keepCuts || {}; save.playLog = keepLog || []; persist(); // 试玩记录也留着
     P.setMuted(false);
     settingsAsk = 0;
     newPetLevel(0);
   } });
-  text(asking ? '宠物、关卡、葫芦、金币全部清空，回到第 1 关' : '清空所有进度，从第 1 关重新玩', W / 2, y + 80, 14, asking ? COL.red : COL.dim, 'center', 'normal');
+  text(asking ? '宠物、关卡、丹全部清空，回到第 1 关' : '清空所有进度，从第 1 关重新玩', W / 2, y + 80, 14, asking ? COL.red : COL.dim, 'center', 'normal');
   // 试玩记录：复制出来贴给 Kira（难度表的「真人」那一列）
   const nLog = (save.playLog || []).length;
   button('setSendLog', bx, H - 226, bw, 50, copyMsg && clock - copyMsg.t < (copyMsg.dur || 2.5) ? copyMsg.text : '把试玩记录发给 Cc（' + nLog + ' 局）', { size: 16, hot: true, fn: sendPlayLog });
@@ -4365,16 +4365,10 @@ const PET_GLYPH = { tongque: '雀', jinchique: '翅', baozhu: '鼠', modou: '蚕
 // 第 n 级升到 n+1 级要多少经验。经验从哪来：出战打一关（宠物每出手一次 +1，过关再 +3，没过 +1）、喂一颗丹 +2
 // Cc 11-24：「刚拿到宠物直接就升到 5 级……游戏时长会变得太短」→ 门槛提高，铜雀大约要打十几关才够进化
 // 0.9.8（Fable 宠物重做第五节）：只有丹能升级，出战不涨经验。升一级要几颗丹：到 5 级共 14 颗，到 10 级再 50 颗，到 15 级再 100 颗。rec.exp = 这一级已经喂了几颗
-// 0.9.17 每升一级要几颗丹（Fable 新版第六节，Cc 11-27 第 5 件定 A：养满 90 颗；5 级进化时累计 24 颗）
-const EXP_NEED = [0, 4, 6, 6, 8, 10, 12, 13, 15, 16, 999];
-// 重打拿丹：同一关一天一次（Cc 11-27 第 12 件定 A）。地图上今天还能拿丹的关亮一颗小丹
-const dayKey = () => { const d = new Date(); return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); };
-const replayDanToday = (i) => i < save.petStage && !(save.danDay && save.danDay[i] === dayKey());
+// 段 2：每升一级要几颗丹（Cc 11-28 定 A：5/7/9/11/12/13/14/14/15，满级 100、5 级进化累计 32）、重打一天一次，都在 js/economy.js
 const baseOf = (id) => PG.baseId(id); // 段 1：五只宠物长大版都映回小时候版
 // 段 1：PG.petGain 改成返回「这一级变的是哪一样」，屏幕上先借一个词（正式画法段 5、6）
 const GAIN_WORD = { n: '打得多', ring: '攒得快', evo: '长大', ult: '学绝招' };
-const DAN_EXP = 1;
-const LV_CAP = 10;
 function petNodeLabel(i) { return String(i + 1); }
 const CHAPTER_NAMES = ['第一章 · 工坊后院', '第二章 · 水车坊', '第三章 · 染坊'];
 const chapterName = (i) => CHAPTER_NAMES[Math.min(CHAPTER_NAMES.length - 1, Math.floor(i / 10))];
@@ -4459,6 +4453,8 @@ function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好�
   if (fresh) st1.fastCharge = true; // 0.9.14 debug：点「开打」才算用掉（原来一摆出关卡卡片就用掉，在卡片上换一只再换回来、或者退回地图，这份好处就没了）
   g = PG.createPetGame({ stage: st1, team, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone, crumb: false }); // 段 1：10 级鼠的小土块还没有地方画、拖不了（段 4、5），画面接上以前游戏里先不给，免得「没输也动不了」
   g.onlyPet = st0.only ? team[0].id : null;
+  // 段 2（Cc 11-28 定 A）：带进关的那只比自己养的高、或者根本没有这只 = 借来的，这关最多 2 个丹槽
+  { const own = team[0] ? ownedOf(team[0].id) : null; g.lent = !!team[0] && (!own || team[0].lv > save.pets[own].lv); }
   g._fresh = fresh;
   chapView = null; chapSel = null;
   startPet(st1);
@@ -4943,58 +4939,24 @@ function endPet() {
 function settlePet() {
   g._settled = true;
   const st = g.stage;
-  const r = { won: g.won, reason: g.reason, near: g.nearMiss(), caught: g.caught, gift: null, evolved: null, dan: 0, danAuto: 0, exp: [] };
-  const petReplay = !st.evolve && petIdx < save.petStage; // 这关以前过过
-  // 0.9.8：出战不涨经验，只有丹能升级（Fable 宠物重做第五节：「我派的是老鼠，却是铜雀进化了」这种事不再有）。抓到的墨怪只记个数
-  save.gourd += g.caught;
+  const r = { won: g.won, reason: g.reason, near: g.nearMiss(), caught: g.caught, gift: null, pay: null }; // caught 先留着：R-016（葫芦留不留）定之前结算页还画着葫芦
+  const petReplay = petIdx < save.petStage; // 这关以前过过
+  const practice = !!(save.tester && petIdx > save.petStage); // 测试员跳着玩还没打到的关：不改真进度、不给丹、不亮槽（Cc 11-28 定 A）
   if (g.won) {
-    if (st.evolve) {
-      // 进化：换成新宠物，等级和经验带过去
-      const from = st.evolve.pet, to = PG.PETS[from].evo;
-      save.pets[to] = { lv: save.pets[from].lv, exp: save.pets[from].exp };
-      delete save.pets[from];
-      save.petOrder = save.petOrder.map((x) => (x === from ? to : x));
-      if (save.activePet === from) save.activePet = to;
-      r.evolved = { from, to };
-      petFx.evolveFlash = clock;
-      if (!(save.tester && petIdx > save.petStage)) save.petStage = Math.max(save.petStage, petIdx + 1); // 0.9.21 测试员跳着玩后面的关：不改真进度
-    } else {
-      if (!(save.tester && petIdx > save.petStage)) save.petStage = Math.max(save.petStage, petIdx + 1); // 0.9.21 测试员跳着玩后面的关：不改真进度
-      if (st.gift && !save.pets[st.gift]) { save.pets[st.gift] = { lv: 1, exp: 1 }; save.petOrder.push(st.gift); r.gift = st.gift; if (!save.activePet) save.activePet = st.gift; } // 0.9.12：送宠物时它自己叼着 1 颗丹（条一上来就是 1 / 2，不是空的）
-    }
+    if (!practice) save.petStage = Math.max(save.petStage, petIdx + 1);
+    if (st.gift && !save.pets[st.gift]) { save.pets[st.gift] = EC.newPet(); save.petOrder.push(st.gift); r.gift = st.gift; if (!save.activePet) save.activePet = st.gift; } // 送宠物时它自己叼着 1 颗丹
   }
-  // 0.9.17 星星、分数、丹（新版第一章；Cc 11-27 第 5、12、15 件 + 冲锋关）
-  //   星：冲锋关看用时（t3 / t2），其他关看手数（≤ 标准手数的八成 3 星、≤ 标准手数 2 星、过关 1 星）
-  //   分：每消一处一份 × 连消倍数（g.score）+ 冲锋关剩下的香 / 其他关剩下的手数
-  //   丹：第一次过 = 这关的 dan（冲锋关按星 2 / 3 / 4）；第一次拿三星多 1 颗（冲锋关除外）；重打过了的关：普通 1、难 2、头目 3，同一关一天一次
-  let stars = 0, bonus = 0;
-  if (g.won && !st.evolve) {
-    if (st.rush) { g.rushSec = rushSec(); stars = liveStars(); bonus = Math.max(0, Math.round((st.rush.t2 - g.rushSec) * 10)); }
-    else { stars = liveStars(); bonus = st.par ? Math.max(0, (st.par - g.moves) * 15) : 0; }
-    g.score += bonus;
-  }
-  r.stars = stars; r.bonus = bonus; r.score = g.score;
-  save.best = save.best || {};
-  const best = save.best[petIdx] || { stars: 0, score: 0 };
-  r.newBest = g.won && best.score > 0 && g.score > best.score;
-  const first3 = g.won && stars === 3 && best.stars < 3;
-  if (g.won && !st.evolve) save.best[petIdx] = { stars: Math.max(best.stars, stars), score: Math.max(best.score, g.score) };
-  if (g.won && !st.evolve) {
-    let n = 0;
-    if (!petReplay) n = st.rush && st.danStars ? st.danStars[stars - 1] : st.dan || 0;
-    else if (replayDanToday(petIdx)) { n = st.goal.boss ? 3 : st.hard ? 2 : 1; save.danDay = save.danDay || {}; save.danDay[petIdx] = dayKey(); r.replayDan = true; }
-    if (first3 && !st.rush) { n += 1; r.star3Dan = true; }
-    save.dan += n; r.dan = n;
-  }
+  // 段 2 丹（丹细设计规则 2–6）：亮几个槽、给几颗、重打那一份，全由 economy.settle 算，丹进丹袋（玩家在宠物园挑喂谁）
+  if (st.rush && g.won) g.rushSec = rushSec();
+  g._payRun = g._payRun || runOf(g); // 同一局只结算一次
+  r.pay = EC.settle(save, petIdx, st, g._payRun, today(), { practice });
   // 同一关连输几次（专属关连输两次，结算页给「借一只再来」）
-  if (!st.evolve) { save.loss = save.loss || {}; if (g.won) delete save.loss[petIdx]; else save.loss[petIdx] = (save.loss[petIdx] || 0) + 1; }
-  coinsGot = Math.floor(g.score * C.coinPerScore) + (g.won ? C.coinStageWin : 0);
-  save.coins += coinsGot;
+  save.loss = save.loss || {}; if (g.won) delete save.loss[petIdx]; else save.loss[petIdx] = (save.loss[petIdx] || 0) + 1;
   persist();
   result = r;
   g._settleInfo = { petReplay };
   // 试玩记录器（0.9.6，打磨流程第 0 步）：每打完一局记一行，给难度表的「真人」那一列用。设置里「复制试玩记录」拿走
-  if (!st.evolve) logPlay(false);
+  logPlay(false);
 }
 // 试玩记录器：每打完一局记一行（0.9.11 起中途退出也记一行 quit: 1，多记技能块用了几次、宠物救命几次）
 function logPlay(quit) {
@@ -5007,7 +4969,7 @@ function logPlay(quit) {
     lv: petIdx + 1, won: g.won ? 1 : 0, quit: quit ? 1 : 0, moves: g.moves, sec: Math.round((P.now() - (g.startMs || P.now())) / 1000),
     firstClear: ps.firstClear, firstGoal: ps.firstGoal, maxDry: ps.maxDry, prog: Math.round(g.progressFrac() * 100),
     petActs: Object.values(g.petActsTotal).reduce((a, b) => a + b, 0), petGoals: ps.goalsByPet, myGoals: ps.goalsByPlayer,
-    skills: g.skillUses || 0, rescues: g.rescues || 0, wave: g.waveNo || 0, stars: (result && result.stars) || 0, score: g.score || 0, rushSec: g.rushSec !== undefined ? Math.round(g.rushSec) : undefined, ads: g.adsUsed || 0,
+    skills: g.skillUses || 0, rescues: g.rescues || 0, wave: g.waveNo || 0, slots: (result && result.pay && result.pay.slots) || 0, dan: (result && result.pay && result.pay.total) || 0, lent: g.lent ? 1 : 0, rushSec: g.rushSec !== undefined ? Math.round(g.rushSec) : undefined, ads: g.adsUsed || 0,
     pet: pt ? pt.id : '', petLv: pt ? pt.lv : 0, ver: VERSION, t: new Date().toISOString().slice(0, 16),
   });
   if (save.playLog.length > 400) save.playLog.splice(0, save.playLog.length - 400);
@@ -5042,7 +5004,7 @@ function drawPetOver() {
   ctx.fillStyle = COL.shade + Math.min(r.won ? 0.6 : 0.85, age * 2) + ')'; ctx.fillRect(0, 0, W, H);
   if (r.won && age < wait) { text(r.evolved ? '进化！' : '过关！', W / 2, L.by + L.board * 0.45, Math.round(64 * Math.min(1, 0.6 + age * 3)), COL.brassLight); return; }
   if (age < wait) return;
-  const pw = Math.min(W - 40, 340), ph = (r.gift || r.evolved ? 380 : !r.won ? 340 : 300) + r.exp.length * 42 + (r.won && r.stars ? 70 : 0), px = (W - pw) / 2, py = Math.max(L.top + 10, (H - ph) / 2 - 30); // 0.9.13：没新宠物时面板收矮，不留大片空白
+  const pw = Math.min(W - 40, 340), ph = (r.gift || r.evolved ? 380 : !r.won ? 340 : 300) + (r.won && r.pay && r.pay.slots ? 70 : 0), px = (W - pw) / 2, py = Math.max(L.top + 10, (H - ph) / 2 - 30); // 0.9.13：没新宠物时面板收矮，不留大片空白
   panel(px, py, pw, ph);
   let y = py + 40;
   if (r.evolved) {
@@ -5053,17 +5015,16 @@ function drawPetOver() {
   } else if (r.won) {
     text(petLevelName() + ' 完成！', W / 2, y, 26, COL.brassLight);
     y += 44;
-    // 0.9.17 三颗星一颗颗蹦出来，分数往上滚
-    if (r.stars) {
+    // 段 2：3 个丹槽一个个亮（新亮的金、这关以前就拿过的暗金、没亮的灰；难关每槽叠 2 颗、头目叠 3 颗），下面一个总数。不画分数、不画「新纪录」（正式画法段 5）
+    const pay = r.pay;
+    if (pay && pay.slots) {
+      const per = pay.perSlot || 1;
       for (let n = 0; n < 3; n++) {
-        const ta = (age - wait - 0.15 - n * 0.28) / 0.3, on = n < r.stars && ta > 0;
+        const ta = (age - wait - 0.15 - n * 0.28) / 0.3, on = pay.lit[n] !== 'off' && ta > 0;
         const sc = on ? Math.min(1, ta) * (1 + 0.35 * Math.max(0, 1 - Math.abs(ta - 1) * 3)) : 1;
-        if (on && !r['_st' + n]) { r['_st' + n] = true; P.sound('chain' + (4 + n * 2), 0.7); haptic('light'); }
-        starShape(W / 2 + (n - 1) * 48, y + 4, 19 * Math.max(0.05, sc), on ? COL.brassLight : '#3a3550');
+        if (on && !r['_st' + n]) { r['_st' + n] = true; P.sound('chain' + (4 + n * 2), 0.7); haptic('light'); } // 声音先原样用星的，段 5 再配
+        danSlot(W / 2 + (n - 1) * 48, y + 10, 13 * Math.max(0.3, sc), per, on ? pay.lit[n] : 'off');
       }
-      const k2 = Math.min(1, Math.max(0, (age - wait - 0.9) / 0.8));
-      text(String(Math.round(r.score * k2)), W / 2, y + 46, 24, COL.text);
-      if (r.newBest && k2 >= 1) text('新纪录', W / 2 + 74, y + 46, 13, COL.jade);
       y += 70;
     }
     if (r.gift) {
@@ -5088,28 +5049,13 @@ function drawPetOver() {
     });
     y += 70;
   }
-  // 出战宠物涨了多少经验：进度条从原来的位置涨上去（Cc：「进度条必须得看得到，我们才会想要不停地练它」）
-  r.exp.forEach((e) => {
-    const k = Math.min(1, Math.max(0, (age - wait - 0.2) / 0.8));
-    const lvNow = k < 1 ? e.before.lv : e.after.lv;
-    const fracA = e.before.exp / EXP_NEED[e.before.lv], fracB = e.after.lv > e.before.lv ? 1 : e.after.exp / EXP_NEED[e.after.lv];
-    const frac = k < 1 ? fracA + (fracB - fracA) * k : e.after.exp / EXP_NEED[e.after.lv];
-    petIcon(e.id, px + 44, y + 16, 34, 0, 0);
-    text(PG.PETS[e.id].name + ' ' + lvNow + ' 级', px + 70, y + 6, 15, COL.text, 'left');
-    text('+' + e.gain + ' 经验' + (e.x2 ? ' ×2' : ''), px + pw - 24, y + 6, 14, COL.jade, 'right');
-    const bw = pw - 110;
-    ctx.fillStyle = COL.ink; rr(px + 70, y + 20, bw, 10, 5); ctx.fill();
-    ctx.fillStyle = COL.jade; rr(px + 70, y + 20, Math.max(6, bw * frac), 10, 5); ctx.fill();
-    if (k >= 1 && e.after.lv > e.before.lv) text('升到 ' + e.after.lv + ' 级！', px + 70 + bw / 2, y + 25, 12, COL.brassLight);
-    else text((k < 1 ? e.before.exp : e.after.exp) + ' / ' + EXP_NEED[lvNow], px + 70 + bw / 2, y + 25, 10, COL.text);
-    y += 42;
-  });
   // 抓到的怪收进葫芦
   // 0.9.13：不写句子，只画图标 + 数字（葫芦 = 抓到几只墨怪，金珠 = 掉了几颗丹），数字从 0 滚上去（Cc：「直接做一个墨怪被收进葫芦里的动画，然后在葫芦旁边写一个小数字」）
-  if (r.caught || r.dan) {
+  const danGot = r.pay ? r.pay.total : 0; // 段 2：这一局一共拿到几颗（槽 + 第一次拿满 + 今天重打）
+  if (r.caught || danGot) {
     const k = Math.min(1, Math.max(0, (age - wait - 0.2) / 0.7)), items = [];
     if (r.caught) items.push({ ic: 'gourd', n: Math.round(r.caught * k) });
-    if (r.dan) items.push({ ic: 'dan', n: Math.round(r.dan * k) });
+    if (danGot) items.push({ ic: 'dan', n: Math.round(danGot * k) });
     items.forEach((it, j) => {
       const cx2 = W / 2 + (j - (items.length - 1) / 2) * 110, bob = k < 1 ? 0 : Math.sin(clock * 3 + j) * 2;
       if (it.ic === 'gourd') gourdIcon(cx2 - 20, y + 16 + bob, 22); else danOrb(cx2 - 20, y + 16 + bob, 13);
@@ -5118,12 +5064,11 @@ function drawPetOver() {
     y += 44;
   }
   const bw = pw - 48, bx = px + 24, by = py + ph - 128;
-  const canFeed = save.petOrder.length && (save.gourd > 0 || save.dan > 0);
   if (r.won) {
     // 过关一律回营地（Cc 11-24：「别给我直接进入下一关的选项，每一关过完了之后必定回营地」）：炼丹、喂宠物、换出战，再从营地去闯下一关
     button('tocamp', bx, by + 20, bw, 64, '回宠物园', { size: 28, fn: () => openCamp() });
     // 够升级了：按钮外一圈金光，左边一颗丹带个向上的箭头（0.9.16：玩家不知道该回去喂）
-    if (save.petOrder.some((id) => save.dan >= danToLevel(id))) {
+    if (canLevelAny()) {
       const gy = by + 20 + 32, a2 = 0.5 + Math.sin(clock * 6) * 0.4;
       ctx.strokeStyle = 'rgba(243,210,122,' + a2 + ')'; ctx.lineWidth = 4; rr(bx - 4, by + 16, bw + 8, 72, 16); ctx.stroke();
       danOrb(bx + 30, gy, 11);
@@ -5132,7 +5077,7 @@ function drawPetOver() {
   } else {
     button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => newPetLevel(petIdx) });
     const lost2 = save.loss && save.loss[petIdx] >= 2;
-    const lendLv = g.onlyPet && lost2 ? Math.min(LV_CAP, Math.max(3, (g.team[0] ? g.team[0].lv : 1) + 2)) : 0; // 段 1 修：原来借来的能到 11、12 级（满级 10）
+    const lendLv = g.onlyPet && lost2 ? Math.min(EC.LV_CAP, Math.max(3, (g.team[0] ? g.team[0].lv : 1) + 2)) : 0; // 段 1 修：原来借来的能到 11、12 级（满级 10）
     // 0.9.12：不点名的关连输两次，带的不是对口的 → 「这关的怪不怕 X。请 Y 来？」借一只 3 级的（Cc 11-25 定三层网的第一层，看得见、在教她带谁）
     const rank = !g.onlyPet && lost2 && g.team[0] ? PG.bestPetFor(g.stage) : [];
     const top = rank.find((x) => ownedOf(x.id)), mine = rank.find((x) => baseOf(x.id) === baseOf(g.team[0].id)); // 自己有的里面最对口的那只，比带着的这只更对口才请
@@ -5237,7 +5182,7 @@ function drawCamp() {
     const id = gardenSel, p = garden[id], rec = save.pets[id], d = PG.PETS[id];
     const bw = 200, bh = 112, bx = Math.max(gx + 6, Math.min(gx + gw - bw - 6, p.x - bw / 2)), by = p.y - sz / 2 - bh - 14 < gy + 4 ? p.y + sz * 0.7 : p.y - sz / 2 - bh - 14;
     ctx.fillStyle = 'rgba(14,18,40,0.94)'; rr(bx, by, bw, bh, 14); ctx.fill(); ctx.strokeStyle = C.blockColors[d.color][1]; ctx.lineWidth = 2; rr(bx + 1, by + 1, bw - 2, bh - 2, 14); ctx.stroke();
-    const need = EXP_NEED[rec.lv] || 999, canEvolve = d.evo && rec.lv >= d.evoLv;
+    const need = EC.EXP_NEED[rec.lv] || 999, canEvolve = d.evo && rec.lv >= d.evoLv;
     text(d.name + ' Lv' + rec.lv, bx + 14, by + 18, 15, COL.text, 'left');
     if (wordsOff()) { petIcon(id, bx + 30, by + 18, 26, 0, 0); lvPips(bx + 80, by + 18, rec.lv, 40); }
     ctx.fillStyle = TH.line; rr(bx + 14, by + 34, bw - 28, 9, 4.5); ctx.fill();
@@ -5315,28 +5260,19 @@ function feedFx(id) {
   if (nid !== id && gardenSel === id) gardenSel = nid;
   if (save.dan < before) { const n = Math.min(8, before - save.dan), lv1 = save.pets[nid] ? save.pets[nid].lv : lv0; for (let i = 0; i < n; i++) danOrbs.push({ id: nid, k: i, x: W - 16 - 86 + 18, y: uiTop() + 23, t: clock + i * 0.09, last: i === n - 1, up: lv1 > lv0, lv0, lv1 }); petMsg = null; } // 升级的话由最后一颗丹落进嘴里那一下演
 }
-function addExp(rec, n) {
-  rec.exp += n;
-  let up = 0;
-  while (rec.lv < LV_CAP && rec.exp >= EXP_NEED[rec.lv]) { rec.exp -= EXP_NEED[rec.lv]; rec.lv++; up++; }
-  return up;
-}
-// 升一级要几颗丹（0.9.3：一下升一级，学 AFK Arena 的「升级」按钮；不再一颗一颗喂）
-const danToLevel = (id) => { const rec = save.pets[id]; return rec && rec.lv < LV_CAP ? Math.ceil((EXP_NEED[rec.lv] - rec.exp) / DAN_EXP) : Infinity; };
-const canLevelAny = () => save.petOrder.some((id) => { const d = PG.PETS[id], rec = save.pets[id]; return (d.evo && rec.lv >= d.evoLv) || (!(d.evo && rec.lv >= d.evoLv) && save.dan >= danToLevel(id)); });
+// 升一级要几颗丹（0.9.3：一下升一级，学 AFK Arena 的「升级」按钮；不再一颗一颗喂）。段 2：价表和扣丹在 economy，丹袋里的丹玩家挑给谁
+const danToLevel = (id) => EC.cost(save.pets[id]);
+const canEvolveNow = (id) => { const d = PG.PETS[id], rec = save.pets[id]; return !!(d && rec && d.evo && rec.lv >= d.evoLv); };
+const canLevelAny = () => save.petOrder.some((id) => canEvolveNow(id) || (save.pets[id] && EC.canLevel(save, id)));
 function levelUpPet(id) {
-  const rec = save.pets[id], cost = danToLevel(id);
-  if (save.dan < cost) { petMsg = { text: '还差 ' + (cost - save.dan) + ' 颗丹', t: clock }; P.sound('deny', 0.5); return; }
-  save.dan -= cost;
-  const lv0 = rec.lv;
-  addExp(rec, cost * DAN_EXP);
+  const rec = save.pets[id], up = EC.levelUp(save, id);
+  if (!up.ok) { if (rec) { petMsg = { text: '还差 ' + (up.cost - save.dan) + ' 颗丹', t: clock }; P.sound('deny', 0.5); } return; }
   petFx.pop[id] = clock;
-  save.lastFed = id; // 掉丹「向难关凑」看的是你在喂哪只
-  if (rec.lv > lv0) { save.freshPet = save.freshPet || {}; save.freshPet[baseOf(id)] = true; }
-  const d = PG.PETS[id], gain = rec.lv > lv0 ? GAIN_WORD[PG.petGain(id, lv0)] || '' : '';
-  petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (gain ? gain : ''), t: clock };
-  // 0.9.17 进化关砍了（Cc 11-27 第 9 件定 A 全砍）：喂到 5 级直接进化，演一段（金光、换成进化后的样子）
-  if (d.evo && rec.lv >= d.evoLv) evolvePet(id, true);
+  save.freshPet = save.freshPet || {}; save.freshPet[baseOf(id)] = true;
+  const d = PG.PETS[id], gain = GAIN_WORD[PG.petGain(id, up.lv0)] || '';
+  petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + gain, t: clock };
+  // 0.9.17 进化关砍了（Cc 11-27 第 9 件定 A 全砍）：喂到 5 级、10 级直接长大，演一段（金光、换成长大后的样子）
+  if (canEvolveNow(id)) evolvePet(id, true);
   P.sound('lit', 0.7);
   persist();
 }
@@ -5355,22 +5291,6 @@ function evolvePet(id, anim) {
   T.rec('b', 'evolve_' + id);
   persist();
 }
-function feedPet(id) {
-  const rec = save.pets[id];
-  if (save.dan <= 0) { petMsg = { text: '没有丹了：打关抓墨怪，回来炼丹', t: clock }; return; }
-  save.dan--;
-  petFx.pop[id] = clock;
-  P.sound('coin', 0.6);
-  const up = addExp(rec, DAN_EXP);
-  if (!up) petMsg = { text: PG.PETS[id].name + ' 经验 +' + DAN_EXP + '（' + rec.exp + ' / ' + EXP_NEED[rec.lv] + '）', t: clock };
-  if (up) {
-    const d = PG.PETS[id];
-    petMsg = { text: d.name + ' 升到 ' + rec.lv + ' 级！' + (d.evo && rec.lv >= d.evoLv ? '可以进化了！' : ''), t: clock };
-    P.sound('lit', 0.7);
-  }
-  persist();
-}
-
 // ---------- 排好时间的动画小事件（守城画面已在 0.9.25 拆掉，这些是宠物关也在用的） ----------
 let timeline = []; // 排好时间的小事件 { t, fn }
 let ghosts = []; // 被机关打掉、还没轮到它碎的格子 { k, t, ci }
@@ -5400,7 +5320,7 @@ function fixSave() {
   // 0.9.17 新版第一章：关卡、丹价、宠物本事全换了，老进度从第 1 关重新来（宠物、丹、葫芦一起清）；试玩记录、看过的过场、声音震动设置留着
   if (obj(save) && !save.ch1new) {
     if (save.petStage || (Array.isArray(save.petOrder) && save.petOrder.length)) {
-      const keep = { playLog: save.playLog, cutSeen: save.cutSeen, muted: save.muted, noVibrate: save.noVibrate, plays: save.plays, coins: save.coins };
+      const keep = { playLog: save.playLog, cutSeen: save.cutSeen, muted: save.muted, noVibrate: save.noVibrate, plays: save.plays };
       Object.keys(save).forEach((k) => delete save[k]);
       Object.assign(save, freshSave(), keep);
       T.rec('b', 'migrate_ch1new');
@@ -5413,15 +5333,15 @@ function fixSave() {
   if (!Array.isArray(save.playLog)) save.playLog = [];
   if (save.loss !== undefined && !obj(save.loss)) delete save.loss;
   if (save.freshPet !== undefined && !obj(save.freshPet)) delete save.freshPet;
-  ['dan', 'gourd', 'coins', 'plays'].forEach((k) => { save[k] = int(save[k], 0, 1e9); });
+  ['dan', 'plays'].forEach((k) => { save[k] = int(save[k], 0, 1e9); });
   save.petStage = int(save.petStage, 0, PLV.length);
   // 11-28 Cc 定 A 新阵容（全量设计第 207 条）：老存档里的旧编号换成新的。qilin（老的火麒麟 / 段 1 的麒麟）、shizi（段 1 的小狮子）都改成狐狸；5 级以上是三尾狐
-  if (obj(save.pets)) [['shizi', 'huli'], ['qilin', null]].forEach(([from, to0]) => { const r = save.pets[from]; if (!obj(r)) return; const to = to0 || (int(r.lv, 1, LV_CAP) >= PG.EVO_LV ? 'sanweihu' : 'huli'); if (!save.pets[to]) save.pets[to] = r; delete save.pets[from]; if (Array.isArray(save.petOrder)) save.petOrder = save.petOrder.map((x) => (x === from ? to : x)); if (save.activePet === from) save.activePet = to; });
-  // 宠物：只留认得的；等级、经验落在范围里（经验的算法 0.9.8 改过：现在是「这一级喂了几颗丹」，老存档的数可能比一级要的还多）
+  if (obj(save.pets)) [['shizi', 'huli'], ['qilin', null]].forEach(([from, to0]) => { const r = save.pets[from]; if (!obj(r)) return; const to = to0 || (int(r.lv, 1, EC.LV_CAP) >= PG.EVO_LV ? 'sanweihu' : 'huli'); if (!save.pets[to]) save.pets[to] = r; delete save.pets[from]; if (Array.isArray(save.petOrder)) save.petOrder = save.petOrder.map((x) => (x === from ? to : x)); if (save.activePet === from) save.activePet = to; });
+  // 宠物：只留认得的；等级、这一级喂了几颗落在范围里。段 2：喂的够了新价就往上滚一级（不再砍掉多的），等级只升不降
   Object.keys(save.pets).forEach((id) => {
     const r = save.pets[id];
     if (!PG.PETS[id] || !obj(r)) { delete save.pets[id]; return; }
-    r.lv = int(r.lv, 1, LV_CAP); r.exp = int(r.exp, 0, Math.max(0, (EXP_NEED[r.lv] || 999) - 1));
+    EC.normalizePet(r);
   });
   Object.keys(PG.PETS).forEach((id) => { const e = PG.PETS[id].evo; if (e && save.pets[id] && save.pets[e]) delete save.pets[id]; }); // 进化前后两只都在：留进化后的
   // 0.9.25：够级还没进化的（坏存档、手改的存档、老存档）：直接进化掉；11-28 起每只有两次长大，所以过两遍
@@ -5429,9 +5349,9 @@ function fixSave() {
   save.petOrder = save.petOrder.filter((id, n, a) => save.pets[id] && a.indexOf(id) === n);
   Object.keys(save.pets).forEach((id) => { if (save.petOrder.indexOf(id) < 0) save.petOrder.push(id); });
   // 过了送宠物的那一关、手里却没有那只（0.9.8 以前铜雀是第 3 关才送）：补上，不然后面要打铁石的关没有宠物永远过不了
-  for (let i = 0; i < save.petStage && i < PLV.length; i++) { const gf = PLV[i].gift; if (gf && !ownedOf(gf)) { save.pets[gf] = { lv: 1, exp: 1 }; save.petOrder.push(gf); } }
+  for (let i = 0; i < save.petStage && i < PLV.length; i++) { const gf = PLV[i].gift; if (gf && !ownedOf(gf)) { save.pets[gf] = EC.newPet(); save.petOrder.push(gf); } }
   if (!save.activePet || !save.pets[save.activePet]) save.activePet = save.petOrder[0] || null;
-  if (save.lastFed && !save.pets[save.lastFed]) delete save.lastFed;
+  if (!obj(save.slots)) save.slots = {};
 }
 
 // ---------- 主循环 ----------
@@ -5554,7 +5474,7 @@ P.exposeForTest('__game', {
   get g() { return g; }, get mode() { return mode; }, set mode(v) { mode = v; }, get result() { return result; }, get save() { return save; },
   get paintIdx() { return paintIdx; }, stats, L, fingerFor, fingerForHand, skillTarget, tutorialTarget, slotCenter, buttons: () => buttons.slice(),
   get stageIdx() { return stageIdx; }, get chipPos() { return chipPos; },
-  PG, PLV, newPetLevel, openCamp, feedPet, get petIdx() { return petIdx; },
+  PG, PLV, EC, newPetLevel, openCamp, get petIdx() { return petIdx; },
   reset() { save = freshSave(); persist(); newPetLevel(0); },
   setSave(o) { Object.assign(save, o); persist(); },
   get cutPlaying() { return CUT.playing; }, levelUpPet, danToLevel, get CUT() { return CUT; }, playCuts, skipCuts() { while (mode === 'cut') { CUT.skip(); if (!CUT.playing) endCuts(); } if (mode === 'start' && startCard) { mode = startCard.next || 'play'; startCard = null; } },

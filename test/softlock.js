@@ -10,8 +10,8 @@ let pass = 0, fail = 0;
 const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++; console.log('✗ ' + m); } };
 const section = (name, fn) => { try { fn(); } catch (e) { fail++; console.log('✗ ' + name + '：抛出异常 ' + (e && e.stack ? e.stack.split('\n').slice(0, 4).join(' | ') : e)); } };
 const SEEN = { pet: 1, gem: 1, wave: 1, monster: 1, gempiece: 1, box: 1, rock: 1, boss: 1, baozhu: 1, shell: 1, jumper: 1, modou: 1, eat: 1, boss2: 1, sanweihu: 1, color: 1, moss: 1, bomb: 1, split: 1, boss3: 1, steal: 1 };
-// 现在这一版的存档：打到第 12 关（过了 11 关），手里是第 2 关送的铜雀、第 10 关送的爆竹鼠。ch1new 表示「已经是新版存档」，不会被清回第 1 关
-const OLD = (extra) => JSON.stringify(Object.assign({ ch1new: 1, petTutDone: true, tutorialDone: true, petStage: 11, pets: { tongque: { lv: 4, exp: 1 }, baozhu: { lv: 2, exp: 1 } }, petOrder: ['tongque', 'baozhu'], activePet: 'tongque', dan: 5, introSeen: SEEN, cutSeen: { chapter0: true, chapter1: true, chapter2: true } }, extra || {}));
+// 现在这一版的存档：打到第 12 关（过了 11 关），手里是第 2 关送的铜雀、第 5 关送的一尾狐（段 3 起）、第 10 关送的小穿山甲，出场都看过了。ch1new 表示「已经是新版存档」，不会被清回第 1 关
+const OLD = (extra) => JSON.stringify(Object.assign({ ch1new: 1, petTutDone: true, tutorialDone: true, petStage: 11, pets: { tongque: { lv: 4, exp: 1 }, baozhu: { lv: 2, exp: 1 }, huli: { lv: 1, exp: 1 } }, petOrder: ['tongque', 'baozhu', 'huli'], petSeen: { tongque: true, baozhu: true, huli: true }, activePet: 'tongque', dan: 5, introSeen: SEEN, cutSeen: { chapter0: true, chapter1: true, chapter2: true } }, extra || {}));
 // 进第 i 关（0 起）、过掉卡片和说明卡，停在能拖块的时候
 function enter(E, i, helpLv, helpId) {
   const { G, run, tap, btn, touch } = E;
@@ -184,7 +184,7 @@ section('波次交界', () => {
 // 0.9.17 起没有进化关了（Cc 11-27 第 9 件）：宠物园里喂到 5 级，当场演一段进化（evoAnim，整屏盖住，点 evoTap 跳过）。
 // 要查的卡死：动画盖着的时候点什么都没反应——演完 / 点掉以后，宠物园必须点得动；没人点也要自己收
 section('进化动画', () => {
-  const E = boot({ seed: 32, store: { luoshu_save_v1: OLD({ pets: { tongque: { lv: 4, exp: 0 }, baozhu: { lv: 1, exp: 1 } }, dan: 30 }) } }), { G, run, btn, tap } = E;
+  const E = boot({ seed: 32, store: { luoshu_save_v1: OLD({ pets: { tongque: { lv: 4, exp: 0 }, baozhu: { lv: 1, exp: 1 }, huli: { lv: 1, exp: 1 } }, dan: 30 }) /* 段 3：一尾狐第 5 关送，打到第 12 关的存档里本来就有 */ } }), { G, run, btn, tap } = E;
   G.openCamp(); run(5); tap(btn('gpet_tongque')); run(5);
   ok(!!btn('feedG'), '宠物园：4 级的铜雀点一下，气泡里是「喂丹」');
   tap(btn('feedG')); run(60);
@@ -454,7 +454,7 @@ section('老存档', () => {
       const fresh = !G.save.petTutDone;
       if (!fresh) {
         if (G.mode !== 'home') throw new Error('开机没到主菜单：' + G.mode);
-        tap(btn('homePlay')); run(10); if (G.mode !== 'map') throw new Error('点「继续」没到地图');
+        tap(btn('homePlay')); run(10); for (let n = 0; n < 60 && G.mode === 'cut'; n++) { touch('down', 100, 300); run(1); touch('up', 100, 300); run(2); } /* 段 3：老存档补发的宠物，进章页先补演出场 */ if (G.mode !== 'map') throw new Error('点「继续」没到地图');
         G.openCamp(); run(20); const first = G.save.petOrder[0]; if (first) { tap(btn('gpet_' + first)); run(10); if (btn('feedG')) tap(btn('feedG')); run(40); }
         for (let n = 0; n < 900 && btn('evoTap') === undefined && G.save.pets[first] === undefined && first; n++) run(1); // 喂到 5 级会当场进化：等动画能点
         for (let n = 0; n < 3 && btn('evoTap'); n++) { tap(btn('evoTap')); run(5); }

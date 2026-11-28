@@ -7,6 +7,7 @@ const art = require('./art.js');
 const PG = require('./petgame.js');
 const PLV = require('./petlevels.js');
 const EC = require('./economy.js'); // 段 2：丹的算术全在这里（槽、结算、升级价、老存档换算）
+const FLOW = require('./flow.js'); // 段 3 规则 2：过关以后走哪几步（结算 → 过章 → 新宠物出场 → 教换宠物 → 下一关）
 const LY = require('./layout.js');
 const T = require('./telemetry.js'); // 全流程试玩记录（0.9.12）
 const VERSION = '0.9.24'; // 0.9.1 游戏修改器的布局表：能拖的元素在哪
@@ -119,7 +120,17 @@ function playCuts() {
   if (!CUT.pending || mode === 'cut') return;
   cutPrev = mode; mode = 'cut'; CUT.start();
 }
-function endCuts() { mode = cutPrev; if (mode === 'over') overAt = clock; } // 回到结算页：「过关！」和经验条从头演
+function endCuts() { mode = cutPrev; if (mode === 'over') overAt = clock; // 回到结算页：「过关！」和经验条从头演
+  if (entranceShown.length) { entranceShown.forEach((id) => { save.petSeen[id] = true; }); entranceShown = []; persist(); } // 段 3 规则 2：新宠物出场演完才擦「还没看过出场」
+}
+let entranceShown = []; // 这一串过场里演了哪几只新宠物的出场
+// 段 3 规则 2：开机、进章页时，有到手了还没看过出场的（中途关掉游戏、老存档补发的），一次补演一只
+function catchUpEntrance() {
+  if (mode !== 'map' || CUT.playing || CUT.pending) return;
+  const id = (save.petOrder || []).find((x) => save.petSeen[x] === false);
+  if (!id) return;
+  CUT.petIntro(id); entranceShown.push(id); playCuts();
+}
 let result = null; // 结算信息
 let drag = null; // { slot, x, y, id }
 let downBtn = null, downTouch = null; // 按着的按钮、是哪根手指按的
@@ -2036,7 +2047,11 @@ function drawStartCard() {
       if (on) { ctx.fillStyle = 'rgba(243,210,122,0.22)'; rr(x - cw2 / 2 + 3, pyy - 30, cw2 - 6, 66, 12); ctx.fill(); ctx.strokeStyle = COL.brassLight; ctx.lineWidth = 2; rr(x - cw2 / 2 + 3, pyy - 30, cw2 - 6, 66, 12); ctx.stroke(); }
       ctx.globalAlpha = ease * (on ? 1 : 0.6); petIcon(id, x, pyy - 4, on ? 44 : 38, 0, sel); ctx.globalAlpha = ease;
       lvPips(x, pyy + 26, save.pets[id].lv, 30);
-      buttons.push({ id: 'cardPet_' + id, x: x - cw2 / 2, y: pyy - 30, w: cw2, h: 66, fn: () => { if (id === pid) return; save.activePet = id; persist(); petFx.pop[id] = clock; P.sound('select', 0.6); haptic('light'); const nx = startCard.next; keepMusicOnce = true; newPetLevel(c.i); if (startCard) { startCard.t = clock - 1; startCard.next = nx; } } });
+      // 段 3 规则 2 第 ⑤ 步（占位画法，正式的段 6）：教换宠物——一圈金光 + 一个小三角指着该点的那块圆牌：先指新来的，点了再指回原来那只
+      const tch = save.switchTeach; if (tch && !tch.step && pid === tch.id) { tch.step = 1; tch.from = ids.find((x) => x !== pid); } // 新来的已经在出战：直接指回原来那只
+      const tgt = tch && (tch.step ? tch.from : tch.id);
+      if (tgt === id) { const a3 = 0.5 + Math.sin(clock * 6) * 0.4; ctx.strokeStyle = 'rgba(243,210,122,' + a3 + ')'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, pyy - 4, 30 + Math.sin(clock * 6) * 2, 0, Math.PI * 2); ctx.stroke(); const fy = pyy + 44 + Math.abs(Math.sin(clock * 4)) * 6; ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.moveTo(x, fy - 10); ctx.lineTo(x - 9, fy + 6); ctx.lineTo(x + 9, fy + 6); ctx.fill(); }
+      buttons.push({ id: 'cardPet_' + id, x: x - cw2 / 2, y: pyy - 30, w: cw2, h: 66, fn: () => { if (id === pid) return; teachSwitchTap(id, pid); save.activePet = id; persist(); petFx.pop[id] = clock; P.sound('select', 0.6); haptic('light'); const nx = startCard.next; keepMusicOnce = true; newPetLevel(c.i); if (startCard) { startCard.t = clock - 1; startCard.next = nx; } } });
     });
   } else if (pid) {
     const pyy = py + 178;
@@ -2044,7 +2059,12 @@ function drawStartCard() {
     text(PG.PETS[pid].name + ' 出战', W / 2, pyy + 46, 16, COL.text);
   }
   ctx.restore();
-  button('startGo', px + 24, py + ph - 70, pw - 48, 52, '开打', { size: 20, fn: () => { mode = c.next || 'play'; startCard = null; g.startMs = P.now(); P.sound('select', 0.6); if (g._fresh && save.freshPet && save.freshPet[g._fresh]) { delete save.freshPet[g._fresh]; persist(); } } });
+  button('startGo', px + 24, py + ph - 70, pw - 48, 52, '开打', { size: 20, fn: () => { if (save.switchTeach) { delete save.switchTeach; persist(); } mode = c.next || 'play'; startCard = null; g.startMs = P.now(); P.sound('select', 0.6); if (g._fresh && save.freshPet && save.freshPet[g._fresh]) { delete save.freshPet[g._fresh]; persist(); } } });
+}
+// 教换宠物（段 3 规则 2 第 ⑤ 步）：点了新来的 → 再指回原来那只；点回原来那只 → 教完。点「开打」也算教完
+function teachSwitchTap(id, from) {
+  const tch = save.switchTeach; if (!tch) return;
+  if (!tch.step && id === tch.id) { tch.step = 1; tch.from = from; } else if (tch.step && id === tch.from) delete save.switchTeach;
 }
 // 宠物登场卡：一段小动画把技能演一遍（0.9.13，Cc：「每个宠物的技能你要用图形动画来教学，全是字谁读啊」）。2.6 秒一轮
 const SKILL_DEMO = { pet: 1, baozhu: 1, modou: 1, sanweihu: 1 };
@@ -2948,7 +2968,11 @@ function settlePet() {
   const practice = !!(save.tester && petIdx > save.petStage); // 测试员跳着玩还没打到的关：不改真进度、不给丹、不亮槽（Cc 11-28 定 A）
   if (g.won) {
     if (!practice) save.petStage = Math.max(save.petStage, petIdx + 1);
-    if (st.gift && !save.pets[st.gift]) { save.pets[st.gift] = EC.newPet(); save.petOrder.push(st.gift); r.gift = st.gift; if (!save.activePet) save.activePet = st.gift; } // 送宠物时它自己叼着 1 颗丹
+    if (st.gift && !save.pets[st.gift]) { // 送宠物时它自己叼着 1 颗丹；只送一次
+      save.pets[st.gift] = EC.newPet(); save.petOrder.push(st.gift); r.gift = st.gift; if (!save.activePet) save.activePet = st.gift;
+      save.petSeen[st.gift] = false; // 段 3 规则 2：还没看过出场（出场演完才擦；中途关掉，下次进章页补演）
+      save.freshPet = save.freshPet || {}; save.freshPet[st.gift] = true; // 段 3 规则 3：新宠物第一次出战，表盘开局只差 1 格（哪一关都算）
+    }
   }
   // 段 2 丹（丹细设计规则 2–6）：亮几个槽、给几颗、重打那一份，全由 economy.settle 算，丹进丹袋（玩家在宠物园挑喂谁）
   if (st.rush && g.won) g.rushSec = rushSec();
@@ -2957,6 +2981,8 @@ function settlePet() {
   // 同一关连输几次（专属关连输两次，结算页给「借一只再来」）
   save.loss = save.loss || {}; if (g.won) delete save.loss[petIdx]; else save.loss[petIdx] = (save.loss[petIdx] || 0) + 1;
   persist();
+  // 段 3 规则 2：赢了以后走哪几步（结算页的「继续」照它排过场）
+  if (g.won) r.flow = FLOW.flowAfterWin({ boss: !!(st.goal && st.goal.boss), chapterEnd: petIdx % 10 === 9, gift: r.gift, first: !petReplay, owned: save.petOrder.length });
   result = r;
   g._settleInfo = { petReplay };
   // 试玩记录器（0.9.6，打磨流程第 0 步）：每打完一局记一行，给难度表的「真人」那一列用。设置里「复制试玩记录」拿走
@@ -2987,10 +3013,18 @@ function showPet() {
   if (musicTimer) { clearTimeout(musicTimer); musicTimer = null; }
   if (r.won && st.goal && st.goal.boss) P.bgm.outro(Math.floor(petIdx / 10) + 1); else P.bgm.stop(); // 打完头目收一句安静尾声
   if (r.evolved) { P.sound('win', 0.9); flash = 0.7; } else if (!g.won) { P.sound('lose', 0.6); say('堵住了'); }
-  // 过场（东西上面已经入账了，跳过也不丢）：打倒这章的大墨怪 → 过章；进化；新宠物到手
-  if (g.won && st.goal.boss && petIdx % 10 === 9 && !petReplay) CUT.chapterClear(Math.floor(petIdx / 10));
+  // 段 3 规则 2（Cc 11-27，全量设计 145）：结算页先只讲这一关。过章、新宠物出场挪到结算页「继续」之后（afterWinFlow）。东西上面已经入账了，跳过也不丢
   if (r.evolved) CUT.evolve(r.evolved.from, r.evolved.to);
-  if (r.gift) CUT.petIntro(r.gift);
+  playCuts();
+}
+// 段 3 规则 2：结算页「继续」以后照 flowAfterWin 剩下的步子走：过章过场 → 新宠物出场 → 记下「教换宠物」（下一关的进关卡片上演）→ 回宠物园（Cc 11-24「每一关过完必定回营地」，再从宠物园去下一关的关牌）
+// 出场动画、教换宠物的手指是占位的画法，正式的在段 6（R-097）
+function afterWinFlow() {
+  const r = result, steps = (r && r.flow) || [];
+  if (steps.includes('chapterClear')) CUT.chapterClear(Math.floor(petIdx / 10));
+  if (steps.includes('petEntrance') && r.gift) { CUT.petIntro(r.gift); entranceShown.push(r.gift); }
+  if (steps.includes('switchTeach') && r.gift) { save.switchTeach = { id: r.gift, step: 0 }; persist(); }
+  openCamp();
   playCuts();
 }
 // 输了以后右边那个小按钮：丹够升级就是「宠物园」（发金光 + 丹），不然是「地图」（0.9.16，Cc：「卡在第十关，退不回园子里去喂宠物了」）
@@ -3008,7 +3042,7 @@ function drawPetOver() {
   ctx.fillStyle = COL.shade + Math.min(r.won ? 0.6 : 0.85, age * 2) + ')'; ctx.fillRect(0, 0, W, H);
   if (r.won && age < wait) { text(r.evolved ? '进化！' : '过关！', W / 2, L.by + L.board * 0.45, Math.round(64 * Math.min(1, 0.6 + age * 3)), COL.brassLight); return; }
   if (age < wait) return;
-  const pw = Math.min(W - 40, 340), ph = (r.gift || r.evolved ? 380 : !r.won ? 340 : 300) + (r.won && r.pay && r.pay.slots ? 70 : 0), px = (W - pw) / 2, py = Math.max(L.top + 10, (H - ph) / 2 - 30); // 0.9.13：没新宠物时面板收矮，不留大片空白
+  const pw = Math.min(W - 40, 340), ph = (r.evolved ? 380 : !r.won ? 340 : 300) + (r.won && r.pay && r.pay.slots ? 70 : 0), px = (W - pw) / 2, py = Math.max(L.top + 10, (H - ph) / 2 - 30); // 0.9.13：没新宠物时面板收矮，不留大片空白
   panel(px, py, pw, ph);
   let y = py + 40;
   if (r.evolved) {
@@ -3030,11 +3064,6 @@ function drawPetOver() {
         danSlot(W / 2 + (n - 1) * 48, y + 10, 13 * Math.max(0.3, sc), per, on ? pay.lit[n] : 'off');
       }
       y += 70;
-    }
-    if (r.gift) {
-      petIcon(r.gift, W / 2, y + 30, 64, 1, Math.sin(clock * 3) * 0.08);
-      text('新宠物：' + PG.PETS[r.gift].name, W / 2, y + 80, 18, COL.jade);
-      y += 122;
     }
   } else {
     text(r.near ? '差一点！' : '堵住了', W / 2, y, 30, r.near ? COL.red : COL.text);
@@ -3070,7 +3099,7 @@ function drawPetOver() {
   const bw = pw - 48, bx = px + 24, by = py + ph - 128;
   if (r.won) {
     // 过关一律回营地（Cc 11-24：「别给我直接进入下一关的选项，每一关过完了之后必定回营地」）：炼丹、喂宠物、换出战，再从营地去闯下一关
-    button('tocamp', bx, by + 20, bw, 64, '回宠物园', { size: 28, fn: () => openCamp() });
+    button('tocamp', bx, by + 20, bw, 64, '回宠物园', { size: 28, fn: () => afterWinFlow() });
     // 够升级了：按钮外一圈金光，左边一颗丹带个向上的箭头（0.9.16：玩家不知道该回去喂）
     if (canLevelAny()) {
       const gy = by + 20 + 32, a2 = 0.5 + Math.sin(clock * 6) * 0.4;
@@ -3357,9 +3386,10 @@ function fixSave() {
   save.petOrder = save.petOrder.filter((id, n, a) => save.pets[id] && a.indexOf(id) === n);
   Object.keys(save.pets).forEach((id) => { if (save.petOrder.indexOf(id) < 0) save.petOrder.push(id); });
   // 过了送宠物的那一关、手里却没有那只（0.9.8 以前铜雀是第 3 关才送）：补上，不然后面要打铁石的关没有宠物永远过不了
-  for (let i = 0; i < save.petStage && i < PLV.length; i++) { const gf = PLV[i].gift; if (gf && !ownedOf(gf)) { save.pets[gf] = EC.newPet(); save.petOrder.push(gf); } }
+  for (let i = 0; i < save.petStage && i < PLV.length; i++) { const gf = PLV[i].gift; if (gf && !ownedOf(gf)) { save.pets[gf] = EC.newPet(); save.petOrder.push(gf); save.petSeen[gf] = false; } } // 段 3：老存档补发的（打过第 5、13、17 关的）排队演出场
   if (!save.activePet || !save.pets[save.activePet]) save.activePet = save.petOrder[0] || null;
   if (!obj(save.slots)) save.slots = {};
+  if (save.switchTeach !== undefined && !(obj(save.switchTeach) && save.pets[save.switchTeach.id] && save.petOrder.length > 1)) delete save.switchTeach; // 段 3：教换宠物的记号坏了 / 那只没了就不教
 }
 
 // ---------- 主循环 ----------
@@ -3408,6 +3438,7 @@ function frameBody() {
   } else if (mode === 'camp') {
     drawCamp();
   } else if (mode === 'map') {
+    catchUpEntrance();
     ctx.save();
     drawChapter(); // 0.8：章页取代弯路地图（旧地图 0.9.25 拆掉了）
     ctx.restore();

@@ -187,4 +187,68 @@ t('T321', () => {
   ok(best === 99 && tried > 1000, 'T321 第 3 关不用羽毛，把开局三块的所有放法穷举（' + tried + ' 种）：没有一种抓得到怪');
 });
 
+// ---------- 新宠物的流程（规则 2、3）----------
+const FLOW = require('../js/flow.js');
+t('T325', () => {
+  const f = (o) => FLOW.flowAfterWin(o).join(' → ');
+  ok(f({ boss: false, chapterEnd: false, gift: 'huli', first: true, owned: 2 }) === 'result → petEntrance → switchTeach → nextCard', 'T325 第 5 关第一次过：结算 → 出场（一尾狐）→ 教换宠物 → 下一关');
+  ok(f({ boss: true, chapterEnd: true, gift: 'baozhu', first: true, owned: 3 }) === 'result → chapterClear → petEntrance → switchTeach → nextCard', 'T325 第 10 关第一次过：结算 → 过章 → 出场 → 教换 → 下一关');
+  ok(f({ boss: false, chapterEnd: false, gift: 'tongque', first: true, owned: 1 }) === 'result → petEntrance → nextCard', 'T325 第 2 关第一次过：结算 → 出场 → 下一关（只有一只，没有教换）');
+  ok(f({ boss: true, chapterEnd: true, gift: null, first: true, owned: 5 }) === 'result → chapterClear → nextCard', 'T325 第 20 关第一次过：结算 → 过章 → 下一关');
+  ok(f({ boss: true, chapterEnd: true, gift: null, first: false, owned: 5 }) === 'result → nextCard' && f({ boss: false, chapterEnd: false, gift: null, first: false, owned: 2 }) === 'result → nextCard', 'T325 任何关重打：结算 → 下一关');
+});
+const { boot } = require('./wx-env.js');
+const SAVE = (o) => JSON.stringify(Object.assign({ ch1new: 1, econ: 2, petTutDone: true, tutorialDone: true, petStage: 4, pets: { tongque: { lv: 3, exp: 0 } }, petOrder: ['tongque'], activePet: 'tongque', introSeen: { pet: 1, catch: 1, crawl: 1, metal: 1, rush: 1, moss: 1, boss: 1, dirt: 1, sticky: 1, boss2: 1 }, cutSeen: { chapter0: true, chapter1: true } }, o || {}));
+const winNow = (E, i) => { const { G, run } = E; G.newPetLevel(i); run(3); G.skipCuts(); G.mode = 'play'; run(3); const g = G.g; g.over = true; g.won = true; g.reason = 'win'; G.endGame(); run(90); };
+t('T326', () => {
+  const E = boot({ seed: 4, store: { luoshu_save_v1: SAVE() } }), { G, run } = E;
+  winNow(E, 4);
+  const s = G.save, r = G.result, seenTxt = E.frameDrawn().map((d) => d.s).join('|');
+  ok(r && r.gift === 'huli' && s.pets.huli && s.pets.huli.lv === 1 && s.pets.huli.exp === 1 && s.petSeen.huli === false && s.freshPet && s.freshPet.huli, 'T326 第 5 关赢的那一手：存档里已经有一尾狐（1 级、自己叼 1 颗），记着「还没看过出场」、「第一次出战只差 1 格」');
+  ok(G.mode === 'over' && !/新宠物/.test(seenTxt) && !G.cutPlaying, 'T326 先出结算页：面板上不画新宠物，过场还没放（规则 2 第 ① 步）');
+  ok(r.flow.join() === 'result,petEntrance,switchTeach,nextCard', 'T326 这一局的步子：' + r.flow.join(' → '));
+  E.tap(E.btn('tocamp')); run(3);
+  const inCut = G.mode === 'cut'; G.skipCuts(); run(5);
+  ok(inCut && G.mode === 'camp' && s.petSeen.huli === true && s.switchTeach && s.switchTeach.id === 'huli', 'T326 点「继续」：放一尾狐的出场 → 演完擦掉「没看过」的记号 → 回宠物园，下一关的关牌上要教换宠物');
+  const n0 = s.petOrder.length; winNow(E, 4);
+  ok(!G.result.gift && s.petOrder.length === n0 && G.result.flow.join() === 'result,nextCard', 'T326 重打第 5 关：不再送，步子只有结算 → 下一关');
+  E.restore();
+  // 第 10 关：先过章、再出场
+  const E2 = boot({ seed: 5, store: { luoshu_save_v1: SAVE({ petStage: 9, pets: { tongque: { lv: 3, exp: 0 }, huli: { lv: 1, exp: 1 } }, petOrder: ['tongque', 'huli'], petSeen: { tongque: true, huli: true } }) } });
+  winNow(E2, 9); E2.tap(E2.btn('tocamp')); E2.run(3);
+  const order = []; for (let k = 0; k < 4 && E2.G.mode === 'cut'; k++) { order.push(Object.keys(E2.G.save.cutSeen).filter((x) => /^(clear|pet_)/.test(x)).join('+')); E2.G.CUT.skip(); E2.run(2); }
+  ok(E2.G.result.flow.join() === 'result,chapterClear,petEntrance,switchTeach,nextCard' && order[0] === 'clear0' && /pet_baozhu/.test(order[1] || ''), 'T326 第 10 关第一次过：点「继续」先放过章，再放小穿山甲出场（' + order.join(' / ') + '）');
+  E2.restore();
+  // 中途关掉：下次进章页补演
+  const E3 = boot({ seed: 6, store: { luoshu_save_v1: SAVE({ petStage: 5, pets: { tongque: { lv: 3, exp: 0 }, huli: { lv: 1, exp: 1 } }, petOrder: ['tongque', 'huli'], petSeen: { huli: false } }) } });
+  E3.G.mode = 'map'; E3.run(3); const c3 = E3.G.mode === 'cut'; E3.G.skipCuts(); E3.run(3);
+  ok(c3 && E3.G.save.petSeen.huli === true && E3.G.mode === 'map', 'T326 拿到了还没看出场就关掉游戏：下次进章页先补演，演完擦掉记号');
+  E3.restore();
+  // 老存档：打过第 5、13 关但手里没有一尾狐、蚕宝宝 → 开机补上，排队演
+  const E4 = boot({ seed: 7, store: { luoshu_save_v1: SAVE({ petStage: 14, pets: { tongque: { lv: 3, exp: 0 }, baozhu: { lv: 2, exp: 0 } }, petOrder: ['tongque', 'baozhu'] }) } });
+  const s4 = E4.G.save; ok(s4.pets.huli && s4.pets.modou && s4.petSeen.huli === false && s4.petSeen.modou === false, 'T326 老存档打过第 5、13 关：开机补上一尾狐、蚕宝宝，记着「还没看过出场」');
+  E4.G.mode = 'map'; E4.run(3); E4.G.skipCuts(); E4.run(3); const one = [s4.petSeen.huli, s4.petSeen.modou].filter(Boolean).length; E4.G.skipCuts(); E4.run(3);
+  ok(one === 1 && s4.petSeen.huli === true && s4.petSeen.modou === true, 'T326 补演一次一只（先演完一只，再演下一只）');
+  E4.restore();
+});
+t('T327', () => {
+  const E = boot({ seed: 8, store: { luoshu_save_v1: SAVE() } }), { G, run } = E;
+  winNow(E, 4); E.tap(E.btn('tocamp')); run(3); G.skipCuts(); run(3);
+  G.newPetLevel(2); run(5); // 重打第 3 关（不是登场关）。出战的还是原来的小铜雀
+  const t0 = JSON.stringify(G.save.switchTeach);
+  ok(G.mode === 'start' && G.buttons().some((b) => b.id === 'cardPet_huli') && G.save.switchTeach.id === 'huli' && !G.save.switchTeach.step, 'T327 关牌上两块圆牌并排，先指着新来的一尾狐（' + t0 + '）');
+  E.tap(E.btn('cardPet_huli')); run(5);
+  const e1 = G.g.team[0].energy, want = PG.ringOf('huli', 1) - 1, t1 = G.save.switchTeach;
+  ok(G.g.team[0].id === 'huli' && e1 === want && G.save.freshPet.huli && t1 && t1.step === 1 && t1.from === 'tongque', 'T327 点了一尾狐：它第一次出战（随便哪一关）表盘 = 满格 − 1（' + e1 + ' / ' + want + '），还没用掉；手指改指回小铜雀');
+  E.tap(E.btn('cardPet_tongque')); run(5);
+  ok(!G.save.switchTeach && G.g.team[0].id === 'tongque', 'T327 点回小铜雀：教换宠物收起');
+  E.tap(E.btn('cardPet_huli')); run(5);
+  E.tap(E.btn('startGo')); run(5);
+  ok(G.mode === 'play' && G.g.team[0].id === 'huli' && !G.save.freshPet.huli, 'T327 带一尾狐点「开打」：这时才用掉「只差 1 格」');
+  G.newPetLevel(2); run(5);
+  ok(G.g.team[0].energy === 0, 'T327 第二次带它：0（' + G.g.team[0].energy + '）');
+  ok(!E.errs().length, 'T327 没有出错记账' + (E.errs().length ? '：' + JSON.stringify(E.errs()[0]).slice(0, 160) : ''));
+  E.restore();
+});
+
 done();

@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = 'cb727d5eddf7';</script>
+<script>window.__BUILD = 'ba16454966c7';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -416,14 +416,17 @@ __def("js/core.js", function (module, exports, require) {
 const C = require('./config.js');
 
 // ---------- 随机数（可复现） ----------
-function rng(seed) {
-  let s = (seed >>> 0) || 1;
-  return () => {
+// 段 3 规则 11（中途退出接着打）：f.state() 读出走到哪了；rng(任意, state) 从那里接着走（存盘恢复以后发的牌和没退出时一样）
+function rng(seed, state) {
+  let s = state !== undefined ? state >>> 0 : (seed >>> 0) || 1;
+  const f = () => {
     s ^= s << 13; s >>>= 0;
     s ^= s >> 17;
     s ^= s << 5; s >>>= 0;
     return s / 4294967296;
   };
+  f.state = () => s;
+  return f;
 }
 
 // ---------- 块 ----------
@@ -5932,6 +5935,10 @@ const MON = {
 const MON_CHAR = { m: 'ink', G: 'moss', N: 'sticky' };
 const newMon = (t) => ({ t, cd: MON[t].cd || 0 });
 const BOSS_MUD_CD = 3; // 段 1 规则 5：泥沼怪每 3 手吐一次
+// 段 3 规则 11：存盘里存哪些（都是规则层的数；画面、计时由 main.js 另存）。SNAP_VER 对不上的存盘丢掉
+const SNAP_VER = 1;
+const SNAP_KEYS = ['board', 'color', 'hand', 'handColor', 'team', 'bigHp', 'bigCells', 'boss', 'skillUses', 'mon', 'silkHp', 'monStats', 'playStats', 'caught', 'petActsTotal', 'waveQ', 'waveNo', 'waveTotal', 'got', 'moves', 'score', 'streak', 'dryRun', 'deals', 'adsUsed', 'revivesUsed', 'rescues', 'skillStats', 'skillCaught', 'crumb', 'homeDeals', 'badDeals', 'lastDealOK', 'lastDealMove', 'lastDealUnfair', 'over', 'won', 'reason', 'elapsed', 'bestCombo', '_opened', 'monLeft'];
+const SNAP_NEED = ['board', 'color', 'hand', 'team', 'mon', 'moves', 'got', 'waveQ'];
 const near8 = (k) => { const r = Math.floor(k / 9), c = k % 9, out = []; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { if (!dr && !dc) continue; const a = r + dr, b = c + dc; if (a >= 0 && a < 9 && b >= 0 && b < 9) out.push(a * 9 + b); } return out; };
 const CLEARABLE = (v) => v === CELL.BLOCK || IS_MON(v); // 消得掉的：方块、墨怪
 
@@ -6735,6 +6742,19 @@ function createPetGame(opts) {
     syncAll();
     return ev;
   };
+  // ---- 段 3 规则 11（R-062）：中途退出接着打。snapshot() 出一份纯文字能存的存盘（整盘、墨怪各自数到第几手、头目、手上三块的整块样子、宠物格、表盘、波次、手数、救命、发牌的随机数走到哪）；
+  // 恢复用文件末尾的 restorePetGame。规则代码里用随机数的地方都是现用现读 g.rand，没有谁把它存在自己手里（不然 T365 会红）。冲锋关不存（比的是秒数）
+  g.snapshot = () => {
+    if (st.rush) return null;
+    const out = { v: SNAP_VER, rng: g.rand.state() };
+    SNAP_KEYS.forEach((k) => { if (g[k] !== undefined) out[k] = g[k]; });
+    return JSON.parse(JSON.stringify(out));
+  };
+  g._restore = (snap) => {
+    SNAP_KEYS.forEach((k) => { if (k in snap) g[k] = JSON.parse(JSON.stringify(snap[k])); });
+    for (let k = 0; k < 81; k++) if (g.mon[k] === undefined) g.mon[k] = null;
+    g.rand = core.rng(1, snap.rng);
+  };
   g.goalLeft = () => core.goalLeft(g);
   return g;
 }
@@ -6911,7 +6931,14 @@ function useSkillIfGood(g) {
   if (s.v >= 100 || !fits) return !!g.useSkill(s);
   return false;
 }
-module.exports = { peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+// 从存盘接着打：opts 和开这一局时一样（stage、team、seed）。存盘坏了 / 版本对不上 / 盘面尺寸不对 → null（调的地方丢掉存盘、从头开）
+function restorePetGame(opts, snap) {
+  if (!snap || typeof snap !== 'object' || snap.v !== SNAP_VER || typeof snap.rng !== 'number' || !SNAP_NEED.every((k) => k in snap)) return null;
+  if (!Array.isArray(snap.board) || snap.board.length !== 81 || !Array.isArray(snap.hand) || !Array.isArray(snap.mon) || snap.mon.length !== 81) return null;
+  if (opts && opts.stage && opts.stage.rush) return null;
+  const g = createPetGame(opts); g._restore(snap); return g;
+}
+module.exports = { restorePetGame, SNAP_VER, peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
 
 });
 __def("js/petlevels.js", function (module, exports, require) {

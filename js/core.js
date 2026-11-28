@@ -2,14 +2,17 @@
 const C = require('./config.js');
 
 // ---------- 随机数（可复现） ----------
-function rng(seed) {
-  let s = (seed >>> 0) || 1;
-  return () => {
+// 段 3 规则 11（中途退出接着打）：f.state() 读出走到哪了；rng(任意, state) 从那里接着走（存盘恢复以后发的牌和没退出时一样）
+function rng(seed, state) {
+  let s = state !== undefined ? state >>> 0 : (seed >>> 0) || 1;
+  const f = () => {
     s ^= s << 13; s >>>= 0;
     s ^= s >> 17;
     s ^= s << 5; s >>>= 0;
     return s / 4294967296;
   };
+  f.state = () => s;
+  return f;
 }
 
 // ---------- 块 ----------

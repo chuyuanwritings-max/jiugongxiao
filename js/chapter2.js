@@ -8,27 +8,27 @@
 const E = '.........';
 module.exports = [
   { // 11 普通：小穿山甲来了以后的第一关。开局三块大块（啃一口就好放），不啃也放得下
-    goal: { monster: 6 }, d: 0.05, crawl: 3, colors: [1, 0, 3], startHand: ['5h', 'L5a', 'r23'], par: 21,
+    goal: { monster: 6 }, d: 0.05, crawl: 3, colors: [1, 0, 3], startHand: ['5h', 'L5a', 'r23'], par: 27,
     board: [E, '##m###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E],
     waves: [[E, E, E, '.....m...', E, E, E, E, '..m......'], [E, '......m..', E, E, E, E, E, E, E]],
   },
   { // 12 教：土堆。封箱：上面中间的大格摆满了、被 (2,5) 的土堆堵着，(1,4) 封着一只怪；(2,6)、(3,5) 留空给带土爪的块
-    goal: { monster: 6 }, teach: 1, d: 0.05, crawl: 3, colors: [1, 0, 3], fastCharge: 'baozhu', intro: 'dirt', par: 24, firstAct: { kind: 'blocked' },
+    goal: { monster: 6 }, teach: 1, d: 0.05, crawl: 3, colors: [1, 0, 3], fastCharge: 'baozhu', intro: 'dirt', par: 30, firstAct: { kind: 'blocked' },
     board: ['...###...', '...#m#...', '...##D...', '.#.....#.', '###m#.###', E, E, '##.###m##', 'D........'],
     waves: [[E, E, E, '....m....', E, E, E, E, '..m......'], [E, E, '.m.......', E, E, E, E, E, E]],
   },
   { // 13 教：墨苔怪。开局先演：(1,2) 那只爬走、原地留一块墨。过关后蚕宝宝来
-    goal: { monster: 6 }, teach: 1, d: 0.12, crawl: 3, colors: [1, 0, 3], intro: 'moss', par: 25, gift: 'modou', firstAct: { kind: 'crawl', from: [1, 2], to: [2, 2] },
+    goal: { monster: 6 }, teach: 1, d: 0.12, crawl: 3, colors: [1, 0, 3], intro: 'moss', par: 32, gift: 'modou', firstAct: { kind: 'crawl', from: [1, 2], to: [2, 2] },
     board: [E, '##G###.##', E, '.##..###.', '.##m###..', E, E, '#.###G##.', E],
     waves: [[E, E, E, '....m....', E, E, E, E, '..G......'], [E, E, E, E, E, '......m..', E, E, E]],
   },
   { // 14 普通：蚕宝宝来了以后的第一关。好几排只缺一个单格的洞
-    goal: { monster: 7 }, d: 0.1, crawl: 3, colors: [1, 0, 3], par: 26,
+    goal: { monster: 7 }, d: 0.1, crawl: 3, colors: [1, 0, 3], par: 33,
     board: [E, '####.##m#', E, '.#m##.###', E, '##.###G.#', E, '.###.####', E],
     waves: [[E, E, '....m....', E, E, E, '.m.......', E, '......G..'], [E, E, E, E, '........m', E, E, E, E]],
   },
   { // 15 难：土堆 2（左上的大格封着一只墨苔怪，土堆在 (2,0)；另一个在右下角）+ 墨苔怪
-    goal: { monster: 7 }, d: 0.15, dSeg: [0.1, 0.15, 0.32], crawl: 3, hard: 1, colors: [1, 0, 3], par: 29,
+    goal: { monster: 7 }, d: 0.15, dSeg: [0.1, 0.15, 0.32], crawl: 3, hard: 1, colors: [1, 0, 3], par: 36,
     board: ['###......', '#G#.m....', 'D##......', E, '....#m##.', E, E, '.##.....#', '........D'],
     waves: [[E, '......m..', E, E, '.G.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
@@ -37,22 +37,22 @@ module.exports = [
     board: [E, E, E, E, E, E, E, E, E],
   },
   { // 17 教：粘墨怪。蹲在空排上不好抓，第 2 波还有一只；开局先演：往手上吐一团泥。过关后小龟来
-    goal: { monster: 7 }, teach: 1, d: 0.08, crawl: 3, colors: [1, 0, 3], intro: 'sticky', par: 25, gift: 'lvgui', firstAct: { kind: 'mud', at: [3, 6] },
+    goal: { monster: 7 }, teach: 1, d: 0.08, crawl: 3, colors: [1, 0, 3], intro: 'sticky', par: 32, gift: 'lvgui', firstAct: { kind: 'mud', at: [3, 6] },
     board: [E, '##m###.##', E, '......N..', '.###m###.', E, E, '##.###m##', E],
     waves: [[E, E, E, E, E, '.N.......', E, E, '....m....'], [E, '.......m.', E, E, E, E, E, E, E]],
   },
   { // 18 普通：小龟来了以后的第一关。开局三块竖着的块，盘上的空是横的（转一下就好放），不转也放得下
-    goal: { monster: 6 }, d: 0.1, crawl: 3, colors: [1, 0, 3], startHand: ['4v', 'L4a', 'r32'], par: 24,
+    goal: { monster: 6 }, d: 0.1, crawl: 3, colors: [1, 0, 3], startHand: ['4v', 'L4a', 'r32'], par: 31,
     board: [E, '##m##..##', E, '.##...m#.', E, '#.##m##.#', E, '.#..###.#', E],
     waves: [[E, E, '....m....', E, E, E, '.N.......', E, '......m..']],
   },
   { // 19 难：全上（金属 1 在左上角 + 土堆 1 在右下角 + 墨苔怪 2 + 粘墨怪 2）
-    goal: { monster: 8 }, d: 0.15, dSeg: [0.1, 0.15, 0.3], crawl: 3, hard: 2, colors: [1, 0, 3], par: 27,
+    goal: { monster: 8 }, d: 0.15, dSeg: [0.1, 0.15, 0.3], crawl: 3, hard: 2, colors: [1, 0, 3], par: 34,
     board: ['Z........', '#N##.###.', E, '...m.....', E, '..#G#m##.', E, E, '........D'],
     waves: [[E, '......m..', E, E, '.N.......', E, E, '.....G...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
   { // 20 头目：泥沼怪 9 心，每 3 手吐泥，每挨 3 下跳。开局先演：先吐一次。盘上不放旧块
-    goal: { boss: 1 }, d: 0.03, bigHp: 9, bossKind: 'mud', bossEvery: 3, bossNoSpit: true, bossMud: true, colors: [1, 0, 3], intro: 'boss2', par: 29, firstAct: { kind: 'bossMud' },
+    goal: { boss: 1 }, d: 0.03, bigHp: 9, bossKind: 'mud', bossEvery: 3, bossNoSpit: true, bossMud: true, colors: [1, 0, 3], intro: 'boss2', par: 36, firstAct: { kind: 'bossMud' },
     board: ['D........', E, E, E, '...KK....', '...KK....', E, E, '........D'],
   },
 ];

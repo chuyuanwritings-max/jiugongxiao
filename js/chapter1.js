@@ -16,22 +16,22 @@ module.exports = [
     board: [E, '###m###..', E, '#.####m##', E, '##m##.###', E, '.####m##.', E],
   },
   { // 3 教：第一根羽毛。卡口：第 5 排的怪只差「啄掉 (4,7) 再放 3 横」
-    goal: { monster: 5 }, teach: 1, d: 0, colors: [0, 3, 2], fastCharge: 'tongque', intro: 'pet', par: 25, startHand: ['2v', '3h', 'L4a'],
+    goal: { monster: 5 }, teach: 1, d: 0, colors: [0, 3, 2], fastCharge: 'tongque', intro: 'pet', par: 32, startHand: ['2v', '3h', 'L4a'],
     board: [E, '###.#####', E, '......#.#', '##m###.#.', '......#.#', E, '#m.......', E],
     waves: [[E, E, '..m......', E, E, E, '......m..', E, E], [E, E, E, '....m....', E, E, E, E, E]],
   },
   { // 4 教：墨怪会爬。开局先演：(1,2) 那只从只差 1 格的排上爬走
-    goal: { monster: 5 }, teach: 1, d: 0.04, crawl: 3, colors: [0, 3, 2], intro: 'crawl', par: 20, firstAct: { kind: 'crawl', from: [1, 2], to: [2, 2] },
+    goal: { monster: 5 }, teach: 1, d: 0.04, crawl: 3, colors: [0, 3, 2], intro: 'crawl', par: 26, firstAct: { kind: 'crawl', from: [1, 2], to: [2, 2] },
     board: [E, '##m###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E],
     waves: [[E, E, E, '.....m...', E, E, E, E, '..m......']],
   },
   { // 5 难：不教新的。过关后一尾狐来
-    goal: { monster: 7 }, d: 0.12, dSeg: [0.08, 0.12, 0.3], crawl: 3, hard: 1, colors: [0, 3, 2], par: 29, gift: 'huli',
+    goal: { monster: 7 }, d: 0.12, dSeg: [0.08, 0.12, 0.3], crawl: 3, hard: 1, colors: [0, 3, 2], par: 36, gift: 'huli',
     board: [E, '#m##.###.', E, '...m.....', E, '.###.#m##', E, E, E],
     waves: [[E, '......m..', E, E, '.m.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
   { // 6 教：第一次有两只宠物、第一次自己挑带谁。两只怪蹲在空排上（狐火的好靶子），带小铜雀照样打
-    goal: { monster: 5 }, teach: 1, d: 0.08, crawl: 3, colors: [0, 3, 2], par: 22,
+    goal: { monster: 5 }, teach: 1, d: 0.08, crawl: 3, colors: [0, 3, 2], par: 28,
     board: [E, '.##m##.#.', E, '......m..', '###.###..', E, '.m.......', '...##.###', E],
     waves: [[E, E, '....m....', E, E, E, E, E, '..m......']],
   },
@@ -40,17 +40,17 @@ module.exports = [
     board: [E, E, E, E, E, E, E, E, E],
   },
   { // 8 教：金属。封箱：上面中间的大格摆满了、被 (2,5) 的金属堵着，(1,4) 封着一只怪。第 5 排只差 1 格
-    goal: { monster: 6 }, teach: 1, d: 0.1, crawl: 3, colors: [0, 3, 2], fastCharge: 'tongque', intro: 'metal', par: 23, firstAct: { kind: 'blocked' },
+    goal: { monster: 6 }, teach: 1, d: 0.1, crawl: 3, colors: [0, 3, 2], fastCharge: 'tongque', intro: 'metal', par: 29, firstAct: { kind: 'blocked' },
     board: ['...###...', '...#m#...', '...##Z...', '.#.....#.', '###m#.###', E, E, '#m###.###', '........Z'],
     waves: [[E, E, E, '...m.....', E, E, E, E, '......m..'], [E, E, '.m.......', E, E, E, E, E, E]],
   },
   { // 9 难：爬 + 金属 2。正中间的大格封着一只怪（金属在 (5,5)），另一块在左下角
-    goal: { monster: 7 }, d: 0.2, dSeg: [0.1, 0.2, 0.4], crawl: 3, hard: 2, colors: [0, 3, 2], par: 29,
+    goal: { monster: 7 }, d: 0.2, dSeg: [0.1, 0.2, 0.4], crawl: 3, hard: 2, colors: [0, 3, 2], par: 37,
     board: [E, '#m##.###.', E, '...###...', '...#m#...', '...##Z...', E, '.#m#..##.', 'Z........'],
     waves: [[E, '......m..', E, E, '.m.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
   { // 10 头目：大墨怪 9 心，每挨 3 下跳。开局先演：从左上角跳到 (4,3)，踩碎落脚 4 格 + 一圈 9 块。过关后小穿山甲来
-    goal: { boss: 1 }, d: 0.1, bigHp: 9, bossKind: 'spit', gift: 'baozhu', bossEvery: 3, bossNoSpit: true, colors: [0, 3, 2], intro: 'boss', par: 29, firstAct: { kind: 'jump', to: [4, 3] },
+    goal: { boss: 1 }, d: 0.1, bigHp: 9, bossKind: 'spit', gift: 'baozhu', bossEvery: 3, bossNoSpit: true, colors: [0, 3, 2], intro: 'boss', par: 36, firstAct: { kind: 'jump', to: [4, 3] },
     board: ['KK.......', 'KK#...#..', '.......Z.', '..###....', '..#..#...', '..#..#...', '...##....', '..#...#..', 'Z........'],
   },
 ];

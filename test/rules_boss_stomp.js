@@ -3,6 +3,7 @@ const PG = require('../js/petgame.js'), PLV = require('../js/petlevels.js'), cor
 let pass = 0, fail = 0; const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++; console.log('✗ ' + m); } };
 const li = PLV.findIndex((st) => st.goal && st.goal.boss);
 const g = PG.createPetGame({ stage: PLV[li], team: [{ id: 'tongque', lv: 3 }], seed: 7 });
+g.openingAct(); // 段 3：新第 10 关头目开局写在左上角、开局先跳到盘中间；先演完，左上角才是「离头目远的落脚点」
 const b = g.board;
 // 找一个离头目远的落脚点：左上角 (1,1)，外圈是第 0–3 行、第 0–3 列
 const tl = 1 * 9 + 1, land = [tl, tl + 1, tl + 9, tl + 10];

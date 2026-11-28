@@ -69,10 +69,11 @@ const ok = (c, m) => { if (c) { pass++; console.log('✓ ' + m); } else { fail++
       const m = await page.evaluate(() => {
         const G = window.__game, g = G.g;
         if (g.moves === 0 && G.petIdx === 0 && !G.save.petTutDone) { const t = G.tutorialTarget(); if (t) return { from: G.slotCenter(0), to: G.fingerFor(g.hand[0], t.r, t.c) }; }
-        const sk = g.hand[3] && G.PG.skillBest(g);
+        let sk = g.hand[3] && G.PG.skillBest(g);
+        const reach = (t) => { if (t.hand !== undefined) return true; const f = G.fingerFor(g.hand[3], t.r, t.c), got = G.skillTarget({ x: f.x, y: f.y }); return !!got && got.r === t.r && got.c === t.c; }; const fitsAny = [0, 1, 2].some((i) => g.hand[i] && G.core.anyPlacement(g.board, g.hand[i])); if (sk && !reach(sk)) { sk = null; if (!fitsAny) for (let k = 0; k < 81 && !sk; k++) { const t2 = { r: Math.floor(k / 9), c: k % 9 }; if (g.skillPlan(t2) && reach(t2)) sk = Object.assign(t2, { v: 1 }); } } /* 段 3：第 8 关右下角的金属在 390、430 宽的屏上手指够不着（R-007，段 4 修），真人也点不到：换一格点得到的，和 wx-env 的 playStep 一样 */
         // 0.9.25：第一章宠物不抓怪、金属还不堵路，机器人挑不出「正经事」就从来不拖技能块（这条测试常年红）。第 3 关是教拖技能块的关：照新手那样，有就拖
         if (sk && (sk.v >= 100 || G.petIdx === 2 || ![0, 1, 2].some((i) => g.hand[i] && G.core.anyPlacement(g.board, g.hand[i])))) {
-          if (sk.hand !== undefined) { const f = G.fingerForHand(sk.hand, sk.cell); return { from: G.slotCenter(3), via: f.enter, to: f, skill: 'hand' }; }
+          if (sk.hand !== undefined) { const f = G.fingerForHand(sk.hand, sk.cell || 0); /* 段 3：小龟的转块没有「第几格」 */ return { from: G.slotCenter(3), via: f.enter, to: f, skill: 'hand' }; }
           return { from: G.slotCenter(3), to: G.fingerFor(g.hand[3], sk.r, sk.c), skill: 'board' };
         }
         const b = G.PG.bestMove(g, 1); return b && { from: G.slotCenter(b.i), to: G.fingerFor(g.hand[b.i], b.r, b.c) };

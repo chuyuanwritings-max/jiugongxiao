@@ -107,7 +107,8 @@ t('boot', () => {
   const raw = JSON.stringify(SAVE_A);
   const E1 = boot({ seed: 5, store: { [KEY]: raw } }), G = E1.G, s = G.save;
   ok(s.dan === 25 && s.econGift === 18 && s.econ === E.ECON_VER && eq(slotsArr(s, 14), SLOTS_A) && eq(gotArr(s, 14), GOT_A), '开机换算存档甲：丹 25、补 18、14 关的槽和已拿照表');
-  ok(eq(s.pets, SAVE_A.pets) && eq(s.petOrder, SAVE_A.petOrder) && s.activePet === 'jinchique' && s.petStage === 14 && eq(s.danDay, SAVE_A.danDay) && eq(s.loss, SAVE_A.loss), '开机换算存档甲：宠物、出战、进度、重打记录、连输原样');
+  // 段 3 换关卡表：一尾狐第 5 关、蚕宝宝第 13 关送，打到第 15 关的存档甲开机时照关卡表补上这两只（1 级、自己叼 1 颗），原有的两只原样
+  ok(eq(s.pets, Object.assign({}, SAVE_A.pets, { huli: E.newPet(), modou: E.newPet() })) && eq(s.petOrder, SAVE_A.petOrder.concat(['huli', 'modou'])) && s.activePet === 'jinchique' && s.petStage === 14 && eq(s.danDay, SAVE_A.danDay) && eq(s.loss, SAVE_A.loss), '开机换算存档甲：宠物、出战、进度、重打记录、连输原样（照新关卡表补上一尾狐、蚕宝宝）');
   ok(GONE.every((k) => !(k in s)), '开机换算存档甲：金币、葫芦、分数、星、上次喂的是谁都没了');
   ok(E1.store[KEY + '_bak0924'] === raw, 'T239 换算前的存档原文另存了一份，一字不差');
   ok(!E1.errs().length, '开机换算：没有报错' + (E1.errs().length ? '（' + JSON.stringify(E1.errs()[0]).slice(0, 120) + '）' : ''));

@@ -13,10 +13,10 @@ const SEEN = { pet: 1, gem: 1, wave: 1, monster: 1, gempiece: 1, box: 1, rock: 1
 // 现在这一版的存档：打到第 12 关（过了 11 关），手里是第 2 关送的铜雀、第 10 关送的爆竹鼠。ch1new 表示「已经是新版存档」，不会被清回第 1 关
 const OLD = (extra) => JSON.stringify(Object.assign({ ch1new: 1, petTutDone: true, tutorialDone: true, petStage: 11, pets: { tongque: { lv: 4, exp: 1 }, baozhu: { lv: 2, exp: 1 } }, petOrder: ['tongque', 'baozhu'], activePet: 'tongque', dan: 5, introSeen: SEEN, cutSeen: { chapter0: true, chapter1: true, chapter2: true } }, extra || {}));
 // 进第 i 关（0 起）、过掉卡片和说明卡，停在能拖块的时候
-function enter(E, i, lendLv, lendId) {
+function enter(E, i, helpLv, helpId) {
   const { G, run, tap, btn, touch } = E;
   if (i >= G.PLV.length) throw new Error('没有第 ' + (i + 1) + ' 关（现在一共 ' + G.PLV.length + ' 关）'); // 关卡表只有 20 关：写错关号直接报出来，不偷偷换一关
-  G.newPetLevel(i, false, lendLv, lendId); run(3);
+  G.newPetLevel(i, false, helpLv, helpId); run(3);
   for (let n = 0; n < 40 && G.mode !== 'play'; n++) {
     if (G.mode === 'cut') { touch('down', 100, 300); run(2); touch('up', 100, 300); }
     else if (G.mode === 'start') { run(10); tap(btn('startGo')); }
@@ -169,8 +169,8 @@ winCase('泥沼怪最后一颗心（第 20 关，普通块）', 19, (E, g) => { 
 // 删了「抓光关（all）最后一只」：前两章没有「抓光」目标的关
 section('波次交界', () => {
   const E = boot({ seed: 31, store: { luoshu_save_v1: OLD() } }), { G, run } = E;
-  const g = enter(E, 17); // 第 18 关：3 波（第 12 关现在只有 2 波）
-  ok(g.waveTotal === 3 && g.waveQ.length === 2, '（前提）第 18 关 3 波');
+  const g = enter(E, 13); // 段 3 换关卡表：第 18 关只剩 2 波，换第 14 关（3 波、没有开局先演）
+  ok(g.waveTotal === 3 && g.waveQ.length === 2, '（前提）第 14 关 3 波');
   for (let w = 1; w <= 2; w++) {
     setBoard(g, { 4: 'm#######.' }); g.got.monster = Math.min(g.got.monster, g.stage.goal.monster - 2); g.hand = [P1(E), E.G.core.PIECES['2h'], null, null];
     dragTo(E, 0, 4, 8); run(80);
@@ -284,9 +284,9 @@ section('手选宠物', () => {
   tap(btn('startGo')); run(30);
   ok(G.mode === 'play' && !(G.save.freshPet || {}).tongque, '点「开打」才用掉');
   ok(G.g.team[0].id === 'tongque' && G.buttons().some((b) => b.id === 'petSlot'), '进关：右下角宠物格里是铜雀');
-  // 点名关：不给换
-  G.newPetLevel(10); run(20); // 第 11 关 only: 'baozhu'（第 3 关点名铜雀、第 11、12 关点名爆竹鼠，以后会改，先照现在的表测）
-  ok(G.mode === 'start' && !G.buttons().some((b) => b.id.startsWith('cardPet_')) && G.g.team[0].id === 'baozhu', '点名关（第 11 关点名爆竹鼠）：卡片上不给换，出战的是爆竹鼠');
+  // 段 3（R-057）不点名：原来的点名关第 11 关现在也能换，出战的是自己选的
+  G.newPetLevel(10); run(20);
+  ok(G.mode === 'start' && G.buttons().some((b) => b.id === 'cardPet_baozhu') && G.g.team[0].id === 'tongque', '不点名（段 3）：第 11 关卡片上能换，出战的是自己选的小铜雀');
   tap(btn('startGo')); run(20); if (G.mode === 'intro') tap(btn('introOk'));
   ok(G.save.activePet === 'tongque', '点名只管这一关：平时带的还是铜雀');
   // 只有 1 只宠物
@@ -345,7 +345,7 @@ section('胶囊按钮', () => {
 });
 section('按钮不出屏、不叠在一起', () => {
   for (const [w, h] of [[375, 667], [430, 932]]) {
-    const E = boot({ seed: 51, w, h, store: { luoshu_save_v1: OLD({ loss: { 12: 2 } }) } }), { G, run } = E;
+    const E = boot({ seed: 51, w, h, store: { luoshu_save_v1: OLD({ loss: { 11: 2 } }) } }), { G, run } = E;
     const bad = [];
     const scan = (page, pairs) => {
       run(2); const bs = G.buttons();
@@ -360,9 +360,9 @@ section('按钮不出屏、不叠在一起', () => {
     G.newPetLevel(14); run(20); scan('关卡卡片', [['startGo', 'cardPet_tongque'], ['startGo', 'cardPet_baozhu'], ['cardPet_tongque', 'cardPet_baozhu'], ['snap', 'startGo']]); // 第 15 关：不点名，摆两只
     E.tap(E.btn('startGo')); run(30); scan('关里', [['snap', 'petSlot'], ['map', 'goal_monster']]);
     G.g.over = true; G.g.reason = 'stuck'; G.endGame(); run(80); scan('输了', [['again', 'revive'], ['again', 'tomap'], ['revive', 'tomap'], ['overCopyLog', 'tomap'], ['overCopyLog', 'revive'], ['snap', 'overCopyLog']]);
-    // 「请 X 来帮忙」只在你手里有更对口的宠物时出：第 13 关是土堆关（爆竹鼠对口），带着铜雀连输两次 → 请爆竹鼠
-    G.newPetLevel(12); run(20); E.tap(E.btn('startGo')); run(20); if (G.mode === 'intro') E.tap(E.btn('introOk')); G.g.over = true; G.g.reason = 'stuck'; G.endGame(); run(80); scan('连输两次', [['again', 'lend'], ['lend', 'tomap'], ['overCopyLog', 'lend'], ['snap', 'overCopyLog']]);
-    ok(!!E.btn('lend') && G.g.team[0].id === 'tongque', w + '×' + h + '：第 13 关带铜雀连输两次以后，结算页有「请爆竹鼠来帮忙」');
+    // 「请 X 来帮忙」只在你手里有更对口的宠物时出：段 3 起第 12 关是土堆关（小穿山甲对口），带着铜雀连输两次 → 请小穿山甲
+    G.newPetLevel(11); run(20); E.tap(E.btn('startGo')); run(20); if (G.mode === 'intro') E.tap(E.btn('introOk')); G.g.over = true; G.g.reason = 'stuck'; G.endGame(); run(80); scan('连输两次', [['again', 'lend'], ['lend', 'tomap'], ['overCopyLog', 'lend'], ['snap', 'overCopyLog']]);
+    ok(!!E.btn('lend') && G.g.team[0].id === 'tongque', w + '×' + h + '：第 12 关（土堆）带铜雀连输两次以后，结算页有「请小穿山甲来帮忙」');
     ok(!bad.length, w + '×' + h + '：各页按钮都在屏幕里、不叠在一起' + (bad.length ? '——' + bad.slice(0, 6).join('；') : ''));
   }
 });

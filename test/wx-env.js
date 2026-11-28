@@ -84,7 +84,7 @@ function playStep(E, skill) {
   const reach = (t) => { if (t.hand !== undefined) return true; const f = G.fingerFor(g.hand[3], t.r, t.c), got = G.skillTarget({ x: f.x, y: f.y }); return !!got && got.r === t.r && got.c === t.c; };
   if (sk && !reach(sk)) { sk = null; if (!fitsAny) for (let k = 0; k < 81 && !sk; k++) { const t = { r: Math.floor(k / 9), c: k % 9 }; if (g.skillPlan(t) && reach(t)) sk = Object.assign(t, { v: 1 }); } }
   if (sk && (sk.v >= 100 || !fitsAny)) {
-    if (sk.hand !== undefined) { const f = G.fingerForHand(sk.hand, sk.cell); from = G.slotCenter(3); touch('down', from.x, from.y); run(2); touch('move', f.enter.x, f.enter.y); run(2); touch('move', f.x, f.y); run(2); touch('up', f.x, f.y); run(30); return 'skill-hand'; }
+    if (sk.hand !== undefined) { const f = G.fingerForHand(sk.hand, sk.cell || 0); /* 段 3：小龟的转块没有「第几格」，拖到那块上就行 */ from = G.slotCenter(3); touch('down', from.x, from.y); run(2); touch('move', f.enter.x, f.enter.y); run(2); touch('move', f.x, f.y); run(2); touch('up', f.x, f.y); run(30); return 'skill-hand'; }
     from = G.slotCenter(3); to = G.fingerFor(g.hand[3], sk.r, sk.c);
     touch('down', from.x, from.y); run(2); touch('move', to.x, to.y); run(2); touch('up', to.x, to.y); run(30); return 'skill';
   }

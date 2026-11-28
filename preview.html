@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '11b128e863fc';</script>
+<script>window.__BUILD = '7f5a42124033';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -201,116 +201,121 @@ module.exports = { SIZE: S, PAINTINGS, COUNT: PAINTINGS.length, render };
 
 });
 __def("js/chapter1.js", function (module, exports, require) {
-// 0.9.17 新版第一章（照 Fable `../九宫消_新版整体设计_Fable_20261126.md` 第三节第一章 + Cc 11-27 逐条定的改动，见全量设计第 99–127 条；
-// 第 5、9 关的怪照理论审查减了：第 5 关 10 → 8 只，第 9 关 12 → 9 只、墨苔怪 3 → 2、金属 4 → 2，「头 10 关九成以上一次过」）。
-// 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  Z 金属（只有铜雀啄得开，段 1 起堵路）  K 头目（2×2）
-// crawl = 墨怪每几手爬一格（爬之前一手冒脚印）；rush = 冲锋关；bossEvery = 头目每挨几下跳一次
-// teach = 教学关（段 2：过了就 3 个丹槽，不看手数）。丹不再手写在这里：给几颗只看这关是哪一类（头目 / 难 / 冲锋 / 教 / 普通），算法在 js/economy.js
-// par = 「标准手数」（段 2：手数 ≤ par 3 个丹槽、≤ par × 1.5 2 个、过关 1 个；段 1 堵路以后 par 段 3 重量）= 机器人赢局手数中位 × 0.55（对过真人记录：怪关真人约是机器人的 0.55 倍），见 test/ch1_measure.js
+// 段 3 新第一章（照 ../九宫捉妖_段3关卡细设计_Fable_20261128.md 附录 B；Cc 11-28 批：宠物来的顺序、一尾狐表盘加 1、第 20 关 9 颗心；标准手数 × 0.7）
+// 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  Z 金属（只有小铜雀啄得开，堵路）  K 头目（2×2）
+// crawl = 墨怪每几手爬一格（爬之前一手冒脚印）；rush = 冲锋关；bossEvery = 头目每挨几下跳一次；gift = 过关送哪只宠物（只送一次）
+// firstAct = 开局先演一次（段 3 规则 4，petgame 的 g.openingAct）；fastCharge: '宠物编号' = 只有带这只（长大版也算）、第一次打这关时表盘开局只差 1 格（段 3 规则 3）
+// 不点名（Cc 11-27「要练哪个是你自己的选择」）：没有 only、lend，每关带任何一只已经到手的宠物都打得过（test/seg3_measure.js 量）
+// teach = 教学关（段 2：过了就 3 个丹槽，不看手数）。丹看关卡类型自动算（js/economy.js）。noReplay = 重打不给每天那一份（Cc 11-28 定：第 1、2 关）
+// par = 「标准手数」= 手熟机器人赢局手数（普通、教学关取中位，难关 35% 那个位置，头目 40%）× 0.7（Cc 11-28：真人约是机器人的 0.78 倍，3 槽太难），见 test/seg3_par_report.txt
 const E = '.........';
 module.exports = [
-  { // 1 教：拖块、凑满就消。三处缺口正好一横、一竖、一大格（Cc 11-27「教学顺序横 → 竖 → 宫」）；第一手只认那一横
-    goal: { lines: 3 }, teach: 1, d: 0, colors: [3, 2, 1], tutHand: ['3h', '3v', 'sq2'], tutFirst: { piece: 0, r: 1, c: 3 }, par: 3,
+  { // 1 教：拖块、凑满就消（不动）
+    goal: { lines: 3 }, teach: 1, noReplay: 1, d: 0, colors: [3, 2, 1], tutHand: ['3h', '3v', 'sq2'], tutFirst: { piece: 0, r: 1, c: 3 }, par: 3,
     board: ['.......#.', '###...###', '.......#.', '.......#.', E, E, '###......', '..#....#.', '..#....#.'],
   },
-  { // 2 教：凑满墨怪那一排 = 抓走。怪先不爬。过关后铜雀出场
-    goal: { monster: 4 }, teach: 1, d: 0, colors: [0, 3, 2], gift: 'tongque', par: 7, intro: 'catch',
+  { // 2 教：抓墨怪（不动）。过关后小铜雀来
+    goal: { monster: 4 }, teach: 1, noReplay: 1, d: 0, colors: [0, 3, 2], gift: 'tongque', par: 7, intro: 'catch',
     board: [E, '###m###..', E, '#.####m##', E, '##m##.###', E, '.####m##.', E],
   },
-  { // 3 教：消除攒能量 → 铜雀吐技能块 → 拖到盘上啄掉一格。开局能量只差一格
-    goal: { monster: 5 }, teach: 1, d: 0, colors: [0, 3, 2], only: 'tongque', fastCharge: true, intro: 'pet', par: 19,
-    board: [E, '.##m##.##', '##.......', E, '##.###m#.', E, '...###...', '#m###.##.', E],
-    waves: [[E, E, '..m......', E, E, E, '......m..', E, E]],
+  { // 3 教：第一根羽毛。卡口：第 5 排的怪只差「啄掉 (4,7) 再放 3 横」
+    goal: { monster: 5 }, teach: 1, d: 0, colors: [0, 3, 2], fastCharge: 'tongque', intro: 'pet', par: 25, startHand: ['2v', '3h', 'L4a'],
+    board: [E, '###.#####', E, '......#.#', '##m###.#.', '......#.#', E, '#m.......', E],
+    waves: [[E, E, '..m......', E, E, E, '......m..', E, E], [E, E, E, '....m....', E, E, E, E, E]],
   },
-  { // 4 教：墨怪会爬（每 3 手一格），爬之前一手冒脚印。可以去那排等它，也可以把块放在脚印上堵它
-    goal: { monster: 5 }, teach: 1, d: 0.04, crawl: 3, colors: [0, 3, 2], intro: 'crawl', par: 17,
+  { // 4 教：墨怪会爬。开局先演：(1,2) 那只从只差 1 格的排上爬走
+    goal: { monster: 5 }, teach: 1, d: 0.04, crawl: 3, colors: [0, 3, 2], intro: 'crawl', par: 20, firstAct: { kind: 'crawl', from: [1, 2], to: [2, 2] },
     board: [E, '##m###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E],
     waves: [[E, E, E, '.....m...', E, E, E, E, '..m......']],
   },
-  { // 5 难：不教新的，第一次觉得「要想一想」
-    goal: { monster: 7 }, d: 0.12, dSeg: [0.08, 0.12, 0.3], crawl: 3, hard: 1, colors: [0, 3, 2], par: 35,
+  { // 5 难：不教新的。过关后一尾狐来
+    goal: { monster: 7 }, d: 0.12, dSeg: [0.08, 0.12, 0.3], crawl: 3, hard: 1, colors: [0, 3, 2], par: 29, gift: 'huli',
     board: [E, '#m##.###.', E, '...m.....', E, '.###.#m##', E, E, E],
     waves: [[E, '......m..', E, E, '.m.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
-  { // 6 教：金属所在的排、列、大格凑满了也不消；铜雀的羽毛啄开它，变一格金色块，满了当场炸（段 1 规则 1、2；金属、铜雀、技能块三样一起闪金色）
-    goal: { monster: 5 }, teach: 1, d: 0.1, crawl: 3, colors: [0, 3, 2], fastCharge: true, intro: 'metal', par: 16,
-    board: [E, '##Z#m###.', E, '.##..##..', '.##m#Z##.', E, E, '#m###.Z##', E],
-    waves: [[E, E, E, '...m.....', E, E, E, E, '......m..']],
+  { // 6 教：第一次有两只宠物、第一次自己挑带谁。两只怪蹲在空排上（狐火的好靶子），带小铜雀照样打
+    goal: { monster: 5 }, teach: 1, d: 0.08, crawl: 3, colors: [0, 3, 2], par: 22,
+    board: [E, '.##m##.#.', E, '......m..', '###.###..', E, '.m.......', '...##.###', E],
+    waves: [[E, E, '....m....', E, E, E, E, E, '..m......']],
   },
-  { // 7 爽：冲锋关。开局约六成满，块块有家，炸满 8 处过关；一根香两道刻痕，越快亮的丹槽越多（36 / 48 秒两道线；每槽 1 颗）
+  { // 7 冲锋（不动）
     goal: { lines: 24 }, d: 0, colors: [0, 3, 2, 1], rush: { t3: 36, t2: 48, lose: 60 }, intro: 'rush', par: 24,
     board: [E, E, E, E, E, E, E, E, E],
   },
-  { // 8 教：墨苔怪爬过的地方留一块墨。墨块碍事就用铜雀啄
-    goal: { monster: 5 }, teach: 1, d: 0.12, crawl: 3, colors: [0, 3, 2], intro: 'moss', par: 21,
-    board: [E, '##G###.##', E, '.##..###.', '.##m###..', E, E, '#.###G##.', E],
-    waves: [[E, E, E, '....m....', E, E, E, E, '..m......']],
+  { // 8 教：金属。封箱：上面中间的大格摆满了、被 (2,5) 的金属堵着，(1,4) 封着一只怪。第 5 排只差 1 格
+    goal: { monster: 6 }, teach: 1, d: 0.1, crawl: 3, colors: [0, 3, 2], fastCharge: 'tongque', intro: 'metal', par: 23, firstAct: { kind: 'blocked' },
+    board: ['...###...', '...#m#...', '...##Z...', '.#.....#.', '###m#.###', E, E, '#m###.###', '........Z'],
+    waves: [[E, E, E, '...m.....', E, E, E, E, '......m..'], [E, E, '.m.......', E, E, E, E, E, E]],
   },
-  { // 9 难：前面学的全上
-    goal: { monster: 8 }, d: 0.2, dSeg: [0.1, 0.2, 0.4], crawl: 3, hard: 2, colors: [0, 3, 2], par: 42,
-    board: [E, '#G##.#Z#.', E, '...m.....', E, '.Z#m.##.#', E, E, E],
-    waves: [[E, '......m..', E, E, '.G.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, '.......m.', E, E]],
+  { // 9 难：爬 + 金属 2。正中间的大格封着一只怪（金属在 (5,5)），另一块在左下角
+    goal: { monster: 7 }, d: 0.2, dSeg: [0.1, 0.2, 0.4], crawl: 3, hard: 2, colors: [0, 3, 2], par: 29,
+    board: [E, '#m##.###.', E, '...###...', '...#m#...', '...##Z...', E, '.#m#..##.', 'Z........'],
+    waves: [[E, '......m..', E, E, '.m.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
-  { // 10 头目：大墨怪占 2×2、9 颗心。凑满穿过它的一排掉一颗心；每挨 3 下它跳到别处，跳之前落脚的地方先亮红框一手
-    goal: { boss: 1 }, d: 0.1, bigHp: 9, bossKind: 'spit', gift: 'baozhu', bossEvery: 3, bossNoSpit: true, colors: [0, 3, 2], intro: 'boss', par: 30,
-    board: [E, '..#...#..', '.Z.......', E, '...KK....', '...KK....', '.......Z.', '..#...#..', E],
+  { // 10 头目：大墨怪 9 心，每挨 3 下跳。开局先演：从左上角跳到 (4,3)，踩碎落脚 4 格 + 一圈 9 块。过关后小穿山甲来
+    goal: { boss: 1 }, d: 0.1, bigHp: 9, bossKind: 'spit', gift: 'baozhu', bossEvery: 3, bossNoSpit: true, colors: [0, 3, 2], intro: 'boss', par: 29, firstAct: { kind: 'jump', to: [4, 3] },
+    board: ['KK.......', 'KK#...#..', '.......Z.', '..###....', '..#..#...', '..#..#...', '...##....', '..#...#..', 'Z........'],
   },
 ];
 
 });
 __def("js/chapter2.js", function (module, exports, require) {
-// 0.9.20 新版第二章 · 土 · 梯田（照 Fable 新版第三节第二章；第 15、19 关的怪照第一章的审查一样减了，头 20 关都要大多数人一次过得去）
-// 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  N 粘墨怪（往托盘里的块上吐泥）  Z 金属  D 一堆土（只有爆竹鼠啃过的块带的小爆竹炸得开，段 1 起堵路）  K 头目
-// teach = 教学关（过了就 3 个丹槽）；丹看关卡类型自动算（js/economy.js），这里不写。par = 机器人赢局手数中位 × 0.55（test/ch1_measure.js 量的）
+// 段 3 新第二章（照 ../九宫捉妖_段3关卡细设计_Fable_20261128.md 附录 B；Cc 11-28 批：宠物来的顺序、一尾狐表盘加 1、第 20 关 9 颗心；标准手数 × 0.7）
+// 盘面字符：. 空  # 旧块  m 小墨怪  G 墨苔怪  N 粘墨怪（往托盘里的块上吐泥）  Z 金属  D 土堆（只有小穿山甲啃过的块带的土爪挖得塌，堵路）  K 头目（2×2）
+// crawl = 墨怪每几手爬一格（爬之前一手冒脚印）；rush = 冲锋关；bossEvery = 头目每挨几下跳一次；gift = 过关送哪只宠物（只送一次）
+// firstAct = 开局先演一次（段 3 规则 4，petgame 的 g.openingAct）；fastCharge: '宠物编号' = 只有带这只（长大版也算）、第一次打这关时表盘开局只差 1 格（段 3 规则 3）
+// 不点名（Cc 11-27「要练哪个是你自己的选择」）：没有 only、lend，每关带任何一只已经到手的宠物都打得过（test/seg3_measure.js 量）
+// teach = 教学关（段 2：过了就 3 个丹槽，不看手数）。丹看关卡类型自动算（js/economy.js）。noReplay = 重打不给每天那一份（Cc 11-28 定：第 1、2 关）
+// par = 「标准手数」= 手熟机器人赢局手数（普通、教学关取中位，难关 35% 那个位置，头目 40%）× 0.7（Cc 11-28：真人约是机器人的 0.78 倍，3 槽太难），见 test/seg3_par_report.txt
 const E = '.........';
 module.exports = [
-  { // 11 教：鼠的技能块拖到托盘里的一块上，啃掉一格。开局故意发几块放不太下的大块；能量差一格
-    goal: { monster: 5 }, teach: 1, d: 0.05, crawl: 3, colors: [1, 0, 3], only: 'baozhu', fastCharge: true, intro: 'baozhu', startHand: ['5h', 'L5a', 'r23'], par: 16,
+  { // 11 普通：小穿山甲来了以后的第一关。开局三块大块（啃一口就好放），不啃也放得下
+    goal: { monster: 6 }, d: 0.05, crawl: 3, colors: [1, 0, 3], startHand: ['5h', 'L5a', 'r23'], par: 21,
     board: [E, '##m###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E],
-    waves: [[E, E, E, '.....m...', E, E, E, E, '..m......']],
+    waves: [[E, E, E, '.....m...', E, E, E, E, '..m......'], [E, '......m..', E, E, E, E, E, E, E]],
   },
-  { // 12 教：啃过的块上留一个小爆竹，把它放在土堆旁边，土堆打开变一格土色块（段 1 规则 2）
-    goal: { monster: 5 }, teach: 1, d: 0.05, crawl: 3, colors: [1, 0, 3], only: 'baozhu', fastCharge: true, intro: 'dirt', par: 17,
-    board: [E, '##m#D#.##', E, '.##...##.', '.##D#m##.', E, E, '##.##Dm##', E],
-    waves: [[E, E, E, '....m....', E, E, E, E, '..m......']],
+  { // 12 教：土堆。封箱：上面中间的大格摆满了、被 (2,5) 的土堆堵着，(1,4) 封着一只怪；(2,6)、(3,5) 留空给带土爪的块
+    goal: { monster: 6 }, teach: 1, d: 0.05, crawl: 3, colors: [1, 0, 3], fastCharge: 'baozhu', intro: 'dirt', par: 24, firstAct: { kind: 'blocked' },
+    board: ['...###...', '...#m#...', '...##D...', '.#.....#.', '###m#.###', E, E, '##.###m##', 'D........'],
+    waves: [[E, E, E, '....m....', E, E, E, E, '..m......'], [E, E, '.m.......', E, E, E, E, E, E]],
   },
-  { // 13 普通：练。老怪混进来
-    goal: { monster: 6 }, d: 0.12, crawl: 3, colors: [1, 0, 3], par: 27,
-    board: [E, '#G##D#.##', E, '.D#..##..', '.##m#D##.', E, E, '##.D##G#.', E],
-    waves: [[E, E, E, '....m....', E, E, '.m.......', E, '......m..']],
+  { // 13 教：墨苔怪。开局先演：(1,2) 那只爬走、原地留一块墨。过关后蚕宝宝来
+    goal: { monster: 6 }, teach: 1, d: 0.12, crawl: 3, colors: [1, 0, 3], intro: 'moss', par: 25, gift: 'modou', firstAct: { kind: 'crawl', from: [1, 2], to: [2, 2] },
+    board: [E, '##G###.##', E, '.##..###.', '.##m###..', E, E, '#.###G##.', E],
+    waves: [[E, E, E, '....m....', E, E, E, E, '..G......'], [E, E, E, E, E, '......m..', E, E, E]],
   },
-  { // 14 教：粘墨怪每 4 手往托盘里一块上吐一团泥，那块多出一格（段 1 起不瞪、不预告吐哪块，只看得出什么时候吐）。几条路：快吐了留小块在手上、抓掉它、硬放、啃掉泥
-    goal: { monster: 5 }, teach: 1, d: 0.08, crawl: 3, colors: [1, 0, 3], intro: 'sticky', par: 16,
-    board: [E, '##N###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E],
-    waves: [[E, E, E, '....m....', E, E, E, E, '..m......']],
+  { // 14 普通：蚕宝宝来了以后的第一关。好几排只缺一个单格的洞
+    goal: { monster: 7 }, d: 0.1, crawl: 3, colors: [1, 0, 3], par: 26,
+    board: [E, '####.##m#', E, '.#m##.###', E, '##.###G.#', E, '.###.####', E],
+    waves: [[E, E, '....m....', E, E, E, '.m.......', E, '......G..'], [E, E, E, E, '........m', E, E, E, E]],
   },
-  { // 15 难：不教新的
-    goal: { monster: 8 }, d: 0.15, dSeg: [0.1, 0.15, 0.32], crawl: 3, hard: 1, colors: [1, 0, 3], par: 37,
-    board: [E, '#N##.#D#.', E, '...m.....', E, '.D#.#m##D', E, E, E],
-    waves: [[E, '......m..', E, E, '.N.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, '.......m.', E, E]],
+  { // 15 难：土堆 2（左上的大格封着一只墨苔怪，土堆在 (2,0)；另一个在右下角）+ 墨苔怪
+    goal: { monster: 7 }, d: 0.15, dSeg: [0.1, 0.15, 0.32], crawl: 3, hard: 1, colors: [1, 0, 3], par: 29,
+    board: ['###......', '#G#.m....', 'D##......', E, '....#m##.', E, E, '.##.....#', '........D'],
+    waves: [[E, '......m..', E, E, '.G.......', E, E, '.....m...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
-  { // 16 爽：冲锋关（第二章比第一章长一点：27 块）
+  { // 16 冲锋（不动）
     goal: { lines: 27 }, d: 0, colors: [1, 0, 3, 2], rush: { t3: 40, t2: 54, lose: 68 }, intro: 'rush', par: 27,
     board: [E, E, E, E, E, E, E, E, E],
   },
-  { // 17 普通：盘上被留墨、手上被加泥，两头一起来
-    goal: { monster: 7 }, d: 0.15, crawl: 3, colors: [1, 0, 3], par: 17,
-    board: [E, '##N###.##', E, '.##..G##.', '.###m###.', E, E, '##.N##G##', E],
-    waves: [[E, E, E, '....m....', E, E, E, E, '..m......']],
+  { // 17 教：粘墨怪。蹲在空排上不好抓，第 2 波还有一只；开局先演：往手上吐一团泥。过关后小龟来
+    goal: { monster: 7 }, teach: 1, d: 0.08, crawl: 3, colors: [1, 0, 3], intro: 'sticky', par: 25, gift: 'lvgui', firstAct: { kind: 'mud', at: [3, 6] },
+    board: [E, '##m###.##', E, '......N..', '.###m###.', E, E, '##.###m##', E],
+    waves: [[E, E, E, E, E, '.N.......', E, E, '....m....'], [E, '.......m.', E, E, E, E, E, E, E]],
   },
-  { // 18 普通：第一次「带谁」：金属（铜雀啄）和土堆（鼠的爆竹炸）各一半，只能带一只
-    goal: { monster: 8 }, d: 0.15, crawl: 3, colors: [1, 0, 3], par: 31,
-    board: [E, '#Z#m#D#.#', E, '.D#..Z#..', '.##m#D##.', E, E, '#Z.##m#D.', '..Z......'],
-    waves: [[E, E, E, '....m....', E, E, '.m.......', E, '......m.m'], [E, E, '..m......', E, E, E, E, E, E]],
+  { // 18 普通：小龟来了以后的第一关。开局三块竖着的块，盘上的空是横的（转一下就好放），不转也放得下
+    goal: { monster: 6 }, d: 0.1, crawl: 3, colors: [1, 0, 3], startHand: ['4v', 'L4a', 'r32'], par: 24,
+    board: [E, '##m##..##', E, '.##...m#.', E, '#.##m##.#', E, '.#..###.#', E],
+    waves: [[E, E, '....m....', E, E, E, '.N.......', E, '......m..']],
   },
-  { // 19 难：全上
-    goal: { monster: 10 }, d: 0.22, dSeg: [0.12, 0.22, 0.4], crawl: 3, hard: 2, colors: [1, 0, 3], par: 36,
-    board: [E, '#N##D#Z#.', E, '...m.....', E, '.Z#G#m##D', E, '..D......', E],
-    waves: [[E, '......m..', E, E, '.N.......', E, E, '.....G...', E], [E, E, '..m......', E, E, E, '.......m.', E, '...m.....']],
+  { // 19 难：全上（金属 1 在左上角 + 土堆 1 在右下角 + 墨苔怪 2 + 粘墨怪 2）
+    goal: { monster: 8 }, d: 0.15, dSeg: [0.1, 0.15, 0.3], crawl: 3, hard: 2, colors: [1, 0, 3], par: 27,
+    board: ['Z........', '#N##.###.', E, '...m.....', E, '..#G#m##.', E, E, '........D'],
+    waves: [[E, '......m..', E, E, '.N.......', E, E, '.....G...', E], [E, E, '..m......', E, E, E, E, E, E]],
   },
-  { // 20 头目：泥沼怪 10 颗心，每 3 手往托盘里一块上吐泥（段 1 起不瞪）；每挨 3 下跳一次
-    goal: { boss: 1 }, d: 0.12, bigHp: 10, bossKind: 'mud', bossEvery: 3, bossNoSpit: true, bossMud: true, colors: [1, 0, 3], intro: 'boss2', par: 27,
-    board: [E, '..#...#..', '.D.......', E, '...KK....', '...KK....', '.......D.', '..#..D#..', E],
+  { // 20 头目：泥沼怪 9 心，每 3 手吐泥，每挨 3 下跳。开局先演：先吐一次。盘上不放旧块
+    goal: { boss: 1 }, d: 0.03, bigHp: 9, bossKind: 'mud', bossEvery: 3, bossNoSpit: true, bossMud: true, colors: [1, 0, 3], intro: 'boss2', par: 29, firstAct: { kind: 'bossMud' },
+    board: ['D........', E, E, E, '...KK....', '...KK....', E, E, '........D'],
   },
 ];
 
@@ -2214,7 +2219,7 @@ let mode = 'play'; // play / over / album / ad
 let overAt = 0; // 结束的时刻（结算页晚一点出来）
 // ---------- 过场（0.6.1，js/cuts.js）：每章开场 F 运镜大图、新宠物 B 登场、进化 / 过章 C 短版 ----------
 let CUT = null, cutPrev = 'play';
-let startCard = null; // 进关前的关卡卡片：{ t, i, forced, from, next }
+let startCard = null; // 进关前的关卡卡片：{ t, i, next }
 function playCuts() {
   if (!CUT.pending || mode === 'cut') return;
   cutPrev = mode; mode = 'cut'; CUT.start();
@@ -2779,7 +2784,7 @@ const SKL = () => Math.round(L.cell * 1.2);
 // 啃手上的块：手指伸进托盘深处（过了托盘上沿半格）就进「啃手上」；进了以后手指往上抬去对准放大的那块也不退出，直到抬出托盘上方两格半
 function handHover(d) {
   const p = g.hand[3];
-  if (!p || p.kind !== 'gnaw') return null;
+  if (!p || (p.kind !== 'gnaw' && p.kind !== 'turn')) return null; // 段 3 修：小龟的水珠也是拖到手上的块上用（原来只认啃，小龟第 17 关送来以后技能块拖不上去；转法先只给顺时针转一下，画法段 4、6）
   // 0.9.14 debug 修两处啃不到：① 5 格竖条最上面一格在「两格半」的退出线外面，手指一到那儿就退出 → 退出线跟着那块的高矮走；
   // ② 对准放大那块靠边的格子时手指还在托盘上沿，横着一过界就换成旁边那块 → 已经对上一块以后，手指还在它这几列的范围里就不换
   //    （往下伸过托盘中线，照旧是手指底下是哪块就换哪块）
@@ -3837,15 +3842,9 @@ const lvWant = (i) => (i < 4 ? 1 : i < 8 ? 2 : i < 12 ? 3 : i < 16 ? 4 : i < 22 
 // 「先练谁」：一次只提一只。① 前面最近的专属关点名的那只、等级还不够；② 否则这一章剩下的关里「带它顺」最多、你又没在带的那只
 function petToTrain(ch, cur) {
   const lo = ch * 10, hi = Math.min(PLV.length, lo + 10);
-  for (let i = Math.max(lo, cur); i < hi; i++) {
-    const st = PLV[i];
-    if (!st.only) continue;
-    const own = ownedOf(st.only);
-    if (own && save.pets[own].lv < lvWant(i)) return { id: own, want: lvWant(i), i };
-    break;
-  }
+  // 段 3（R-057）：不再点名，原来「① 前面最近的专属关点名的那只」那一条跟着拿掉
   const cnt = {};
-  for (let i = Math.max(lo, cur); i < hi; i++) { const own = ownedOf(PLV[i].best || PLV[i].only); if (own) cnt[own] = (cnt[own] || 0) + 1; }
+  for (let i = Math.max(lo, cur); i < hi; i++) { const own = ownedOf(PLV[i].best); if (own) cnt[own] = (cnt[own] || 0) + 1; }
   const top = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0];
   if (top && top !== save.activePet && cnt[top] >= 2) return { id: top, n: cnt[top] };
   return null;
@@ -3896,8 +3895,6 @@ function chapterCell(i, x, y, w, h, ctxInfo) {
     const future = i > cur;
     ctx.save(); if (future) ctx.globalAlpha = 0.7;
     ctx.fillStyle = isCur ? TH.cardOn : TH.card; rr(x, y, w, h, TH.rCell); ctx.fill();
-    const onlyId = st.only ? ownedOf(st.only) || st.only : null;
-    if (onlyId) { ctx.strokeStyle = C.blockColors[PG.PETS[onlyId].color][0]; ctx.lineWidth = 2; rr(x + 1, y + 1, w - 2, h - 2, TH.rCell); ctx.stroke(); }
     if (isCur) { ctx.strokeStyle = 'rgba(209,166,80,' + (0.6 + Math.sin(clock * 4) * 0.35) + ')'; ctx.lineWidth = 2; rr(x + 1, y + 1, w - 2, h - 2, TH.rCell); ctx.stroke(); }
     text(String(i + 1), x + 10, y + 14, 16, COL.text, 'left');
     // 难关：两只角；超难：紫角 + 小骷髅
@@ -3925,9 +3922,8 @@ function chapterCell(i, x, y, w, h, ctxInfo) {
       else drawMon(m, -1, mx, my, 7);
     });
     if (mons.length > 3) text('+' + (mons.length - 3), x + 14 + 3 * 18, y + h - 14, 11, COL.dim);
-    // 宠物：专属关大头像 + 它颜色的框；建议的小头像
-    if (onlyId) petIcon(onlyId, x + w - 18, y + h - 18, 26, 0, 0);
-    else if (st.best && ownedOf(st.best)) petIcon(ownedOf(st.best), x + w - 14, y + h - 14, 18, 0, 0);
+    // 宠物：建议的小头像（段 3：专属关的大头像跟着「点名」拿掉）
+    if (st.best && ownedOf(st.best)) petIcon(ownedOf(st.best), x + w - 14, y + h - 14, 18, 0, 0);
     ctx.restore();
   }
   if (isSel && !isCur) { ctx.strokeStyle = TH.jade; ctx.lineWidth = 2; rr(x - 2, y - 2, w + 4, h + 4, TH.rCell + 2); ctx.stroke(); }
@@ -3956,8 +3952,8 @@ function drawLevelPreview(i, x, y, w, h) {
     text(seen ? PG.MON[m.t].name : '？', mx + 16, my, 11, COL.dim, 'left', 'normal');
   });
   // 带谁
-  const pid = ownedOf(st.only || st.best);
-  if (pid) { petIcon(pid, x + w - 34, y + h / 2 - 8, st.only ? 40 : 32, 0, 0); text(st.only ? '点名' : '最顺', x + w - 34, y + h / 2 + 24, 11, st.only ? C.blockColors[PG.PETS[pid].color][1] : COL.dim, 'center', 'normal'); }
+  const pid = ownedOf(st.best);
+  if (pid) { petIcon(pid, x + w - 34, y + h / 2 - 8, 32, 0, 0); text('最顺', x + w - 34, y + h / 2 + 24, 11, COL.dim, 'center', 'normal'); }
   buttons.push({ id: 'preview', x, y, w, h, fn: () => { if (i < save.petStage || i === Math.min(save.petStage, PLV.length - 1) || save.tester) newPetLevel(i); else chapSel = Math.floor(i / 10) * 10 + 9; } }); // 0.9.21 点预告卡就进这一关（Cc：「直接就点那个“下一关预告”……成为“下一关”」）
 }
 function drawChapter() {
@@ -4011,7 +4007,7 @@ function drawChapter() {
       text(bk.does, tx + 18, l2, 16, COL.text, 'left', 'normal');
       starShape(tx + 6, l3, 6, TH.jade);
       text(bk.fear, tx + 18, l3, 16, TH.jade, 'left', 'normal');
-      const bp = ownedOf(bst.only || bst.best);
+      const bp = bestOwnedFor(bst); // 段 3：头目卡「带谁最顺」读 bestPetFor（盘上有金属 → 小铜雀，有土堆 → 小穿山甲；自己有的才画）
       if (bp) { petIcon(bp, bx + bw - 30, bossY + bossH / 2 - 6, 30, 0, 0); text('最顺', bx + bw - 30, bossY + bossH / 2 + 20, 11, COL.dim, 'center', 'normal'); }
       if (bi < save.petStage) { ctx.save(); ctx.translate(fx, fy); ctx.rotate(-0.25); ctx.strokeStyle = TH.red; ctx.lineWidth = 3; rr(-34, -14, 68, 28, 6); ctx.stroke(); text('打倒了', 0, 0, 16, TH.red); ctx.restore(); }
     }
@@ -4049,8 +4045,7 @@ function drawChapter() {
   const pick = canPlay(chapSel) ? chapSel : done ? -1 : cur;
   if (pick < 0) button('play', rP.x + gW, btnY, rP.w - gW, rP.h, '全部过关 · 新关卡在做', { kind: 'sub', size: 16, fn: () => {} });
   else {
-    const cst = PLV[pick], who = cst.only ? ' · ' + PG.PETS[ownedOf(cst.only) || cst.only].name + '上场' : '';
-    button('play', rP.x + gW, btnY, rP.w - gW, rP.h, (pick === cur && !done ? '继续' : '再玩') + ' · 第 ' + (pick + 1) + ' 关' + who, { size: 20, fn: () => newPetLevel(pick) });
+    button('play', rP.x + gW, btnY, rP.w - gW, rP.h, (pick === cur && !done ? '继续' : '再玩') + ' · 第 ' + (pick + 1) + ' 关', { size: 20, fn: () => newPetLevel(pick) });
   }
   // 底栏去掉了（0.9.7，Cc 11-25：「经典拼画有啥用啊？……画册有啥用啊？……营地有啥用啊？……这都删了吧」）。过关后照旧回营地那一页；给宠物升级还能从上面「先练谁」进
 }
@@ -4138,7 +4133,7 @@ function drawStartCard() {
   if (nW > 1) { const gap = 20, wx0 = W / 2 - ((nW - 1) * gap) / 2 + 14; text(nW + ' 波', wx0 - 34, py + 146, 13, COL.dim); for (let k = 0; k < nW; k++) { ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(wx0 + k * gap, py + 146, 6, 0, Math.PI * 2); ctx.fill(); } }
   // 谁出战：不点名的关，进关前自己手选（0.9.14，Cc：「进入下一关之前，让我手选」）
   const pid = g.team[0] && g.team[0].id;
-  if (pid && !st.only && save.petOrder.length > 1) {
+  if (pid && save.petOrder.length > 1) {
     const ids = save.petOrder, cw2 = Math.min(70, (pw - 30) / ids.length), x0 = W / 2 - (cw2 * (ids.length - 1)) / 2, pyy = py + 196;
     const rank = PG.bestPetFor(st);
     ids.forEach((id, n) => {
@@ -4150,17 +4145,8 @@ function drawStartCard() {
     });
   } else if (pid) {
     const pyy = py + 178;
-    if (c.forced && c.from && save.pets[c.from]) {
-      // 换人：原来那只往左退、变灰；点名的那只从右边跳进来
-      const t = Math.min(1, Math.max(0, (age - 0.25) * 2.5));
-      ctx.globalAlpha = ease * (1 - t * 0.6); petIcon(c.from, W / 2 - 50 - t * 20, pyy, 40, 0, 0); ctx.globalAlpha = ease;
-      text('→', W / 2, pyy, 20, COL.dim);
-      petIcon(pid, W / 2 + 50 + (1 - t) * 40, pyy - Math.sin(t * Math.PI) * 14, 52, 0, t >= 1 ? 0 : 0.2);
-      text('这关点名 ' + PG.PETS[pid].name + ' 出战', W / 2, pyy + 46, 16, C.blockColors[PG.PETS[pid].color][1]);
-    } else {
-      petIcon(pid, W / 2, pyy, 56, g.team[0].lv, 0);
-      text(PG.PETS[pid].name + ' 出战', W / 2, pyy + 46, 16, COL.text);
-    }
+    petIcon(pid, W / 2, pyy, 56, g.team[0].lv, 0);
+    text(PG.PETS[pid].name + ' 出战', W / 2, pyy + 46, 16, COL.text);
   }
   ctx.restore();
   button('startGo', px + 24, py + ph - 70, pw - 48, 52, '开打', { size: 20, fn: () => { mode = c.next || 'play'; startCard = null; g.startMs = P.now(); P.sound('select', 0.6); if (g._fresh && save.freshPet && save.freshPet[g._fresh]) { delete save.freshPet[g._fresh]; persist(); } } });
@@ -4552,32 +4538,31 @@ function petIcon(id, x, y, s, lv, pop) {
 }
 // 专属关（0.8）：点名的宠物有没有（进化后的也算）；这一关实际带谁、几级
 function ownedOf(id) { for (let k = 0; id && k < 3; k++) { if (save.pets[id]) return id; id = PG.PETS[id] && PG.PETS[id].evo; } return null; } // 11-28：每只三个样子，顺着长大的链往下找
-function levelTeam(st, i, lendLv, lendId) {
-  if (lendId && !st.only) { const o = ownedOf(lendId); return [{ id: o || lendId, lv: Math.max(o ? save.pets[o].lv : 1, lendLv || 3) }]; } // 0.9.12：连输两次「请对口的来帮忙」，借一只 3 级的（自己的更高就用自己的）
-  if (!st.only) return ownedTeam();
-  const own = ownedOf(st.only);
-  let lv = own ? save.pets[own].lv : 0;
-  if (st.lend && save.petStage <= i) lv = Math.max(lv, st.lend); // 第一次打：借的和自己的取高的
-  if (lendLv) lv = Math.max(lv, lendLv); // 连输两次后「借一只」
-  return [{ id: own || st.only, lv: Math.max(1, lv) }];
+// 段 3（R-057，Cc 11-27「要练哪个是你自己的选择」）：不点名，带的永远是自己选的出战宠物。唯一的例外：连输两次「请对口的来帮忙」，
+// 请来的那只最少按 3 级算（自己的更高就用自己的）
+function levelTeam(st, i, helpLv, helpId) {
+  if (helpId) { const o = ownedOf(helpId); return [{ id: o || helpId, lv: Math.max(o ? save.pets[o].lv : 1, helpLv || 3) }]; }
+  return ownedTeam();
 }
-function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好、不放过场（开机时给老玩家垫底用）；lendLv：借一只几级的
+// 这一关自己有的宠物里谁最对口（盘上有金属 → 小铜雀，有土堆 → 小穿山甲）；没有障碍 / 自己没有 → null
+function bestOwnedFor(st) { const top = PG.bestPetFor(st).find((x) => x.n > 0 && ownedOf(x.id)); return top ? ownedOf(top.id) : null; }
+function newPetLevel(i, quiet, helpLv, helpId) { // quiet：只把盘面摆好、不放过场（开机时给老玩家垫底用）；helpLv：借一只几级的
   const st0 = PLV[i];
   if (!st0) return;
   petIdx = i; stageIdx = -1;
   // 0.9.24 测试员跳到后面的关：前面关送的宠物先给上（Cc：「爽关里还是没有宠物啊」——跳关玩，第 2 关送的铜雀没拿到，冲锋关里就一只宠物都没有）
   if (save.tester) { for (let k = 0; k < i; k++) { const gf = PLV[k].gift; if (gf && !ownedOf(gf)) { save.pets[gf] = { lv: 3, exp: 0 }; save.petOrder.push(gf); if (!save.activePet) save.activePet = gf; } } persist(); }
-  // 专属关：点名的那只自动换上，只管这一关（营地里选的出战宠物不改）；第 4 关的「充得特别快」只有第一次
-  const team = levelTeam(st0, i, lendLv, lendId);
-  const st1 = Object.assign({}, st0, { fastCharge: !!st0.fastCharge && save.petStage <= i });
+  const team = levelTeam(st0, i, helpLv, helpId);
+  // 段 3 规则 3：关卡表上的「只差 1 格」（第 3、8、12 关，只给对口的那只）只有第一次打这关有
+  const st1 = Object.assign({}, st0, { fastCharge: save.petStage <= i ? st0.fastCharge || false : false });
   // 安全网（0.9.12，Cc 11-25 定「三层都上」）：同一关连输 3 次，后两段发的大块少四成；5 次少七成；7 次只发基础大小。过了这关就恢复（loss 清零），重打已过的关不放松。屏幕上什么都不显示
   const L0 = (save.loss && save.loss[i]) || 0;
   if (L0 >= 3 && i >= save.petStage) { const k = L0 >= 7 ? 0 : L0 >= 5 ? 0.3 : 0.6; st1.d = (st0.d || 0) * k; if (st0.dSeg) st1.dSeg = st0.dSeg.map((x, n) => (n ? x * k : x)); if (st0.dBoss2) st1.dBoss2 = st0.dBoss2 * k; if (st0.dBoss3) st1.dBoss3 = st0.dBoss3 * k; }
   // 升级后的第一关（只算第一次打）：开局能量只差一格就满，马上用到新本事（Fable 技能重做第六节第 6 件，Kira 先定 A，待 Cc 看）
-  const fresh = team[0] && save.freshPet && save.freshPet[baseOf(team[0].id)] && i >= save.petStage ? baseOf(team[0].id) : null;
+  // 段 3 规则 3：新宠物第一次出战（和升级后第一关）不管是哪一关都只差 1 格，挂在宠物身上（save.freshPet），不挂在关上
+  const fresh = team[0] && save.freshPet && save.freshPet[baseOf(team[0].id)] ? baseOf(team[0].id) : null;
   if (fresh) st1.fastCharge = true; // 0.9.14 debug：点「开打」才算用掉（原来一摆出关卡卡片就用掉，在卡片上换一只再换回来、或者退回地图，这份好处就没了）
   g = PG.createPetGame({ stage: st1, team, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone, crumb: false }); // 段 1：10 级鼠的小土块还没有地方画、拖不了（段 4、5），画面接上以前游戏里先不给，免得「没输也动不了」
-  g.onlyPet = st0.only ? team[0].id : null;
   // 段 2（Cc 11-28 定 A）：带进关的那只比自己养的高、或者根本没有这只 = 借来的，这关最多 2 个丹槽
   { const own = team[0] ? ownedOf(team[0].id) : null; g.lent = !!team[0] && (!own || team[0].lv > save.pets[own].lv); }
   g._fresh = fresh;
@@ -4585,8 +4570,7 @@ function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好�
   startPet(st1);
   // 进关前一张关卡卡片（0.9.5，Cc 11-25：「进入游戏关卡的时候进太快了，没有这个仪式感」「我刚刚没派蚕出战，他怎么就出来了？……你得告诉我啊」）
   g.startMs = P.now();
-  if (!quiet && save.petTutDone) { startCard = { t: clock, i, forced: !!(g.onlyPet && save.activePet && save.activePet !== g.onlyPet), from: save.activePet, next: mode }; mode = 'start'; }
-  if (g.onlyPet && save.activePet !== g.onlyPet) { petFx.pop[g.onlyPet] = clock + 0.15; P.sound('select', 0.5); } // 被点名的那只跳进来
+  if (!quiet && save.petTutDone) { startCard = { t: clock, i, next: mode }; mode = 'start'; }
   // 这一章第一次开打：先放这章的开场（镜头摇过全景，硬切推到大墨怪）
   if (!quiet && i % 10 === 0 && !save.cutSeen['chapter' + i / 10]) { CUT.chapter(i / 10); playCuts(); }
   startLevelMusic(st1, i, quiet);
@@ -5202,18 +5186,14 @@ function drawPetOver() {
   } else {
     button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => newPetLevel(petIdx) });
     const lost2 = save.loss && save.loss[petIdx] >= 2;
-    const lendLv = g.onlyPet && lost2 ? Math.min(EC.LV_CAP, Math.max(3, (g.team[0] ? g.team[0].lv : 1) + 2)) : 0; // 段 1 修：原来借来的能到 11、12 级（满级 10）
     // 0.9.12：不点名的关连输两次，带的不是对口的 → 「这关的怪不怕 X。请 Y 来？」借一只 3 级的（Cc 11-25 定三层网的第一层，看得见、在教她带谁）
-    const rank = !g.onlyPet && lost2 && g.team[0] ? PG.bestPetFor(g.stage) : [];
+    const rank = lost2 && g.team[0] ? PG.bestPetFor(g.stage) : [];
     const top = rank.find((x) => ownedOf(x.id)), mine = rank.find((x) => baseOf(x.id) === baseOf(g.team[0].id)); // 自己有的里面最对口的那只，比带着的这只更对口才请
     const bestId = top && mine && top.n > mine.n ? ownedOf(top.id) : null;
     if (g.rush) lossSideBtn(bx, by + 70, bw, 44); // 0.9.24 冲锋关慢了输：只有「再试一次」，不给救命
     else if (bestId) {
       text('这关的怪不怕' + PG.PETS[g.team[0].id].name + '。', W / 2, by - 14, 14, COL.dim, 'center', 'normal');
       button('lend', bx, by + 70, bw * 0.6 - 6, 44, '请' + PG.PETS[bestId].name + '来帮忙', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, 3, bestId) });
-      lossSideBtn(bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44);
-    } else if (lendLv) { // 专属关连输两次：递个梯子
-      button('lend', bx, by + 70, bw * 0.6 - 6, 44, '借一只 ' + lendLv + ' 级的再来', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, lendLv) });
       lossSideBtn(bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44);
     } else if (g.adsUsed < C.adMax) {
       button('revive', bx, by + 70, bw * 0.6 - 6, 44, '清最挤的 3 个大格', { size: 15, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { reviveFx(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
@@ -5371,7 +5351,7 @@ function drawCamp() {
     if (key === 'score') text(nst.goal.score + '分', x0 + 14, nmid, 13, COL.text);
     else { goalIcon(key, x0, nmid, 18); text(key === 'all' ? '全' : '×' + nst.goal[key], x0 + 12, nmid, 13, COL.text, 'left'); }
   });
-  const rank = PG.bestPetFor(nst), bestOwned = nst.only ? ownedOf(nst.only) : (rank.find((x) => x.n > 0 && ownedOf(x.id)) || {}).id;
+  const bestOwned = bestOwnedFor(nst);
   const nW = PG.waveTotalOf(nst);
   if (nW > 1) { for (let k = 0; k < nW; k++) { ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(rNx.x + rNx.w - 34 - (nW - 1 - k) * 12, nmid, 4, 0, Math.PI * 2); ctx.fill(); } } // 几波：几个小圆点
   const goX = PLAYTEST ? Math.max(rGo.x, 62) : rGo.x; // 试玩版：左下角留给「记一下」那支笔
@@ -6037,6 +6017,8 @@ function energyMax(g, p) {
 }
 // 这一关一共几波：开局盘上那一波 + 后面一波一波冒出来的（关卡卡片、宠物园、关里顶上的圆点都用这一个数）
 const waveTotalOf = (st) => 1 + ((st && st.waves) || []).length;
+// 段 3 规则 3：「只差 1 格」认宠物。st.fastCharge = true（main.js：新宠物第一次出战 / 升级后第一关）→ 带谁都给；= '宠物编号'（关卡表：第 3、8、12 关）→ 只有带这只（长大版也算）才给
+const fastFor = (st, p) => st.fastCharge === true || (typeof st.fastCharge === 'string' && baseId(p.id) === st.fastCharge);
 
 // opts: { stage, team:[{id,lv}], seed, tutorial, crumb }（crumb: false = 不给 10 级鼠的小土块，main.js 画面接上以前用）
 function createPetGame(opts) {
@@ -6047,7 +6029,7 @@ function createPetGame(opts) {
     pets: true,
     color: new Array(81).fill(0),
     handColor: [0, 0, 0, 0],
-    team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: st.fastCharge ? ringOf(p.id, p.lv || 1) - SKILL.intro : 0 })), // 段 1 规则 9：不带开局能量，只有登场关 / 升级后第一关差 1 格
+    team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: fastFor(st, p) ? ringOf(p.id, p.lv || 1) - SKILL.intro : 0 })), // 段 1 规则 9：不带开局能量，只有「只差 1 格」的时候差 1 格
     bigHp: 0, bigCells: [], boss: null, skillUses: 0,
     mon: new Array(81).fill(null), // 墨怪的种类和状态
     silkHp: new Array(81).fill(0), // 蝴蝶 10 级的丝：2 = 新丝（消一次变旧丝）、1 = 旧丝（再消一次才没）
@@ -6961,7 +6943,7 @@ function restorePetGame(opts, snap) {
   if (opts && opts.stage && opts.stage.rush) return null;
   const g = createPetGame(opts); g._restore(snap); return g;
 }
-module.exports = { restorePetGame, SNAP_VER, smartSkill, peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { restorePetGame, SNAP_VER, smartSkill, fastFor, peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
 
 });
 __def("js/petlevels.js", function (module, exports, require) {

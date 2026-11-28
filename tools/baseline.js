@@ -9,7 +9,8 @@ const FILE = path.join(__dirname, '..', 'test', 'baseline', 'engine.json');
 const PETS5 = ['tongque', 'baozhu', 'modou', 'huli', 'lvgui'];
 // 段 2 第 1 步（丹细设计附录 A）：等级表写死。原来照旧丹价 4/6/6/8… 和关卡表里的 st.dan 现算，段 2 换丹价、删 st.dan 以后机器人带的等级会变、指纹全变。
 // 这就是换之前算出来的值（打印核对过）；段 3 重拍留底时再换成 economy.lvAt
-const LV_AT = [1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6];
+// 段 3 换关卡表时照约好的换成 economy.lvAt（专心养一只的普通人打到这一关大概几级）
+const LV_AT = require('../js/economy.js').lvAt(PLV, 'focus');
 function runOne(li, seed, pet) {
   const lv = LV_AT[li], id = pet && lv >= PG.EVO_LV ? PG.PETS[pet].evo : pet;
   const team = pet ? [{ id, lv }] : [];

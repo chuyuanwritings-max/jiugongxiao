@@ -1,20 +1,11 @@
 // 段 3「关卡」规则测试（../九宫捉妖_段3关卡细设计_Fable_20261128.md 第五节）：不开画面，直接调规则层。用法：node test/rules_stage3.js
-// 这一份管：开局先演一次（T310–T317）、存盘恢复的规则层（T360、T361、T363–T365）；后面几步再往里加关卡表、流程、请帮手的测试
+// 这一份管：关卡表（T301–T308）、开局先演一次（T310–T316、T307）、第 3 关卡口（T320、T321）；后面几步再往里加流程、请帮手的测试。存盘恢复在 test/rules_resume.js
 const { PG, core, CELL, ok, t, done, K } = require('./rules_lib.js');
 const PLV = require('../js/petlevels.js');
 const E = '.........';
-// 「开局先演」的 7 关：关卡表换成新 20 关以前，用附录 B 的盘面自己摆（换表以后直接读关卡表）
-const FIX = {
-  4: { goal: { monster: 5 }, teach: 1, d: 0.04, crawl: 3, colors: [0, 3, 2], firstAct: { kind: 'crawl', from: [1, 2], to: [2, 2] }, board: [E, '##m###.##', E, '.##...##.', '.###m###.', E, E, '##.###m##', E], waves: [[E, E, E, '.....m...', E, E, E, E, '..m......']] },
-  8: { goal: { monster: 6 }, teach: 1, d: 0.1, crawl: 3, colors: [0, 3, 2], firstAct: { kind: 'blocked' }, board: ['...###...', '...#m#...', '...##Z...', '.#.....#.', '###m#.###', E, E, '#m###.###', '........Z'], waves: [[E, E, E, '...m.....', E, E, E, E, '......m..'], [E, E, '.m.......', E, E, E, E, E, E]] },
-  10: { goal: { boss: 1 }, d: 0.1, bigHp: 9, bossKind: 'spit', bossEvery: 3, bossNoSpit: true, colors: [0, 3, 2], firstAct: { kind: 'jump', to: [4, 3] }, board: ['KK.......', 'KK#...#..', '.......Z.', '..###....', '..#..#...', '..#..#...', '...##....', '..#...#..', 'Z........'] },
-  12: { goal: { monster: 6 }, teach: 1, d: 0.05, crawl: 3, colors: [1, 0, 3], firstAct: { kind: 'blocked' }, board: ['...###...', '...#m#...', '...##D...', '.#.....#.', '###m#.###', E, E, '##.###m##', 'D........'], waves: [[E, E, E, '....m....', E, E, E, E, '..m......'], [E, E, '.m.......', E, E, E, E, E, E]] },
-  13: { goal: { monster: 6 }, teach: 1, d: 0.12, crawl: 3, colors: [1, 0, 3], firstAct: { kind: 'crawl', from: [1, 2], to: [2, 2] }, board: [E, '##G###.##', E, '.##..###.', '.##m###..', E, E, '#.###G##.', E], waves: [[E, E, E, '....m....', E, E, E, E, '..G......'], [E, E, E, E, E, '......m..', E, E, E]] },
-  17: { goal: { monster: 7 }, teach: 1, d: 0.08, crawl: 3, colors: [1, 0, 3], firstAct: { kind: 'mud', at: [3, 6] }, board: [E, '##m###.##', E, '......N..', '.###m###.', E, E, '##.###m##', E], waves: [[E, E, E, E, E, '.N.......', E, E, '....m....'], [E, '.......m.', E, E, E, E, E, E, E]] },
-  20: { goal: { boss: 1 }, d: 0.03, bigHp: 9, bossKind: 'mud', bossEvery: 3, bossNoSpit: true, bossMud: true, colors: [1, 0, 3], firstAct: { kind: 'bossMud' }, board: ['D........', E, E, E, '...KK....', '...KK....', E, E, '........D'] },
-};
+// 「开局先演」的 7 关（第 1 步先用附录 B 的盘面自己摆，第 5 步换了关卡表以后直接读关卡表）
 const ACT = [4, 8, 10, 12, 13, 17, 20];
-const stageOf = (n) => (PLV[n - 1] && PLV[n - 1].firstAct ? PLV[n - 1] : FIX[n]);
+const stageOf = (n) => PLV[n - 1];
 const game = (n, o) => PG.createPetGame(Object.assign({ stage: stageOf(n), team: [{ id: 'tongque', lv: 2 }], seed: 7 }, o || {}));
 const fp = (g) => JSON.stringify([g.board, g.color, g.hand, g.mon, g.boss, g.bigCells, g.moves, g.team]);
 
@@ -88,6 +79,112 @@ t('T316b', () => {
   // simulate()（机器人、量数都走它）开局调一次
   const g = PG.simulate({ stage: stageOf(4), team: [], seed: 5, skill: 1 });
   ok(g._opened === true, 'T316 机器人的 simulate() 开局先演了一次');
+});
+
+// ---------- 关卡表（第五节「关卡表」）----------
+const BASE = ['tongque', 'huli', 'baozhu', 'modou', 'lvgui'];
+const ownedAt = (li) => PLV.slice(0, li).map((st) => st.gift).filter(Boolean); // 进第 li 关（0 起）时已经有哪几只
+const fs = require('fs'), path = require('path');
+t('T301', () => {
+  const gifts = PLV.map((st, i) => (st.gift ? (i + 1) + ':' + st.gift : null)).filter(Boolean).join(' ');
+  ok(gifts === '2:tongque 5:huli 10:baozhu 13:modou 17:lvgui', 'T301 第 2、5、10、13、17 关依次送小铜雀、一尾狐、小穿山甲、蚕宝宝、小龟，别的关不送（' + gifts + '）');
+  ok(ownedAt(PLV.length).sort().join() === BASE.slice().sort().join(), 'T301 20 关内五只到齐');
+});
+t('T302', () => {
+  const tab = ['chapter1.js', 'chapter2.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8').replace(/\/\/.*$/gm, '')).join('\n');
+  const js = fs.readdirSync(path.join(__dirname, '..', 'js')).filter((f) => f.endsWith('.js')).map((f) => [f, fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8').replace(/\/\/.*$/gm, '')]);
+  const hit = js.filter(([, src]) => /\.only\b|\.lend\b|onlyPet|lendLv|\bforced\b/.test(src)).map(([f]) => f);
+  ok(!/\bonly\s*:|\blend\s*:/.test(tab) && PLV.every((st) => !('only' in st) && !('lend' in st)), 'T302 关卡表里没有 only、lend 字段');
+  ok(!hit.length, 'T302 js/ 里搜不到读 only、lend 的地方（点名、借一只高两级的、进关卡片的「被点名换人」）' + (hit.length ? '：' + hit.join('、') : ''));
+});
+t('T304', () => {
+  const bad = [];
+  PLV.forEach((st, i) => {
+    const grids = [st.board].concat(st.waves || []);
+    if (!grids.every((gr) => gr.length === 9 && gr.every((row) => row.length === 9 && /^[.#mGNZDK]+$/.test(row)))) bad.push((i + 1) + ' 字符或尺寸');
+    if (st.goal.monster) { const n = grids.reduce((a, gr) => a + gr.join('').split('').filter((ch) => 'mGN'.includes(ch)).length, 0); if (n !== st.goal.monster) bad.push((i + 1) + ' 怪 ' + n + '≠' + st.goal.monster); }
+    if (st.goal.boss) { const ks = []; st.board.forEach((row, r) => row.split('').forEach((ch, c) => { if (ch === 'K') ks.push(r * 9 + c); })); if (!(ks.length === 4 && ks[1] === ks[0] + 1 && ks[2] === ks[0] + 9 && ks[3] === ks[0] + 10)) bad.push((i + 1) + ' 头目不是 2×2'); }
+  });
+  ok(!bad.length, 'T304 每关盘面和每一波都是 9×9、只有认识的字符；盘上加各波的墨怪数 = 目标数；头目关正好 4 个 K、是 2×2（不对的：' + (bad.join('、') || '没有') + '）');
+});
+t('T305', () => {
+  const first = (re) => PLV.findIndex((st) => [st.board].concat(st.waves || []).some((gr) => re.test(gr.join('')))) + 1;
+  const f = { Z: first(/Z/), D: first(/D/), G: first(/G/), N: first(/N/) };
+  ok(f.Z === 8 && f.D === 12 && f.G === 13 && f.N === 17, 'T305 新东西的排期：金属第 ' + f.Z + ' 关、土堆第 ' + f.D + ' 关、墨苔怪第 ' + f.G + ' 关、粘墨怪第 ' + f.N + ' 关第一次出现（线：8、12、13、17）');
+  const firstCrawl = PLV.findIndex((st) => st.crawl) + 1, firstBoss = PLV.findIndex((st) => st.goal.boss) + 1, firstMudBoss = PLV.findIndex((st) => st.bossMud) + 1;
+  const acts = PLV.map((st, i) => (st.firstAct ? [i + 1, st.firstAct.kind] : null)).filter(Boolean);
+  const want = { 4: firstCrawl, 8: f.Z, 10: firstBoss, 12: f.D, 13: f.G, 17: f.N, 20: firstMudBoss };
+  ok(acts.length === 7 && acts.every(([n]) => want[n] === n), 'T305 「开局先演」的 7 关（' + acts.map((a) => a.join(' ')).join('、') + '）演的那样东西都是这一关第一次出现');
+});
+// 规则 6 结构线：带这只宠物时开不了的障碍、被它们堵住的排列大格、死格
+function structure(st, pet) {
+  const b = []; st.board.forEach((row) => row.split('').forEach((ch) => b.push(ch)));
+  const cant = (ch) => (ch === 'Z' && pet !== 'tongque') || (ch === 'D' && pet !== 'baozhu');
+  const blocked = core.UNITS.map((u) => u.some((k) => cant(b[k])));
+  let dead = 0; for (let k = 0; k < 81; k++) { if (cant(b[k]) || b[k] === 'K') continue; const r = Math.floor(k / 9), c = k % 9; if (blocked[r] && blocked[9 + c] && blocked[18 + core.boxOf(r, c)]) dead++; }
+  return { obs: b.filter(cant).length, nBlocked: blocked.filter(Boolean).length, dead, cant };
+}
+t('T306', () => {
+  const bad = []; let worst = [0, 0, 0];
+  PLV.forEach((st, li) => {
+    const owned = ownedAt(li);
+    for (const pet of owned.length ? owned : [null]) {
+      const s = structure(st, pet); worst = [Math.max(worst[0], s.obs), Math.max(worst[1], s.nBlocked), Math.max(worst[2], s.dead)];
+      if (s.obs > 2 || s.nBlocked > 6 || s.dead > 4) bad.push((li + 1) + '/' + pet + ' ' + s.obs + '/' + s.nBlocked + '/' + s.dead);
+      if (st.goal.boss && pet) {
+        const g = PG.createPetGame({ stage: st, team: [{ id: pet, lv: 1 }], seed: 3 }); g.openingAct();
+        const r = Math.floor(g.bigCells[0] / 9), c = g.bigCells[0] % 9, open = [r, r + 1, 9 + c, 10 + c].filter((u) => !core.UNITS[u].some((k) => (g.board[k] === CELL.METAL && pet !== 'tongque') || (g.board[k] === CELL.DIRT && pet !== 'baozhu'))).length;
+        if (open < 2) bad.push((li + 1) + '/' + pet + ' 头目只有 ' + open + ' 条路');
+      }
+    }
+  });
+  ok(!bad.length, 'T306 每关 × 打到这关时已有的每只：开不了的障碍 ≤ 2、被堵的排列大格 ≤ 6、死格 ≤ 4，头目开局站的地方穿过它的 2 排 2 列至少 2 条没被堵（最多 ' + worst.join(' / ') + '；不对的：' + (bad.join('、') || '没有') + '）');
+});
+t('T307', () => {
+  const bad = [];
+  PLV.forEach((st, li) => {
+    if (st.rush) return;
+    const pet = ownedAt(li)[0];
+    for (let s = 1; s <= 50; s++) {
+      const g = PG.createPetGame({ stage: st, team: pet ? [{ id: pet, lv: 1 }] : [], seed: s * 13 + li, tutorial: li === 0 });
+      if (!core.solvable(g.board, g.hand.slice(0, 3).filter(Boolean))) { bad.push((li + 1) + '/' + s + ' 开局'); continue; }
+      g.openingAct(); if (!core.solvable(g.board, g.hand.slice(0, 3).filter(Boolean))) bad.push((li + 1) + '/' + s + ' 演完');
+    }
+  });
+  ok(!bad.length, 'T307 每关 50 个种子：开局手上三块（含写死的）不用技能都有一种顺序放得下，开局先演完也放得下（放不下的：' + (bad.slice(0, 6).join('、') || '没有') + '）');
+});
+t('T308', () => {
+  const rows = [];
+  for (const [n, pet] of [[3, 'tongque'], [8, 'tongque'], [12, 'baozhu']]) {
+    const st = PLV[n - 1], other = pet === 'tongque' ? 'huli' : 'tongque';
+    const a = PG.createPetGame({ stage: st, team: [{ id: pet, lv: 2 }], seed: 3 }), b = PG.createPetGame({ stage: st, team: [{ id: other, lv: 2 }], seed: 3 });
+    const evo = PG.createPetGame({ stage: st, team: [{ id: PG.PETS[pet].evo, lv: 5 }], seed: 3 });
+    rows.push(st.fastCharge === pet && a.team[0].energy === PG.ringOf(pet, 2) - 1 && b.team[0].energy === 0 && evo.team[0].energy === PG.ringOf(pet, 5) - 1);
+  }
+  ok(rows.every(Boolean) && PLV.filter((st) => st.fastCharge).map((st) => PLV.indexOf(st) + 1).join() === '3,8,12', 'T308 第 3、8、12 关：带对口的那只（长大版也算）表盘 = 满格 − 1，带别的宠物 0（' + rows.join(',') + '）');
+  const { boot } = require('./wx-env.js');
+  const S = (stage) => JSON.stringify({ ch1new: 1, econ: 2, petTutDone: true, tutorialDone: true, petStage: stage, pets: { tongque: { lv: 2, exp: 0 }, huli: { lv: 1, exp: 0 } }, petOrder: ['tongque', 'huli'], activePet: 'tongque', introSeen: { pet: 1, catch: 1, crawl: 1, metal: 1 }, cutSeen: { chapter0: true } });
+  const E1 = boot({ seed: 2, store: { luoshu_save_v1: S(2) } }); E1.G.newPetLevel(2); E1.run(3); const first = E1.G.g.team[0].energy; E1.restore();
+  const E2 = boot({ seed: 2, store: { luoshu_save_v1: S(6) } }); E2.G.newPetLevel(2); E2.run(3); const again = E2.G.g.team[0].energy; E2.restore();
+  ok(first === PG.ringOf('tongque', 2) - 1 && again === 0, 'T308 进游戏：第一次打第 3 关带小铜雀只差 1 格（' + first + '），重打是 0（' + again + '）');
+});
+// ---------- 第 3 关卡口（段 1 留给段 3 的「早 ≥ 2 手」）----------
+t('T320', () => {
+  const g = PG.createPetGame({ stage: PLV[2], team: [{ id: 'tongque', lv: 1 }], seed: 7 });
+  ok(g.hand.slice(0, 3).map((p) => p.id).join() === '2v,3h,L4a' && g.team[0].energy === PG.ringOf('tongque', 1) - 1, 'T320 第 3 关开局三块写死 2 竖、3 横、L；表盘只差 1 格');
+  const e1 = g.place(0, 0, 3);
+  ok(e1 && e1.units.length === 1 && g.hand[3] && g.hand[3].kind === 'peck', 'T320 第 1 手 2 竖放第 1、2 排第 4 列：消一排，宠物格里有羽毛');
+  ok(!core.canPlace(g.board, g.hand[1], 4, 6), 'T320 啄之前 3 横放不进第 5 排第 7–9 列');
+  const e2 = g.useSkill({ r: 4, c: 7, dir: 'h' });
+  ok(e2 && g.board[K(4, 7)] === CELL.EMPTY && g.moves === 1, 'T320 羽毛啄第 5 排第 8 列：啄掉那一格（不算一手）');
+  const e3 = g.place(1, 4, 6);
+  ok(e3 && e3.collected.filter((c) => c.what === 'monster').length === 1 && g.moves === 2, 'T320 第 2 手 3 横放进去：抓到 1 只（照引导第 ' + g.moves + ' 手抓到第一只）');
+});
+t('T321', () => {
+  const h0 = PG.createPetGame({ stage: PLV[2], team: [], seed: 5 }); let best = 99, tried = 0;
+  const rec = (b, hand, depth) => { hand.forEach((p, i) => { if (!p) return; for (const [r, c] of core.placements(b, p)) { tried++; const res = core.placeAndClear(b, p, r, c); if (res.cells.some((k) => b[k] === CELL.MON)) { best = Math.min(best, depth + 1); continue; } const nh = hand.slice(); nh[i] = null; if (depth + 1 < 3) rec(res.board, nh, depth + 1); } }); };
+  rec(h0.board, h0.hand.slice(0, 3), 0);
+  ok(best === 99 && tried > 1000, 'T321 第 3 关不用羽毛，把开局三块的所有放法穷举（' + tried + ' 种）：没有一种抓得到怪');
 });
 
 done();

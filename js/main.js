@@ -114,7 +114,7 @@ let mode = 'play'; // play / over / album / ad
 let overAt = 0; // 结束的时刻（结算页晚一点出来）
 // ---------- 过场（0.6.1，js/cuts.js）：每章开场 F 运镜大图、新宠物 B 登场、进化 / 过章 C 短版 ----------
 let CUT = null, cutPrev = 'play';
-let startCard = null; // 进关前的关卡卡片：{ t, i, forced, from, next }
+let startCard = null; // 进关前的关卡卡片：{ t, i, next }
 function playCuts() {
   if (!CUT.pending || mode === 'cut') return;
   cutPrev = mode; mode = 'cut'; CUT.start();
@@ -679,7 +679,7 @@ const SKL = () => Math.round(L.cell * 1.2);
 // 啃手上的块：手指伸进托盘深处（过了托盘上沿半格）就进「啃手上」；进了以后手指往上抬去对准放大的那块也不退出，直到抬出托盘上方两格半
 function handHover(d) {
   const p = g.hand[3];
-  if (!p || p.kind !== 'gnaw') return null;
+  if (!p || (p.kind !== 'gnaw' && p.kind !== 'turn')) return null; // 段 3 修：小龟的水珠也是拖到手上的块上用（原来只认啃，小龟第 17 关送来以后技能块拖不上去；转法先只给顺时针转一下，画法段 4、6）
   // 0.9.14 debug 修两处啃不到：① 5 格竖条最上面一格在「两格半」的退出线外面，手指一到那儿就退出 → 退出线跟着那块的高矮走；
   // ② 对准放大那块靠边的格子时手指还在托盘上沿，横着一过界就换成旁边那块 → 已经对上一块以后，手指还在它这几列的范围里就不换
   //    （往下伸过托盘中线，照旧是手指底下是哪块就换哪块）
@@ -1737,15 +1737,9 @@ const lvWant = (i) => (i < 4 ? 1 : i < 8 ? 2 : i < 12 ? 3 : i < 16 ? 4 : i < 22 
 // 「先练谁」：一次只提一只。① 前面最近的专属关点名的那只、等级还不够；② 否则这一章剩下的关里「带它顺」最多、你又没在带的那只
 function petToTrain(ch, cur) {
   const lo = ch * 10, hi = Math.min(PLV.length, lo + 10);
-  for (let i = Math.max(lo, cur); i < hi; i++) {
-    const st = PLV[i];
-    if (!st.only) continue;
-    const own = ownedOf(st.only);
-    if (own && save.pets[own].lv < lvWant(i)) return { id: own, want: lvWant(i), i };
-    break;
-  }
+  // 段 3（R-057）：不再点名，原来「① 前面最近的专属关点名的那只」那一条跟着拿掉
   const cnt = {};
-  for (let i = Math.max(lo, cur); i < hi; i++) { const own = ownedOf(PLV[i].best || PLV[i].only); if (own) cnt[own] = (cnt[own] || 0) + 1; }
+  for (let i = Math.max(lo, cur); i < hi; i++) { const own = ownedOf(PLV[i].best); if (own) cnt[own] = (cnt[own] || 0) + 1; }
   const top = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0];
   if (top && top !== save.activePet && cnt[top] >= 2) return { id: top, n: cnt[top] };
   return null;
@@ -1796,8 +1790,6 @@ function chapterCell(i, x, y, w, h, ctxInfo) {
     const future = i > cur;
     ctx.save(); if (future) ctx.globalAlpha = 0.7;
     ctx.fillStyle = isCur ? TH.cardOn : TH.card; rr(x, y, w, h, TH.rCell); ctx.fill();
-    const onlyId = st.only ? ownedOf(st.only) || st.only : null;
-    if (onlyId) { ctx.strokeStyle = C.blockColors[PG.PETS[onlyId].color][0]; ctx.lineWidth = 2; rr(x + 1, y + 1, w - 2, h - 2, TH.rCell); ctx.stroke(); }
     if (isCur) { ctx.strokeStyle = 'rgba(209,166,80,' + (0.6 + Math.sin(clock * 4) * 0.35) + ')'; ctx.lineWidth = 2; rr(x + 1, y + 1, w - 2, h - 2, TH.rCell); ctx.stroke(); }
     text(String(i + 1), x + 10, y + 14, 16, COL.text, 'left');
     // 难关：两只角；超难：紫角 + 小骷髅
@@ -1825,9 +1817,8 @@ function chapterCell(i, x, y, w, h, ctxInfo) {
       else drawMon(m, -1, mx, my, 7);
     });
     if (mons.length > 3) text('+' + (mons.length - 3), x + 14 + 3 * 18, y + h - 14, 11, COL.dim);
-    // 宠物：专属关大头像 + 它颜色的框；建议的小头像
-    if (onlyId) petIcon(onlyId, x + w - 18, y + h - 18, 26, 0, 0);
-    else if (st.best && ownedOf(st.best)) petIcon(ownedOf(st.best), x + w - 14, y + h - 14, 18, 0, 0);
+    // 宠物：建议的小头像（段 3：专属关的大头像跟着「点名」拿掉）
+    if (st.best && ownedOf(st.best)) petIcon(ownedOf(st.best), x + w - 14, y + h - 14, 18, 0, 0);
     ctx.restore();
   }
   if (isSel && !isCur) { ctx.strokeStyle = TH.jade; ctx.lineWidth = 2; rr(x - 2, y - 2, w + 4, h + 4, TH.rCell + 2); ctx.stroke(); }
@@ -1856,8 +1847,8 @@ function drawLevelPreview(i, x, y, w, h) {
     text(seen ? PG.MON[m.t].name : '？', mx + 16, my, 11, COL.dim, 'left', 'normal');
   });
   // 带谁
-  const pid = ownedOf(st.only || st.best);
-  if (pid) { petIcon(pid, x + w - 34, y + h / 2 - 8, st.only ? 40 : 32, 0, 0); text(st.only ? '点名' : '最顺', x + w - 34, y + h / 2 + 24, 11, st.only ? C.blockColors[PG.PETS[pid].color][1] : COL.dim, 'center', 'normal'); }
+  const pid = ownedOf(st.best);
+  if (pid) { petIcon(pid, x + w - 34, y + h / 2 - 8, 32, 0, 0); text('最顺', x + w - 34, y + h / 2 + 24, 11, COL.dim, 'center', 'normal'); }
   buttons.push({ id: 'preview', x, y, w, h, fn: () => { if (i < save.petStage || i === Math.min(save.petStage, PLV.length - 1) || save.tester) newPetLevel(i); else chapSel = Math.floor(i / 10) * 10 + 9; } }); // 0.9.21 点预告卡就进这一关（Cc：「直接就点那个“下一关预告”……成为“下一关”」）
 }
 function drawChapter() {
@@ -1911,7 +1902,7 @@ function drawChapter() {
       text(bk.does, tx + 18, l2, 16, COL.text, 'left', 'normal');
       starShape(tx + 6, l3, 6, TH.jade);
       text(bk.fear, tx + 18, l3, 16, TH.jade, 'left', 'normal');
-      const bp = ownedOf(bst.only || bst.best);
+      const bp = bestOwnedFor(bst); // 段 3：头目卡「带谁最顺」读 bestPetFor（盘上有金属 → 小铜雀，有土堆 → 小穿山甲；自己有的才画）
       if (bp) { petIcon(bp, bx + bw - 30, bossY + bossH / 2 - 6, 30, 0, 0); text('最顺', bx + bw - 30, bossY + bossH / 2 + 20, 11, COL.dim, 'center', 'normal'); }
       if (bi < save.petStage) { ctx.save(); ctx.translate(fx, fy); ctx.rotate(-0.25); ctx.strokeStyle = TH.red; ctx.lineWidth = 3; rr(-34, -14, 68, 28, 6); ctx.stroke(); text('打倒了', 0, 0, 16, TH.red); ctx.restore(); }
     }
@@ -1949,8 +1940,7 @@ function drawChapter() {
   const pick = canPlay(chapSel) ? chapSel : done ? -1 : cur;
   if (pick < 0) button('play', rP.x + gW, btnY, rP.w - gW, rP.h, '全部过关 · 新关卡在做', { kind: 'sub', size: 16, fn: () => {} });
   else {
-    const cst = PLV[pick], who = cst.only ? ' · ' + PG.PETS[ownedOf(cst.only) || cst.only].name + '上场' : '';
-    button('play', rP.x + gW, btnY, rP.w - gW, rP.h, (pick === cur && !done ? '继续' : '再玩') + ' · 第 ' + (pick + 1) + ' 关' + who, { size: 20, fn: () => newPetLevel(pick) });
+    button('play', rP.x + gW, btnY, rP.w - gW, rP.h, (pick === cur && !done ? '继续' : '再玩') + ' · 第 ' + (pick + 1) + ' 关', { size: 20, fn: () => newPetLevel(pick) });
   }
   // 底栏去掉了（0.9.7，Cc 11-25：「经典拼画有啥用啊？……画册有啥用啊？……营地有啥用啊？……这都删了吧」）。过关后照旧回营地那一页；给宠物升级还能从上面「先练谁」进
 }
@@ -2038,7 +2028,7 @@ function drawStartCard() {
   if (nW > 1) { const gap = 20, wx0 = W / 2 - ((nW - 1) * gap) / 2 + 14; text(nW + ' 波', wx0 - 34, py + 146, 13, COL.dim); for (let k = 0; k < nW; k++) { ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(wx0 + k * gap, py + 146, 6, 0, Math.PI * 2); ctx.fill(); } }
   // 谁出战：不点名的关，进关前自己手选（0.9.14，Cc：「进入下一关之前，让我手选」）
   const pid = g.team[0] && g.team[0].id;
-  if (pid && !st.only && save.petOrder.length > 1) {
+  if (pid && save.petOrder.length > 1) {
     const ids = save.petOrder, cw2 = Math.min(70, (pw - 30) / ids.length), x0 = W / 2 - (cw2 * (ids.length - 1)) / 2, pyy = py + 196;
     const rank = PG.bestPetFor(st);
     ids.forEach((id, n) => {
@@ -2050,17 +2040,8 @@ function drawStartCard() {
     });
   } else if (pid) {
     const pyy = py + 178;
-    if (c.forced && c.from && save.pets[c.from]) {
-      // 换人：原来那只往左退、变灰；点名的那只从右边跳进来
-      const t = Math.min(1, Math.max(0, (age - 0.25) * 2.5));
-      ctx.globalAlpha = ease * (1 - t * 0.6); petIcon(c.from, W / 2 - 50 - t * 20, pyy, 40, 0, 0); ctx.globalAlpha = ease;
-      text('→', W / 2, pyy, 20, COL.dim);
-      petIcon(pid, W / 2 + 50 + (1 - t) * 40, pyy - Math.sin(t * Math.PI) * 14, 52, 0, t >= 1 ? 0 : 0.2);
-      text('这关点名 ' + PG.PETS[pid].name + ' 出战', W / 2, pyy + 46, 16, C.blockColors[PG.PETS[pid].color][1]);
-    } else {
-      petIcon(pid, W / 2, pyy, 56, g.team[0].lv, 0);
-      text(PG.PETS[pid].name + ' 出战', W / 2, pyy + 46, 16, COL.text);
-    }
+    petIcon(pid, W / 2, pyy, 56, g.team[0].lv, 0);
+    text(PG.PETS[pid].name + ' 出战', W / 2, pyy + 46, 16, COL.text);
   }
   ctx.restore();
   button('startGo', px + 24, py + ph - 70, pw - 48, 52, '开打', { size: 20, fn: () => { mode = c.next || 'play'; startCard = null; g.startMs = P.now(); P.sound('select', 0.6); if (g._fresh && save.freshPet && save.freshPet[g._fresh]) { delete save.freshPet[g._fresh]; persist(); } } });
@@ -2452,32 +2433,31 @@ function petIcon(id, x, y, s, lv, pop) {
 }
 // 专属关（0.8）：点名的宠物有没有（进化后的也算）；这一关实际带谁、几级
 function ownedOf(id) { for (let k = 0; id && k < 3; k++) { if (save.pets[id]) return id; id = PG.PETS[id] && PG.PETS[id].evo; } return null; } // 11-28：每只三个样子，顺着长大的链往下找
-function levelTeam(st, i, lendLv, lendId) {
-  if (lendId && !st.only) { const o = ownedOf(lendId); return [{ id: o || lendId, lv: Math.max(o ? save.pets[o].lv : 1, lendLv || 3) }]; } // 0.9.12：连输两次「请对口的来帮忙」，借一只 3 级的（自己的更高就用自己的）
-  if (!st.only) return ownedTeam();
-  const own = ownedOf(st.only);
-  let lv = own ? save.pets[own].lv : 0;
-  if (st.lend && save.petStage <= i) lv = Math.max(lv, st.lend); // 第一次打：借的和自己的取高的
-  if (lendLv) lv = Math.max(lv, lendLv); // 连输两次后「借一只」
-  return [{ id: own || st.only, lv: Math.max(1, lv) }];
+// 段 3（R-057，Cc 11-27「要练哪个是你自己的选择」）：不点名，带的永远是自己选的出战宠物。唯一的例外：连输两次「请对口的来帮忙」，
+// 请来的那只最少按 3 级算（自己的更高就用自己的）
+function levelTeam(st, i, helpLv, helpId) {
+  if (helpId) { const o = ownedOf(helpId); return [{ id: o || helpId, lv: Math.max(o ? save.pets[o].lv : 1, helpLv || 3) }]; }
+  return ownedTeam();
 }
-function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好、不放过场（开机时给老玩家垫底用）；lendLv：借一只几级的
+// 这一关自己有的宠物里谁最对口（盘上有金属 → 小铜雀，有土堆 → 小穿山甲）；没有障碍 / 自己没有 → null
+function bestOwnedFor(st) { const top = PG.bestPetFor(st).find((x) => x.n > 0 && ownedOf(x.id)); return top ? ownedOf(top.id) : null; }
+function newPetLevel(i, quiet, helpLv, helpId) { // quiet：只把盘面摆好、不放过场（开机时给老玩家垫底用）；helpLv：借一只几级的
   const st0 = PLV[i];
   if (!st0) return;
   petIdx = i; stageIdx = -1;
   // 0.9.24 测试员跳到后面的关：前面关送的宠物先给上（Cc：「爽关里还是没有宠物啊」——跳关玩，第 2 关送的铜雀没拿到，冲锋关里就一只宠物都没有）
   if (save.tester) { for (let k = 0; k < i; k++) { const gf = PLV[k].gift; if (gf && !ownedOf(gf)) { save.pets[gf] = { lv: 3, exp: 0 }; save.petOrder.push(gf); if (!save.activePet) save.activePet = gf; } } persist(); }
-  // 专属关：点名的那只自动换上，只管这一关（营地里选的出战宠物不改）；第 4 关的「充得特别快」只有第一次
-  const team = levelTeam(st0, i, lendLv, lendId);
-  const st1 = Object.assign({}, st0, { fastCharge: !!st0.fastCharge && save.petStage <= i });
+  const team = levelTeam(st0, i, helpLv, helpId);
+  // 段 3 规则 3：关卡表上的「只差 1 格」（第 3、8、12 关，只给对口的那只）只有第一次打这关有
+  const st1 = Object.assign({}, st0, { fastCharge: save.petStage <= i ? st0.fastCharge || false : false });
   // 安全网（0.9.12，Cc 11-25 定「三层都上」）：同一关连输 3 次，后两段发的大块少四成；5 次少七成；7 次只发基础大小。过了这关就恢复（loss 清零），重打已过的关不放松。屏幕上什么都不显示
   const L0 = (save.loss && save.loss[i]) || 0;
   if (L0 >= 3 && i >= save.petStage) { const k = L0 >= 7 ? 0 : L0 >= 5 ? 0.3 : 0.6; st1.d = (st0.d || 0) * k; if (st0.dSeg) st1.dSeg = st0.dSeg.map((x, n) => (n ? x * k : x)); if (st0.dBoss2) st1.dBoss2 = st0.dBoss2 * k; if (st0.dBoss3) st1.dBoss3 = st0.dBoss3 * k; }
   // 升级后的第一关（只算第一次打）：开局能量只差一格就满，马上用到新本事（Fable 技能重做第六节第 6 件，Kira 先定 A，待 Cc 看）
-  const fresh = team[0] && save.freshPet && save.freshPet[baseOf(team[0].id)] && i >= save.petStage ? baseOf(team[0].id) : null;
+  // 段 3 规则 3：新宠物第一次出战（和升级后第一关）不管是哪一关都只差 1 格，挂在宠物身上（save.freshPet），不挂在关上
+  const fresh = team[0] && save.freshPet && save.freshPet[baseOf(team[0].id)] ? baseOf(team[0].id) : null;
   if (fresh) st1.fastCharge = true; // 0.9.14 debug：点「开打」才算用掉（原来一摆出关卡卡片就用掉，在卡片上换一只再换回来、或者退回地图，这份好处就没了）
   g = PG.createPetGame({ stage: st1, team, seed: (P.now() ^ (save.plays * 2654435761)) >>> 0, tutorial: i === 0 && !save.petTutDone, crumb: false }); // 段 1：10 级鼠的小土块还没有地方画、拖不了（段 4、5），画面接上以前游戏里先不给，免得「没输也动不了」
-  g.onlyPet = st0.only ? team[0].id : null;
   // 段 2（Cc 11-28 定 A）：带进关的那只比自己养的高、或者根本没有这只 = 借来的，这关最多 2 个丹槽
   { const own = team[0] ? ownedOf(team[0].id) : null; g.lent = !!team[0] && (!own || team[0].lv > save.pets[own].lv); }
   g._fresh = fresh;
@@ -2485,8 +2465,7 @@ function newPetLevel(i, quiet, lendLv, lendId) { // quiet：只把盘面摆好�
   startPet(st1);
   // 进关前一张关卡卡片（0.9.5，Cc 11-25：「进入游戏关卡的时候进太快了，没有这个仪式感」「我刚刚没派蚕出战，他怎么就出来了？……你得告诉我啊」）
   g.startMs = P.now();
-  if (!quiet && save.petTutDone) { startCard = { t: clock, i, forced: !!(g.onlyPet && save.activePet && save.activePet !== g.onlyPet), from: save.activePet, next: mode }; mode = 'start'; }
-  if (g.onlyPet && save.activePet !== g.onlyPet) { petFx.pop[g.onlyPet] = clock + 0.15; P.sound('select', 0.5); } // 被点名的那只跳进来
+  if (!quiet && save.petTutDone) { startCard = { t: clock, i, next: mode }; mode = 'start'; }
   // 这一章第一次开打：先放这章的开场（镜头摇过全景，硬切推到大墨怪）
   if (!quiet && i % 10 === 0 && !save.cutSeen['chapter' + i / 10]) { CUT.chapter(i / 10); playCuts(); }
   startLevelMusic(st1, i, quiet);
@@ -3102,18 +3081,14 @@ function drawPetOver() {
   } else {
     button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => newPetLevel(petIdx) });
     const lost2 = save.loss && save.loss[petIdx] >= 2;
-    const lendLv = g.onlyPet && lost2 ? Math.min(EC.LV_CAP, Math.max(3, (g.team[0] ? g.team[0].lv : 1) + 2)) : 0; // 段 1 修：原来借来的能到 11、12 级（满级 10）
     // 0.9.12：不点名的关连输两次，带的不是对口的 → 「这关的怪不怕 X。请 Y 来？」借一只 3 级的（Cc 11-25 定三层网的第一层，看得见、在教她带谁）
-    const rank = !g.onlyPet && lost2 && g.team[0] ? PG.bestPetFor(g.stage) : [];
+    const rank = lost2 && g.team[0] ? PG.bestPetFor(g.stage) : [];
     const top = rank.find((x) => ownedOf(x.id)), mine = rank.find((x) => baseOf(x.id) === baseOf(g.team[0].id)); // 自己有的里面最对口的那只，比带着的这只更对口才请
     const bestId = top && mine && top.n > mine.n ? ownedOf(top.id) : null;
     if (g.rush) lossSideBtn(bx, by + 70, bw, 44); // 0.9.24 冲锋关慢了输：只有「再试一次」，不给救命
     else if (bestId) {
       text('这关的怪不怕' + PG.PETS[g.team[0].id].name + '。', W / 2, by - 14, 14, COL.dim, 'center', 'normal');
       button('lend', bx, by + 70, bw * 0.6 - 6, 44, '请' + PG.PETS[bestId].name + '来帮忙', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, 3, bestId) });
-      lossSideBtn(bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44);
-    } else if (lendLv) { // 专属关连输两次：递个梯子
-      button('lend', bx, by + 70, bw * 0.6 - 6, 44, '借一只 ' + lendLv + ' 级的再来', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, lendLv) });
       lossSideBtn(bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44);
     } else if (g.adsUsed < C.adMax) {
       button('revive', bx, by + 70, bw * 0.6 - 6, 44, '清最挤的 3 个大格', { size: 15, bg: COL.copper, ad: true, fn: () => continueAfterAd(() => { reviveFx(); g._ended = false; mode = 'play'; result = null; stats.starts.push(P.now()); }) });
@@ -3271,7 +3246,7 @@ function drawCamp() {
     if (key === 'score') text(nst.goal.score + '分', x0 + 14, nmid, 13, COL.text);
     else { goalIcon(key, x0, nmid, 18); text(key === 'all' ? '全' : '×' + nst.goal[key], x0 + 12, nmid, 13, COL.text, 'left'); }
   });
-  const rank = PG.bestPetFor(nst), bestOwned = nst.only ? ownedOf(nst.only) : (rank.find((x) => x.n > 0 && ownedOf(x.id)) || {}).id;
+  const bestOwned = bestOwnedFor(nst);
   const nW = PG.waveTotalOf(nst);
   if (nW > 1) { for (let k = 0; k < nW; k++) { ctx.fillStyle = COL.brassLight; ctx.beginPath(); ctx.arc(rNx.x + rNx.w - 34 - (nW - 1 - k) * 12, nmid, 4, 0, Math.PI * 2); ctx.fill(); } } // 几波：几个小圆点
   const goX = PLAYTEST ? Math.max(rGo.x, 62) : rGo.x; // 试玩版：左下角留给「记一下」那支笔

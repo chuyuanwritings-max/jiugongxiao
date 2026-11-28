@@ -123,6 +123,8 @@ function energyMax(g, p) {
 }
 // 这一关一共几波：开局盘上那一波 + 后面一波一波冒出来的（关卡卡片、宠物园、关里顶上的圆点都用这一个数）
 const waveTotalOf = (st) => 1 + ((st && st.waves) || []).length;
+// 段 3 规则 3：「只差 1 格」认宠物。st.fastCharge = true（main.js：新宠物第一次出战 / 升级后第一关）→ 带谁都给；= '宠物编号'（关卡表：第 3、8、12 关）→ 只有带这只（长大版也算）才给
+const fastFor = (st, p) => st.fastCharge === true || (typeof st.fastCharge === 'string' && baseId(p.id) === st.fastCharge);
 
 // opts: { stage, team:[{id,lv}], seed, tutorial, crumb }（crumb: false = 不给 10 级鼠的小土块，main.js 画面接上以前用）
 function createPetGame(opts) {
@@ -133,7 +135,7 @@ function createPetGame(opts) {
     pets: true,
     color: new Array(81).fill(0),
     handColor: [0, 0, 0, 0],
-    team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: st.fastCharge ? ringOf(p.id, p.lv || 1) - SKILL.intro : 0 })), // 段 1 规则 9：不带开局能量，只有登场关 / 升级后第一关差 1 格
+    team: (st.team || o.team || []).map((p) => ({ id: p.id, lv: p.lv || 1, energy: fastFor(st, p) ? ringOf(p.id, p.lv || 1) - SKILL.intro : 0 })), // 段 1 规则 9：不带开局能量，只有「只差 1 格」的时候差 1 格
     bigHp: 0, bigCells: [], boss: null, skillUses: 0,
     mon: new Array(81).fill(null), // 墨怪的种类和状态
     silkHp: new Array(81).fill(0), // 蝴蝶 10 级的丝：2 = 新丝（消一次变旧丝）、1 = 旧丝（再消一次才没）
@@ -1047,4 +1049,4 @@ function restorePetGame(opts, snap) {
   if (opts && opts.stage && opts.stage.rush) return null;
   const g = createPetGame(opts); g._restore(snap); return g;
 }
-module.exports = { restorePetGame, SNAP_VER, smartSkill, peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { restorePetGame, SNAP_VER, smartSkill, fastFor, peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };

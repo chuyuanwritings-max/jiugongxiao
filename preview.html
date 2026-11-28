@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '3e72660f5e31';</script>
+<script>window.__BUILD = '11b128e863fc';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -5949,7 +5949,7 @@ const at = (arr, lv) => arr[Math.min(arr.length, Math.max(1, lv)) - 1];
 // 绿龟只涨表盘、一颗水珠永远转 1 块，5 级学翻面、10 级学变形（Cc 段 1 定，替换细设计里龟那一行）
 const SKILL = {
   n: { tongque: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], baozhu: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], modou: [1, 1, 1, 2, 2, 2, 3, 3, 3, 3], huli: [1, 1, 1, 1, 1, 2, 2, 3, 3, 3], lvgui: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
-  ring: { tongque: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], baozhu: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], modou: [9, 8, 7, 7, 7, 6, 6, 5, 4, 4], huli: [10, 9, 8, 7, 7, 7, 6, 6, 5, 5], lvgui: [10, 9, 8, 7, 7, 6, 5, 4, 3, 3] },
+  ring: { tongque: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], baozhu: [8, 7, 6, 6, 6, 5, 5, 4, 3, 3], modou: [9, 8, 7, 7, 7, 6, 6, 5, 4, 4], huli: [11, 10, 9, 8, 8, 8, 7, 7, 6, 6], lvgui: [10, 9, 8, 7, 7, 6, 5, 4, 3, 3] }, // 段 3 规则 12（Cc 11-28 批）：一尾狐整列加 1 格
   kind: { tongque: 'peck', baozhu: 'gnaw', modou: 'silk', huli: 'fire', lvgui: 'turn' },
   intro: 1, // 登场关 / 升级后第一关（fastCharge）：开局只差几格就满
 };

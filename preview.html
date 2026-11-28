@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>洛书九宫</title>
+<title>九宫捉妖</title>
 <style>
   html, body { margin: 0; height: 100%; background: #0a0605; overflow: hidden; }
   body { display: flex; align-items: center; justify-content: center; }
@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = '7165ec1a86df';</script>
+<script>window.__BUILD = 'e36fc7656f69';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -1647,7 +1647,7 @@ const REF = { W: 390, top: 34, bottom: 844 };
 
 const DEFS = {
   // 主菜单（screen 要等于 main.js 的 sceneName）
-  'home.title': { name: '标题（九宫消 + 小字）', screen: 'home', x: 95, y: 50, w: 200, h: 80, ax: 'c', ay: 't' },
+  'home.title': { name: '标题（九宫捉妖 + 小字）', screen: 'home', x: 95, y: 50, w: 200, h: 80, ax: 'c', ay: 't' },
   'home.main': { name: '继续大按钮', screen: 'home', x: 45, y: 664, w: 300, h: 60, ax: 'c', ay: 'b' },
   'home.bar': { name: '底栏图标（营地 / 画册 / 经典拼画 / 设置）', screen: 'home', x: 16, y: 752, w: 358, h: 56, ax: 's', ay: 'b' },
   // 地图（章页）
@@ -1805,7 +1805,7 @@ function draw(data, makeCanvas, info) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   ctx.font = 'bold 40px sans-serif';
-  ctx.fillText((info && info.title) || '九宫消 试玩记录', PAD, 18);
+  ctx.fillText((info && info.title) || '九宫捉妖 试玩记录', PAD, 18);
   ctx.font = '26px sans-serif';
   ((info && info.lines) || []).slice(0, 2).forEach((line, i) => ctx.fillText(String(line), PAD, 72 + i * 34));
   // 黑框：数据区外面空一格白，再一格黑
@@ -4111,7 +4111,7 @@ function drawHome() {
     }
     ctx.drawImage(homeArtCache, 0, 0, W, H);
     const rTi = LY.rect('home.title'), kt = LY.k('home.title', rTi);
-    textW('九宫消', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.35, Math.round(44 * kt), COL.brassLight); // 0.9.24 游戏名字一定留着（Cc：「主页上面得有游戏名字啊，大哥，那个文字你不能删啊」）
+    textW('九宫捉妖', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.35, Math.round(40 * kt), COL.brassLight); // 11-28 改名（Cc 定，小琦起的） // 0.9.24 游戏名字一定留着（Cc：「主页上面得有游戏名字啊，大哥，那个文字你不能删啊」）
     text('汐娘的机关工坊', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.82, Math.round(13 * kt), COL.dim, 'center', 'normal');
     drawHomeButtons(cy);
     return;
@@ -4130,7 +4130,7 @@ function drawHome() {
     const a = clock * 0.6 + (n / arr.length) * Math.PI * 2;
     petIcon(id, W / 2 + Math.cos(a) * 110, cy + Math.sin(a) * 70, 40, 0, 0);
   });
-  textW('九宫消', W / 2, cy + 116, 44, COL.brassLight);
+  textW('九宫捉妖', W / 2, cy + 116, 40, COL.brassLight);
   text('汐娘的机关工坊', W / 2, cy + 156, 16, COL.dim, 'center', 'normal');
   drawHomeButtons(cy);
 }

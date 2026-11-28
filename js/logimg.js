@@ -49,7 +49,7 @@ function draw(data, makeCanvas, info) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   ctx.font = 'bold 40px sans-serif';
-  ctx.fillText((info && info.title) || '九宫消 试玩记录', PAD, 18);
+  ctx.fillText((info && info.title) || '九宫捉妖 试玩记录', PAD, 18);
   ctx.font = '26px sans-serif';
   ((info && info.lines) || []).slice(0, 2).forEach((line, i) => ctx.fillText(String(line), PAD, 72 + i * 34));
   // 黑框：数据区外面空一格白，再一格黑

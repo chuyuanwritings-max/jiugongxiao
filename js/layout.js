@@ -8,7 +8,7 @@ const REF = { W: 390, top: 34, bottom: 844 };
 
 const DEFS = {
   // 主菜单（screen 要等于 main.js 的 sceneName）
-  'home.title': { name: '标题（九宫消 + 小字）', screen: 'home', x: 95, y: 50, w: 200, h: 80, ax: 'c', ay: 't' },
+  'home.title': { name: '标题（九宫捉妖 + 小字）', screen: 'home', x: 95, y: 50, w: 200, h: 80, ax: 'c', ay: 't' },
   'home.main': { name: '继续大按钮', screen: 'home', x: 45, y: 664, w: 300, h: 60, ax: 'c', ay: 'b' },
   'home.bar': { name: '底栏图标（营地 / 画册 / 经典拼画 / 设置）', screen: 'home', x: 16, y: 752, w: 358, h: 56, ax: 's', ay: 'b' },
   // 地图（章页）

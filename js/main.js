@@ -2261,7 +2261,7 @@ function drawHome() {
     }
     ctx.drawImage(homeArtCache, 0, 0, W, H);
     const rTi = LY.rect('home.title'), kt = LY.k('home.title', rTi);
-    textW('九宫消', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.35, Math.round(44 * kt), COL.brassLight); // 0.9.24 游戏名字一定留着（Cc：「主页上面得有游戏名字啊，大哥，那个文字你不能删啊」）
+    textW('九宫捉妖', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.35, Math.round(40 * kt), COL.brassLight); // 11-28 改名（Cc 定，小琦起的） // 0.9.24 游戏名字一定留着（Cc：「主页上面得有游戏名字啊，大哥，那个文字你不能删啊」）
     text('汐娘的机关工坊', rTi.x + rTi.w / 2, rTi.y + rTi.h * 0.82, Math.round(13 * kt), COL.dim, 'center', 'normal');
     drawHomeButtons(cy);
     return;
@@ -2280,7 +2280,7 @@ function drawHome() {
     const a = clock * 0.6 + (n / arr.length) * Math.PI * 2;
     petIcon(id, W / 2 + Math.cos(a) * 110, cy + Math.sin(a) * 70, 40, 0, 0);
   });
-  textW('九宫消', W / 2, cy + 116, 44, COL.brassLight);
+  textW('九宫捉妖', W / 2, cy + 116, 40, COL.brassLight);
   text('汐娘的机关工坊', W / 2, cy + 156, 16, COL.dim, 'center', 'normal');
   drawHomeButtons(cy);
 }

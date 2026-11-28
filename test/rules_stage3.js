@@ -251,4 +251,34 @@ t('T327', () => {
   E.restore();
 });
 
+// ---------- 连输两次请帮手（规则 10）----------
+t('T350', () => {
+  const r8 = PG.bestPetFor(PLV[7]), r12 = PG.bestPetFor(PLV[11]), r19 = PG.bestPetFor(PLV[18]);
+  ok(r8.map((x) => x.id).sort().join() === BASE.slice().sort().join() && r8[0].id === 'tongque' && r8[0].n === 2 && r12[0].id === 'baozhu' && r12[0].n === 2, 'T350 名单是五只的小时候编号；金属数给小铜雀（第 8 关 2）、土堆数给小穿山甲（第 12 关 2），另外三只 0');
+  ok(r19.filter((x) => x.n > 0).length === 2 && !PG.bestPetFor(PLV[3]).length && !PG.bestPetFor(PLV[13]).length, 'T350 第 19 关两种都有；没有障碍的关（第 4、14 关）返回空');
+});
+t('T351', () => {
+  const all = ['tongque', 'huli', 'baozhu', 'modou', 'lvgui'], H = (n, c, own) => PG.helperFor(PLV[n - 1], c, own);
+  const cases = [
+    [8, 'huli', ['tongque', 'huli'], 'tongque'], [8, 'jinchique', all, null], [8, 'huli', ['huli', 'baozhu'], null],
+    [12, 'tongque', ['tongque', 'baozhu'], 'baozhu'], [12, 'lvgui', all, 'baozhu'], [12, 'baozhuwang', all, null],
+    [19, 'lvgui', all, 'tongque'], [19, 'modou', ['modou', 'baozhu'], 'baozhu'], [19, 'tongque', all, null], [19, 'baozhu', all, null],
+    [14, 'lvgui', all, null], [4, 'tongque', ['tongque'], null], [20, 'huli', all, 'baozhu'],
+  ];
+  const bad = cases.filter(([n, c, own, want]) => H(n, c, own) !== want).map(([n, c, , want]) => n + '/' + c + '→' + H(n, c, cases.find((x) => x[0] === n && x[1] === c)[2]) + '（要 ' + want + '）');
+  ok(!bad.length, 'T351 一张小表逐格查（带谁 × 有什么障碍 × 自己有没有对口的）：只有带的这只有打不开的、自己有打得开的才请；带小龟也给；没障碍的关不给（不对的：' + (bad.join('、') || '没有') + '）');
+  // 进游戏：连输两次以后请来的不到 3 级按 3 级算、记成借的；已经 3 级以上就是自己的
+  const run2 = (lvB) => {
+    const E = boot({ seed: 9, store: { luoshu_save_v1: SAVE({ petStage: 11, pets: { tongque: { lv: 3, exp: 0 }, huli: { lv: 2, exp: 0 }, baozhu: { lv: lvB, exp: 0 } }, petOrder: ['tongque', 'huli', 'baozhu'], petSeen: { tongque: true, huli: true, baozhu: true }, activePet: 'lvgui', loss: { 11: 1 } }) } }), { G, run } = E;
+    G.save.pets.lvgui = { lv: 1, exp: 1 }; G.save.petOrder.push('lvgui'); G.save.activePet = 'lvgui'; G.save.petSeen.lvgui = true;
+    G.newPetLevel(11); run(3); G.skipCuts(); G.mode = 'play'; run(3); const g = G.g; g.over = true; g.won = false; g.reason = 'stuck'; G.endGame(); run(90);
+    const b = E.btn('lend'); let lv = 0, lent = null; if (b) { E.tap(b); run(5); lv = G.g.team[0].lv; lent = G.g.lent; } const id = G.g.team[0].id; E.restore(); return { b: !!b, lv, lent, id };
+  };
+  const a = run2(1), c = run2(5);
+  ok(a.b && a.id === 'baozhu' && a.lv === 3 && a.lent === true, 'T351 第 12 关带小龟连输两次：有「请小穿山甲来帮忙」，自己的 1 级按 3 级算、记成借的（最多 2 槽）');
+  ok(c.b && c.lv === 5 && c.lent === false, 'T351 自己的小穿山甲已经 5 级：就用自己的，不算借');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'main.js'), 'utf8');
+  ok(!/借一只 .* 级的再来/.test(src), 'T351 「借一只高两级的再来」拿掉了');
+});
+
 done();

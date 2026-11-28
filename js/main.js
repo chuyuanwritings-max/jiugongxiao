@@ -3110,13 +3110,13 @@ function drawPetOver() {
   } else {
     button('again', bx, by, bw, 58, '再试一次', { size: 24, fn: () => newPetLevel(petIdx) });
     const lost2 = save.loss && save.loss[petIdx] >= 2;
-    // 0.9.12：不点名的关连输两次，带的不是对口的 → 「这关的怪不怕 X。请 Y 来？」借一只 3 级的（Cc 11-25 定三层网的第一层，看得见、在教她带谁）
-    const rank = lost2 && g.team[0] ? PG.bestPetFor(g.stage) : [];
-    const top = rank.find((x) => ownedOf(x.id)), mine = rank.find((x) => baseOf(x.id) === baseOf(g.team[0].id)); // 自己有的里面最对口的那只，比带着的这只更对口才请
-    const bestId = top && mine && top.n > mine.n ? ownedOf(top.id) : null;
+    // 0.9.12：连输两次，带的不是对口的 → 请对口的来帮忙，最少按 3 级算（Cc 11-25 定三层网的第一层，看得见、在教她带谁）
+    // 段 3 规则 10：只在「盘上有带着的这只打不开的障碍、自己又有打得开的那只」时出（名单认五只，带小龟也给）；没有障碍的关不给
+    const helper = lost2 && g.team[0] ? PG.helperFor(g.stage, g.team[0].id, save.petOrder) : null;
+    const bestId = helper ? ownedOf(helper) : null;
     if (g.rush) lossSideBtn(bx, by + 70, bw, 44); // 0.9.24 冲锋关慢了输：只有「再试一次」，不给救命
     else if (bestId) {
-      text('这关的怪不怕' + PG.PETS[g.team[0].id].name + '。', W / 2, by - 14, 14, COL.dim, 'center', 'normal');
+      text('这关的障碍' + PG.PETS[g.team[0].id].name + '打不开。', W / 2, by - 14, 14, COL.dim, 'center', 'normal'); // 段 3：原来说「怪不怕」，其实说的是障碍（无字画法段 5、6）
       button('lend', bx, by + 70, bw * 0.6 - 6, 44, '请' + PG.PETS[bestId].name + '来帮忙', { size: 15, bg: COL.wood, hot: true, fn: () => newPetLevel(petIdx, false, 3, bestId) });
       lossSideBtn(bx + bw * 0.6 + 6, by + 70, bw * 0.4 - 6, 44);
     } else if (g.adsUsed < C.adMax) {

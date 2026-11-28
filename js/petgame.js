@@ -65,12 +65,21 @@ function petGain(id, lv) {
   if (ringOf(id, to) !== ringOf(id, lv)) return 'ring';
   return '';
 }
-// 这一关带谁最顺（段 1 附录 D 丁）：数盘上的金属 → 铜雀，数土堆 → 爆竹鼠，都没有 → 空
+// 这一关带谁最顺（段 3 规则 10：名单认五只小时候的编号）：金属数给小铜雀、土堆数给小穿山甲，另外三只是 0；没有障碍 → 空
 function bestPetFor(st) {
   let metal = 0, dirt = 0;
   st.board.forEach((row) => row.split('').forEach((ch) => { if (ch === 'Z') metal++; else if (ch === 'D') dirt++; }));
-  const out = [{ id: 'tongque', n: metal }, { id: 'baozhu', n: dirt }, { id: 'modou', n: 0 }, { id: 'sanweihu', n: 0 }].sort((x, y) => y.n - x.n);
+  const out = [{ id: 'tongque', n: metal }, { id: 'baozhu', n: dirt }, { id: 'huli', n: 0 }, { id: 'modou', n: 0 }, { id: 'lvgui', n: 0 }].sort((x, y) => y.n - x.n);
   return out[0].n > 0 ? out : [];
+}
+// 段 3 规则 10：连输两次「请对口的来帮忙」请谁。carried = 带着的那只（任何样子），owned = 自己有的（任何样子）。
+// 只有「盘上有带着的这只打不开的障碍，而自己有一只打得开（其中一种）」才请；带的已经是小铜雀或小穿山甲（打得开其中一种）就不请。返回小时候的编号或 null
+function helperFor(st, carried, owned) {
+  const c = baseId(carried), rank = bestPetFor(st).filter((x) => x.n > 0);
+  if (!rank.length || rank.some((x) => x.id === c)) return null;
+  const mine = new Set((owned || []).map(baseId));
+  const hit = rank.find((x) => mine.has(x.id));
+  return hit ? hit.id : null;
 }
 // 技能块：每只宠物都是这个 1 格的模子
 const SKILL_PIECE = { id: 'skill', cat: 0, cells: [[0, 0]], h: 1, w: 1, special: 'skill' };
@@ -1049,4 +1058,4 @@ function restorePetGame(opts, snap) {
   if (opts && opts.stage && opts.stage.rush) return null;
   const g = createPetGame(opts); g._restore(snap); return g;
 }
-module.exports = { restorePetGame, SNAP_VER, smartSkill, fastFor, peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { helperFor, restorePetGame, SNAP_VER, smartSkill, fastFor, peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };

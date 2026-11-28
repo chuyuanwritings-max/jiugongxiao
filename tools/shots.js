@@ -4,7 +4,7 @@ const path = require('path'), fs = require('fs');
 const { chromium } = require('/Users/chuyuannc/Downloads/Cursor/Kira/06_游戏设计/node_modules/playwright');
 const tag = process.argv[2] || 'now', root = path.join(__dirname, '..'), out = path.join(root, 'test', 'baseline', 'shots', tag);
 const VPS = [[375, 667], [390, 844], [412, 915]];
-const SAVE = { petTutDone: true, tutorialDone: true, petStage: 20, introSeen: { catch: true, pet: true, crawl: true, metal: true, rush: true, moss: true, boss: true, baozhu: true, dirt: true, sticky: true, boss2: true }, cutSeen: {}, pets: { tongque: { lv: 3, exp: 0 }, baozhu: { lv: 2, exp: 0 } }, petOrder: ['tongque', 'baozhu'], activePet: 'tongque', dan: 5 };
+const SAVE = { petTutDone: true, tutorialDone: true, petStage: 20, introSeen: { catch: true, pet: true, crawl: true, metal: true, rush: true, moss: true, boss: true, baozhu: true, dirt: true, sticky: true, boss2: true }, cutSeen: {}, pets: { tongque: { lv: 3, exp: 0 }, baozhu: { lv: 2, exp: 0 } }, petOrder: ['tongque', 'baozhu'], activePet: 'tongque', dan: 5, slots: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [i, { s: 1 + (i % 3), got: 1 + (i % 3) }])) }; // 段 2：每关最好亮过 1–3 个丹槽（章页格子、关牌上画）
 const SCENES = [
   ['01_主菜单', (G) => { G.mode = 'home'; }],
   ['02_章页', (G) => { G.mode = 'map'; }],

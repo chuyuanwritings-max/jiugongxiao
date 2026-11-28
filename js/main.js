@@ -3360,7 +3360,15 @@ function fixSave() {
   if (save.freshPet !== undefined && !obj(save.freshPet)) delete save.freshPet;
   ['dan', 'plays'].forEach((k) => { save[k] = int(save[k], 0, 1e9); });
   save.petStage = int(save.petStage, 0, PLV.length);
+  // 段 2 老存档换算（丹细设计第三节）：0.9.24 的星 → 丹槽、按新规矩补丹、删金币 / 葫芦 / 分数 / 星。先把换算前的整份存档原样另存一份（只存第一次）
+  if (EC.needsMigrate(save)) {
+    if (loadedSave && !P.load(KEY + '_bak0924')) P.save(KEY + '_bak0924', loadedSave);
+    const mg = EC.migrate(save);
+    T.rec('b', 'migrate_econ', mg.gift); persist();
+  }
   // 11-28 Cc 定 A 新阵容（全量设计第 207 条）：老存档里的旧编号换成新的。qilin（老的火麒麟 / 段 1 的麒麟）、shizi（段 1 的小狮子）都改成狐狸；5 级以上是三尾狐
+  // 段 2 查出来：0.9.24 的墨斗蚕 5 级长大叫 hudie，新阵容里 hudie 是 10 级的第三个样子；5–9 级的换成第二个样子蚕茧 canjian（等级、已喂的丹原样）
+  if (obj(save.pets) && obj(save.pets.hudie) && int(save.pets.hudie.lv, 1, EC.LV_CAP) < PG.ULT_LV && !save.pets.canjian) { save.pets.canjian = save.pets.hudie; delete save.pets.hudie; if (Array.isArray(save.petOrder)) save.petOrder = save.petOrder.map((x) => (x === 'hudie' ? 'canjian' : x)); if (save.activePet === 'hudie') save.activePet = 'canjian'; }
   if (obj(save.pets)) [['shizi', 'huli'], ['qilin', null]].forEach(([from, to0]) => { const r = save.pets[from]; if (!obj(r)) return; const to = to0 || (int(r.lv, 1, EC.LV_CAP) >= PG.EVO_LV ? 'sanweihu' : 'huli'); if (!save.pets[to]) save.pets[to] = r; delete save.pets[from]; if (Array.isArray(save.petOrder)) save.petOrder = save.petOrder.map((x) => (x === from ? to : x)); if (save.activePet === from) save.activePet = to; });
   // 宠物：只留认得的；等级、这一级喂了几颗落在范围里。段 2：喂的够了新价就往上滚一级（不再砍掉多的），等级只升不降
   Object.keys(save.pets).forEach((id) => {

@@ -62,7 +62,8 @@ function slotEvents(stage, before, after) {
   return out;
 }
 // 这几个槽一辈子该拿的丹（含第一次拿满那 1 颗）
-const owed = (stage, slots) => slots * SLOT_DAN[kindOf(stage)] + (slots === 3 ? FULL_BONUS : 0);
+const owedK = (kind, slots) => slots * SLOT_DAN[kind] + (slots === 3 ? FULL_BONUS : 0);
+const owed = (stage, slots) => owedK(kindOf(stage), slots);
 const levelMax = (stage) => owed(stage, 3); // 4 / 7 / 10
 
 // ---- 结算 ----
@@ -119,9 +120,53 @@ function normalizePet(rec) {
   return rec.lv - lv0;
 }
 
+// ---- 老存档（0.9.24 → 段 2；丹细设计第三节）----
+// 冻住的 0.9.24 关卡类型和当时的给法：段 3 重排关卡不许动它（不然老存档会按错的类型补丹）
+const OLD_KIND = { t: 'teach', n: 'normal', H: 'hard', R: 'rush', B: 'boss' };
+const OLD_0924 = {
+  kind: 'ttttHtRtHB' + 'ttntHRnnHB', // 第 1–20 关：教 t、普通 n、难 H、冲锋 R、头目 B
+  kindAt(i) { return OLD_KIND[OLD_0924.kind[i]] || null; },
+  // 0.9.24 第一次过这关给了几颗：普通类 2、难 4、头目 8，三星另加 1；冲锋关按星 2 / 3 / 4（不加）
+  pay(kind, stars) { if (kind === 'rush') return [2, 3, 4][Math.max(1, Math.min(3, stars)) - 1]; return (kind === 'hard' ? 4 : kind === 'boss' ? 8 : 2) + (stars >= 3 ? 1 : 0); },
+  levelMax(i) { const k = OLD_0924.kindAt(i); return k ? owedK(k, 3) : 0; },
+};
+const DROPPED = ['coins', 'gourd', 'best', 'bestEndless', 'buySingle', 'lastFed']; // 砍掉的数
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const needsMigrate = (save) => !(save && save.econ >= ECON_VER);
+// 在 save 上改。备份由 main.js 在调这个之前做（res.backup = 要备份）
+function migrate(save) {
+  const res = { gift: 0, levels: [], pets: [], dropped: [], backup: false };
+  if (!isObj(save) || !needsMigrate(save)) return res;
+  res.backup = true;
+  save.dan = num(save.dan, 0, 1e9); // 丹：原来几颗还是几颗
+  const n = num(save.petStage, 0, OLD_0924.kind.length), best = isObj(save.best) ? save.best : {};
+  if (!isObj(save.slots)) save.slots = {};
+  // 只看真打过的关（「打到第几关」以前）。测试员跳着玩后面的关留下的星：不算槽、不补丹（当时到手的丹不收回）
+  for (let i = 0; i < n; i++) {
+    const kind = OLD_0924.kindAt(i); if (!kind) continue;
+    const b = best[i], stars = isObj(b) ? num(b.stars, 0, 3) : 0;
+    // 星 → 槽：教学关 3；冲锋关和星一样；别的 2、3 星 = 3 槽（旧 2 星 = 标准手数以内），1 星或没记录 = 1 槽
+    const slots = kind === 'teach' ? 3 : kind === 'rush' ? Math.max(1, stars) : stars >= 2 ? 3 : 1;
+    const oldPaid = OLD_0924.pay(kind, Math.max(1, stars)); // 过了关就至少给过 1 星的那份
+    const topup = Math.max(0, owedK(kind, slots) - oldPaid); // 少的不扣
+    const got = Math.max(oldPaid + topup, owedK(kind, slots)); // 记成已拿：以后补槽不重复给
+    const had = isObj(save.slots[i]) ? save.slots[i] : { s: 0, got: 0 };
+    save.slots[i] = { s: Math.max(num(had.s, 0, 3), slots), got: Math.max(num(had.got, 0, 1e6), got) };
+    res.gift += topup;
+    res.levels.push({ idx: i, stars, slots, oldPaid, topup, got: save.slots[i].got });
+  }
+  save.dan += res.gift;
+  // 宠物：有哪几只、几级原样；这一级喂了几颗原样，够新价就往上滚（等级只升不降）
+  if (isObj(save.pets)) Object.keys(save.pets).forEach((id) => { const r = save.pets[id]; if (!isObj(r)) return; const lv0 = r.lv; normalizePet(r); res.pets.push({ id, lv0, lv1: r.lv }); });
+  DROPPED.forEach((k) => { if (k in save) { delete save[k]; res.dropped.push(k); } });
+  save.econ = ECON_VER; save.econGift = res.gift; // 段 5 可以在第一次打开时演一下「补给你 N 颗」
+  return res;
+}
+
 module.exports = {
   EXP_NEED, LV_CAP, EVO_LV, PET_FULL, EVO_TOTAL, SLOT_DAN, REPLAY_DAN, FULL_BONUS, HELP_CAP, NEW_PET_EXP, ECON_VER,
   kindOf, cut2, slotsOf, live, slotEvents, owed, levelMax,
   dayKey, replayOpen, settle,
   newPet, cost, canLevel, canLevelAny, levelUp, normalizePet,
+  OLD_0924, needsMigrate, migrate,
 };

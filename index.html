@@ -13,7 +13,7 @@
 </head>
 <body>
 <canvas id="game"></canvas>
-<script>window.__BUILD = 'ba16454966c7';</script>
+<script>window.__BUILD = '3e72660f5e31';</script>
 <script>
 // 游戏修改器：只有本机修改器服务打开、链接带 ?edit 时才加载（这段只在网页里，微信包里没有）
 if (/[?&]edit\b/.test(location.search) && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="/__editor/editor.js"><\/script>');
@@ -6922,10 +6922,33 @@ function skillBest(g) {
   }
   return best;
 }
+// 段 3 附录 D：机器人补的两手（量数用；分数没校准，黄灯）
+// 这块放下去最多能抓几只（打到头目算 1）
+function catchOf(g, bd, q) { let m = 0; for (const [r, c] of core.placements(bd, q)) { const res = core.placeAndClear(bd, q, r, c); if (!res.units.length) continue; let n = 0; for (const x of res.cells) if (bd[x] === CELL.MON) n++; if (g.boss && g.bigHp > 0) for (const u of res.units) if (UNITS[u].some((x) => bd[x] === CELL.BOSS)) n++; if (n > m) m = n; } return m; }
+// ① 蚕宝宝：补满任何一排都算正经事（原来要那一排上有怪才补）
+// ② 小铜雀「卡口」：现在手上哪块都抓不到；啄掉怪那一排 / 列 / 大格里的一格以后，有一块放进去抓得到 → 啄（原来只在开金属和堵死时才用羽毛）
+function smartSkill(g) {
+  const base = skillBest(g), p = g.hand[3];
+  if (!p) return base;
+  if (p.kind === 'silk') return base && base.v >= 30 && base.v < 100 ? Object.assign({}, base, { v: 100 }) : base;
+  if (p.kind !== 'peck' || (base && base.v >= 100)) return base;
+  const b = g.board, hands = [0, 1, 2].map((i) => g.hand[i]).filter(Boolean);
+  if (!hands.length || Math.max(0, ...hands.map((h) => catchOf(g, b, h))) >= 1) return base;
+  const hot = new Set(); for (let u = 0; u < 27; u++) if (UNITS[u].some((x) => b[x] === CELL.MON || b[x] === CELL.BOSS)) UNITS[u].forEach((x) => { if (b[x] === CELL.BLOCK) hot.add(x); });
+  let best = base; const seen = new Set();
+  for (const k of hot) for (const dir of (p.lv || 1) >= EVO_LV && (p.lv || 1) < ULT_LV ? ['h', 'v'] : ['h']) {
+    const tg = { r: Math.floor(k / 9), c: k % 9, dir }, pl = g.skillPlan(tg); if (!pl) continue;
+    const key = pl.cells.join(','); if (seen.has(key)) continue; seen.add(key);
+    const nb = b.slice(); pl.cells.forEach((x) => { if (nb[x] === CELL.BLOCK) nb[x] = 0; });
+    const c1 = Math.max(0, ...hands.map((h) => catchOf(g, nb, h)));
+    if (c1 >= 1) { const v = 100 + c1 * 10 - pl.cells.length; if (!best || v > best.v) best = Object.assign({ v }, tg); }
+  }
+  return best;
+}
 // 有正经事可办就用；三块都放不下，也用（腾地方）
 function useSkillIfGood(g) {
   if (!g.hand[3] || g.over) return false;
-  const s = skillBest(g);
+  const s = smartSkill(g);
   if (!s) return false;
   const fits = [0, 1, 2].some((i) => g.hand[i] && core.anyPlacement(g.board, g.hand[i]));
   if (s.v >= 100 || !fits) return !!g.useSkill(s);
@@ -6938,7 +6961,7 @@ function restorePetGame(opts, snap) {
   if (opts && opts.stage && opts.stage.rush) return null;
   const g = createPetGame(opts); g._restore(snap); return g;
 }
-module.exports = { restorePetGame, SNAP_VER, peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
+module.exports = { restorePetGame, SNAP_VER, smartSkill, peckDir, skillPieceOf: (pt) => skillPiece(pt), waveTotalOf, petGain, BASE_OF, SKILL, EVO_LV, ULT_LV, baseId, ringOf, skillKind, skillN, gnawPiece, pickPiece, bestPetFor, skillBest, useSkillIfGood, PETS, SKILL_PIECE, IS_MON, MON, createPetGame, bestMove, simulate, energyMax };
 
 });
 __def("js/petlevels.js", function (module, exports, require) {
